@@ -152,8 +152,8 @@ where
             // FIXME(Relationships) Use a new ArchetypeRelationKindId here instead
             fetch_state.update_archetype_component_access(archetype, access);
             filter_state.update_archetype_component_access(archetype, access);
-            
-            let archtype_index = archetype.id().index();
+
+            let archetype_index = archetype.id().index();
             if !cache.matched_archetypes.contains(archetype_index) {
                 cache.matched_archetypes.grow(archetype.id().index() + 1);
                 cache.matched_archetypes.set(archetype.id().index(), true);

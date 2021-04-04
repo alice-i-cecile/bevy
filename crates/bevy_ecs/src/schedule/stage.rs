@@ -1,5 +1,5 @@
 use crate::{
-    component::ComponentId,
+    component::RelationshipId,
     schedule::{
         graph_utils::{self, DependencyGraphError},
         BoxedRunCriteria, BoxedRunCriteriaLabel, BoxedSystemLabel, DuplicateLabelStrategy,
@@ -475,7 +475,7 @@ impl SystemStage {
         fn write_display_names_of_pairs(
             string: &mut String,
             systems: &[impl SystemContainer],
-            mut ambiguities: Vec<(usize, usize, Vec<ComponentId>)>,
+            mut ambiguities: Vec<(usize, usize, Vec<RelationshipId>)>,
             world: &World,
         ) {
             for (index_a, index_b, conflicts) in ambiguities.drain(..) {
@@ -489,7 +489,15 @@ impl SystemStage {
                 if !conflicts.is_empty() {
                     let names = conflicts
                         .iter()
-                        .map(|id| world.components().get_info(*id).unwrap().name())
+                        .map(|id| {
+                            world
+                                .components()
+                                .get_relationship_info(*id)
+                                .unwrap()
+                                .0
+                                .data_layout()
+                                .name()
+                        })
                         .collect::<Vec<_>>();
                     writeln!(string, "    conflicts: {:?}", names).unwrap();
                 }
@@ -663,7 +671,7 @@ fn process_systems(
 /// Returns vector containing all pairs of indices of systems with ambiguous execution order,
 /// along with specific components that have triggered the warning.
 /// Systems must be topologically sorted beforehand.
-fn find_ambiguities(systems: &[impl SystemContainer]) -> Vec<(usize, usize, Vec<ComponentId>)> {
+fn find_ambiguities(systems: &[impl SystemContainer]) -> Vec<(usize, usize, Vec<RelationshipId>)> {
     let mut ambiguity_set_labels = HashMap::default();
     for set in systems.iter().flat_map(|c| c.ambiguity_sets()) {
         let len = ambiguity_set_labels.len();

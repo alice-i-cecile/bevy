@@ -62,7 +62,7 @@ impl Default for World {
         Self {
             id: Default::default(),
             entities: Default::default(),
-            components: Default::default(),
+            relationships: Default::default(),
             archetypes: Default::default(),
             storages: Default::default(),
             bundles: Default::default(),
@@ -603,14 +603,20 @@ impl World {
     }
 
     pub fn is_resource_added<T: Component>(&self) -> bool {
-        let component_id = self.components.get_resource_id(TypeId::of::<T>()).unwrap();
+        let component_id = self
+            .relationships
+            .get_resource_id(TypeId::of::<T>())
+            .unwrap();
         let column = self.get_populated_resource_column(component_id).unwrap();
         let ticks = unsafe { &*column.get_ticks_mut_ptr() };
         ticks.is_added(self.last_change_tick(), self.read_change_tick())
     }
 
     pub fn is_resource_changed<T: Component>(&self) -> bool {
-        let component_id = self.components.get_resource_id(TypeId::of::<T>()).unwrap();
+        let component_id = self
+            .relationships
+            .get_resource_id(TypeId::of::<T>())
+            .unwrap();
         let column = self.get_populated_resource_column(component_id).unwrap();
         let ticks = unsafe { &*column.get_ticks_mut_ptr() };
         ticks.is_changed(self.last_change_tick(), self.read_change_tick())

@@ -1,6 +1,13 @@
 use super::World;
 
 #[test]
+fn bar() {
+    let mut world = World::new();
+    let mut entity = world.spawn();
+    entity.insert(10);
+}
+
+#[test]
 fn foo() {
     let mut world = World::new();
 

@@ -434,7 +434,10 @@ mod tests {
             .components()
             .get_resource_id(TypeId::of::<B>())
             .unwrap();
-        let d_id = world.components().get_id(TypeId::of::<D>()).unwrap();
+        let d_id = world
+            .components()
+            .get_component_id(TypeId::of::<D>())
+            .unwrap();
         assert_eq!(conflicts, vec![b_id, d_id]);
     }
 

@@ -1,6 +1,6 @@
 use crate::{
     archetype::{Archetype, ArchetypeComponentId},
-    component::{Component, ComponentTicks, ComponentFlags, RelationshipId, RelationshipKindId, StorageType},
+    component::{Component, ComponentTicks, RelationshipId, RelationshipKindId, StorageType},
     entity::Entity,
     query::{Access, FilteredAccess},
     storage::{ComponentSparseSet, Table, Tables},
@@ -656,7 +656,12 @@ impl<'w, T: Component> Fetch<'w> for ReadRelationFetch<T> {
     type State = ReadRelationState<T>;
     type RelationFilter = ();
 
-    unsafe fn init(world: &World, state: &Self::State) -> Self {
+    unsafe fn init(
+        world: &World,
+        state: &Self::State,
+        last_change_tick: u32,
+        change_tick: u32,
+    ) -> Self {
         todo!()
     }
 

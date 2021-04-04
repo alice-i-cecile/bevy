@@ -3,7 +3,7 @@ pub use bevy_ecs_macros::Bundle;
 use crate::{
     archetype::ComponentStatus,
     component::{
-        Component, ComponentTicks, ComponentFlags, RelationshipId, RelationshipInfo, RelationshipKindInfo,
+        Component, ComponentTicks, RelationshipId, RelationshipInfo, RelationshipKindInfo,
         Relationships, StorageType, TypeInfo,
     },
     entity::Entity,
@@ -142,49 +142,19 @@ impl BundleInfo {
         // NOTE: get_components calls this closure on each component in "bundle order".
         // bundle_info.component_ids are also in "bundle order"
         let mut bundle_component = 0;
-
-        // FIXME(Relationships) merge conflict :(
-        ghjdfshjkfdsjkhfsdkjhsdf
-
-        /*
-        bundle.get_components(|component_ptr| {
-            // SAFE: component_id was initialized by get_dynamic_bundle_info
-            let component_id = *self.component_ids.get_unchecked(bundle_component);
-            let component_status = bundle_status.get_unchecked(bundle_component);
-            match self.storage_types[bundle_component] {
-                StorageType::Table => {
-                    let column = table.get_column(component_id).unwrap();
-                    column.set_unchecked(table_row, component_ptr);
-                    let column_status = column.get_ticks_unchecked_mut(table_row);
-                    match component_status {
-                        ComponentStatus::Added => {
-                            *column_status = ComponentTicks::new(change_tick);
-                        }
-                        ComponentStatus::Mutated => {
-                            column_status.set_changed(change_tick);
-                        }
-                    }
-                }
-                StorageType::SparseSet => {
-                    let sparse_set = sparse_sets.get_mut(component_id).unwrap();
-                    sparse_set.insert(entity, component_ptr, change_tick);
-                }
-            }
-            */
-            /* 
         bundle.get_components(&mut |component_ptr| {
             self.write_relationship(
                 sparse_sets,
                 entity,
                 table,
                 table_row,
-                bundle_flags,
+                bundle_status,
                 bundle_component,
                 component_ptr,
+                change_tick,
             );
             bundle_component += 1;
         });
-        */
     }
 
     pub(crate) unsafe fn write_relationship(
@@ -193,22 +163,31 @@ impl BundleInfo {
         entity: Entity,
         table: &Table,
         table_row: usize,
-        bundle_flags: &[ComponentFlags],
+        bundle_status: &[ComponentStatus],
         relationship_index: usize,
         component_ptr: *mut u8,
+        change_tick: u32,
     ) {
         // SAFE: component_id was initialized by get_dynamic_bundle_info
         let component_id = *self.relationship_ids.get_unchecked(relationship_index);
-        let flags = *bundle_flags.get_unchecked(relationship_index);
+        let component_status = bundle_status.get_unchecked(relationship_index);
         match self.storage_types[relationship_index] {
             StorageType::Table => {
                 let column = table.get_column(component_id).unwrap();
                 column.set_unchecked(table_row, component_ptr);
-                column.get_flags_unchecked_mut(table_row).insert(flags);
+                let column_status = column.get_ticks_unchecked_mut(table_row);
+                match component_status {
+                    ComponentStatus::Added => {
+                        *column_status = ComponentTicks::new(change_tick);
+                    }
+                    ComponentStatus::Mutated => {
+                        column_status.set_changed(change_tick);
+                    }
+                }
             }
             StorageType::SparseSet => {
                 let sparse_set = sparse_sets.get_mut(component_id).unwrap();
-                sparse_set.insert(entity, component_ptr, flags);
+                sparse_set.insert(entity, component_ptr, change_tick);
             }
         }
     }

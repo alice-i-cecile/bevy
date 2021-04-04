@@ -1,6 +1,6 @@
 use crate::{
     bundle::BundleId,
-    component::{ComponentId, ComponentFlags, RelationshipId, StorageType},
+    component::{RelationshipId, StorageType},
     entity::{Entity, EntityLocation},
     storage::{Column, SparseArray, SparseSet, SparseSetIndex, TableId},
 };
@@ -453,6 +453,10 @@ impl Archetypes {
         a: ArchetypeId,
         b: ArchetypeId,
     ) -> (&mut Archetype, &mut Archetype) {
+        if a.0 == b.0 {
+            panic!("both indexes were the same");
+        }
+
         if a.index() > b.index() {
             let (b_slice, a_slice) = self.archetypes.split_at_mut(a.index());
             (&mut a_slice[0], &mut b_slice[b.index()])
@@ -511,6 +515,8 @@ impl Archetypes {
                     table_archetype_components,
                     sparse_set_archetype_components,
                 ));
+                dbg!(archetypes.len());
+                dbg!(id);
                 id
             })
     }

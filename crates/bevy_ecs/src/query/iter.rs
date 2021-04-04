@@ -148,6 +148,9 @@ where
     fn size_hint(&self) -> (usize, Option<usize>) {
         let max_size = self
             .query_state
+            .relation_filter_accesses
+            .get(&self.query_state.current_relation_filter)
+            .unwrap()
             .matched_archetypes
             .ones()
             .map(|index| self.world.archetypes[ArchetypeId::new(index)].len())
