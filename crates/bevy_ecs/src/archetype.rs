@@ -1,6 +1,6 @@
 use crate::{
     bundle::BundleId,
-    component::{ComponentId, StorageType},
+    component::{ComponentId, ComponentFlags, RelationshipId, StorageType},
     entity::{Entity, EntityLocation},
     storage::{Column, SparseArray, SparseSet, SparseSetIndex, TableId},
 };
@@ -124,18 +124,18 @@ pub struct Archetype {
     entities: Vec<Entity>,
     edges: Edges,
     table_info: TableInfo,
-    table_components: Cow<'static, [ComponentId]>,
-    sparse_set_components: Cow<'static, [ComponentId]>,
-    pub(crate) unique_components: SparseSet<ComponentId, Column>,
-    pub(crate) components: SparseSet<ComponentId, ArchetypeComponentInfo>,
+    table_components: Cow<'static, [RelationshipId]>,
+    sparse_set_components: Cow<'static, [RelationshipId]>,
+    pub(crate) unique_components: SparseSet<RelationshipId, Column>,
+    pub(crate) components: SparseSet<RelationshipId, ArchetypeComponentInfo>,
 }
 
 impl Archetype {
     pub fn new(
         id: ArchetypeId,
         table_id: TableId,
-        table_components: Cow<'static, [ComponentId]>,
-        sparse_set_components: Cow<'static, [ComponentId]>,
+        table_components: Cow<'static, [RelationshipId]>,
+        sparse_set_components: Cow<'static, [RelationshipId]>,
         table_archetype_components: Vec<ArchetypeComponentId>,
         sparse_set_archetype_components: Vec<ArchetypeComponentId>,
     ) -> Self {
@@ -201,27 +201,27 @@ impl Archetype {
     }
 
     #[inline]
-    pub fn table_components(&self) -> &[ComponentId] {
+    pub fn table_components(&self) -> &[RelationshipId] {
         &self.table_components
     }
 
     #[inline]
-    pub fn sparse_set_components(&self) -> &[ComponentId] {
+    pub fn sparse_set_components(&self) -> &[RelationshipId] {
         &self.sparse_set_components
     }
 
     #[inline]
-    pub fn unique_components(&self) -> &SparseSet<ComponentId, Column> {
+    pub fn unique_components(&self) -> &SparseSet<RelationshipId, Column> {
         &self.unique_components
     }
 
     #[inline]
-    pub fn unique_components_mut(&mut self) -> &mut SparseSet<ComponentId, Column> {
+    pub fn unique_components_mut(&mut self) -> &mut SparseSet<RelationshipId, Column> {
         &mut self.unique_components
     }
 
     #[inline]
-    pub fn components(&self) -> impl Iterator<Item = ComponentId> + '_ {
+    pub fn components(&self) -> impl Iterator<Item = RelationshipId> + '_ {
         self.components.indices()
     }
 
@@ -289,12 +289,12 @@ impl Archetype {
     }
 
     #[inline]
-    pub fn contains(&self, component_id: ComponentId) -> bool {
+    pub fn contains(&self, component_id: RelationshipId) -> bool {
         self.components.contains(component_id)
     }
 
     #[inline]
-    pub fn get_storage_type(&self, component_id: ComponentId) -> Option<StorageType> {
+    pub fn get_storage_type(&self, component_id: RelationshipId) -> Option<StorageType> {
         self.components
             .get(component_id)
             .map(|info| info.storage_type)
@@ -303,7 +303,7 @@ impl Archetype {
     #[inline]
     pub fn get_archetype_component_id(
         &self,
-        component_id: ComponentId,
+        component_id: RelationshipId,
     ) -> Option<ArchetypeComponentId> {
         self.components
             .get(component_id)
@@ -329,8 +329,8 @@ impl ArchetypeGeneration {
 
 #[derive(Hash, PartialEq, Eq)]
 pub struct ArchetypeIdentity {
-    table_components: Cow<'static, [ComponentId]>,
-    sparse_set_components: Cow<'static, [ComponentId]>,
+    table_components: Cow<'static, [RelationshipId]>,
+    sparse_set_components: Cow<'static, [RelationshipId]>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -475,8 +475,8 @@ impl Archetypes {
     pub(crate) fn get_id_or_insert(
         &mut self,
         table_id: TableId,
-        table_components: Vec<ComponentId>,
-        sparse_set_components: Vec<ComponentId>,
+        table_components: Vec<RelationshipId>,
+        sparse_set_components: Vec<RelationshipId>,
     ) -> ArchetypeId {
         let table_components = Cow::from(table_components);
         let sparse_set_components = Cow::from(sparse_set_components);

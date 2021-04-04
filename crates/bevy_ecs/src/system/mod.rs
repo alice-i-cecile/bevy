@@ -22,7 +22,7 @@ mod tests {
     use crate::{
         archetype::Archetypes,
         bundle::Bundles,
-        component::Components,
+        component::Relationships,
         entity::{Entities, Entity},
         query::{Added, Changed, Or, With, Without},
         schedule::{Schedule, Stage, SystemStage},
@@ -380,7 +380,7 @@ mod tests {
         world.spawn().insert_bundle((42, true));
         fn sys(
             archetypes: &Archetypes,
-            components: &Components,
+            components: &Relationships,
             entities: &Entities,
             bundles: &Bundles,
             query: Query<Entity, With<i32>>,
@@ -399,7 +399,7 @@ mod tests {
                 bundle_components.sort();
                 for component_id in bundle_components.iter() {
                     assert!(
-                        components.get_info(*component_id).is_some(),
+                        components.get_relationship_info(*component_id).is_some(),
                         "every bundle component exists in Components"
                     );
                 }

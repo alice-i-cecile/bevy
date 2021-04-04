@@ -163,18 +163,18 @@ impl SceneSpawner {
                         let component_info = scene
                             .world
                             .components()
-                            .get_info(component_id)
+                            .get_relationship_info(component_id)
                             .expect("component_ids in archetypes should have ComponentInfo");
 
                         let reflect_component = type_registry
-                            .get(component_info.type_id().unwrap())
+                            .get(component_info.0.data_layout().type_id().unwrap())
                             .ok_or_else(|| SceneSpawnError::UnregisteredType {
-                                type_name: component_info.name().to_string(),
+                                type_name: component_info.0.data_layout().name().to_string(),
                             })
                             .and_then(|registration| {
                                 registration.data::<ReflectComponent>().ok_or_else(|| {
                                     SceneSpawnError::UnregisteredComponent {
-                                        type_name: component_info.name().to_string(),
+                                        type_name: component_info.0.data_layout().name().to_string(),
                                     }
                                 })
                             })?;

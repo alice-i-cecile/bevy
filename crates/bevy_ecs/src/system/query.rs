@@ -111,7 +111,7 @@ where
     F::Fetch: FilterFetch,
 {
     pub(crate) world: &'w World,
-    pub(crate) state: &'w QueryState<Q, F>,
+    pub(crate) state: &'w mut QueryState<Q, F>,
     pub(crate) last_change_tick: u32,
     pub(crate) change_tick: u32,
 }
@@ -129,7 +129,7 @@ where
     #[inline]
     pub(crate) unsafe fn new(
         world: &'w World,
-        state: &'w QueryState<Q, F>,
+        state: &'w mut QueryState<Q, F>,
         last_change_tick: u32,
         change_tick: u32,
     ) -> Self {
@@ -334,7 +334,7 @@ where
             .ok_or(QueryComponentError::NoSuchEntity)?;
         let component_id = world
             .components()
-            .get_id(TypeId::of::<T>())
+            .get_component_id(TypeId::of::<T>())
             .ok_or(QueryComponentError::MissingComponent)?;
         let archetype_component = entity_ref
             .archetype()
@@ -384,7 +384,7 @@ where
             .ok_or(QueryComponentError::NoSuchEntity)?;
         let component_id = world
             .components()
-            .get_id(TypeId::of::<T>())
+            .get_component_id(TypeId::of::<T>())
             .ok_or(QueryComponentError::MissingComponent)?;
         let archetype_component = entity_ref
             .archetype()

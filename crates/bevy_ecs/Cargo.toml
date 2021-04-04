@@ -32,3 +32,4 @@ downcast-rs = "1.2"
 parking_lot = "0.11"
 rand = "0.8"
 serde = "1"
+smallvec = { version = "1.4", features = ["serde"] }

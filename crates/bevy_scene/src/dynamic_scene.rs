@@ -39,8 +39,8 @@ impl DynamicScene {
             for component_id in archetype.components() {
                 let reflect_component = world
                     .components()
-                    .get_info(component_id)
-                    .and_then(|info| type_registry.get(info.type_id().unwrap()))
+                    .get_relationship_info(component_id)
+                    .and_then(|info| type_registry.get(info.0.data_layout().type_id().unwrap()))
                     .and_then(|registration| registration.data::<ReflectComponent>());
                 if let Some(reflect_component) = reflect_component {
                     for (i, entity) in archetype.entities().iter().enumerate() {

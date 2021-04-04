@@ -2,12 +2,15 @@ pub use bevy_ecs_macros::Bundle;
 
 use crate::{
     archetype::ComponentStatus,
-    component::{Component, ComponentId, ComponentTicks, Components, StorageType, TypeInfo},
+    component::{
+        Component, ComponentTicks, ComponentFlags, RelationshipId, RelationshipInfo, RelationshipKindInfo,
+        Relationships, StorageType, TypeInfo,
+    },
     entity::Entity,
     storage::{SparseSetIndex, SparseSets, Table},
 };
 use bevy_ecs_macros::all_tuples;
-use std::{any::TypeId, collections::HashMap};
+use std::{any::TypeId, collections::HashMap, u8};
 
 /// An ordered collection of components, commonly used for spawning entities, and adding and
 /// removing components in bulk.
@@ -117,7 +120,7 @@ impl SparseSetIndex for BundleId {
 
 pub struct BundleInfo {
     pub(crate) id: BundleId,
-    pub(crate) component_ids: Vec<ComponentId>,
+    pub(crate) relationship_ids: Vec<RelationshipId>,
     pub(crate) storage_types: Vec<StorageType>,
 }
 
@@ -139,6 +142,11 @@ impl BundleInfo {
         // NOTE: get_components calls this closure on each component in "bundle order".
         // bundle_info.component_ids are also in "bundle order"
         let mut bundle_component = 0;
+
+        // FIXME(Relationships) merge conflict :(
+        ghjdfshjkfdsjkhfsdkjhsdf
+
+        /*
         bundle.get_components(|component_ptr| {
             // SAFE: component_id was initialized by get_dynamic_bundle_info
             let component_id = *self.component_ids.get_unchecked(bundle_component);
@@ -162,8 +170,47 @@ impl BundleInfo {
                     sparse_set.insert(entity, component_ptr, change_tick);
                 }
             }
+            */
+            /* 
+        bundle.get_components(&mut |component_ptr| {
+            self.write_relationship(
+                sparse_sets,
+                entity,
+                table,
+                table_row,
+                bundle_flags,
+                bundle_component,
+                component_ptr,
+            );
             bundle_component += 1;
         });
+        */
+    }
+
+    pub(crate) unsafe fn write_relationship(
+        &self,
+        sparse_sets: &mut SparseSets,
+        entity: Entity,
+        table: &Table,
+        table_row: usize,
+        bundle_flags: &[ComponentFlags],
+        relationship_index: usize,
+        component_ptr: *mut u8,
+    ) {
+        // SAFE: component_id was initialized by get_dynamic_bundle_info
+        let component_id = *self.relationship_ids.get_unchecked(relationship_index);
+        let flags = *bundle_flags.get_unchecked(relationship_index);
+        match self.storage_types[relationship_index] {
+            StorageType::Table => {
+                let column = table.get_column(component_id).unwrap();
+                column.set_unchecked(table_row, component_ptr);
+                column.get_flags_unchecked_mut(table_row).insert(flags);
+            }
+            StorageType::SparseSet => {
+                let sparse_set = sparse_sets.get_mut(component_id).unwrap();
+                sparse_set.insert(entity, component_ptr, flags);
+            }
+        }
     }
 
     #[inline]
@@ -172,8 +219,8 @@ impl BundleInfo {
     }
 
     #[inline]
-    pub fn components(&self) -> &[ComponentId] {
-        &self.component_ids
+    pub fn components(&self) -> &[RelationshipId] {
+        &self.relationship_ids
     }
 
     #[inline]
@@ -186,6 +233,7 @@ impl BundleInfo {
 pub struct Bundles {
     bundle_infos: Vec<BundleInfo>,
     bundle_ids: HashMap<TypeId, BundleId>,
+    relationship_bundle_ids: HashMap<RelationshipId, BundleId>,
 }
 
 impl Bundles {
@@ -199,9 +247,34 @@ impl Bundles {
         self.bundle_ids.get(&type_id).cloned()
     }
 
+    pub fn get_relationship_bundle_id(&self, relationship: RelationshipId) -> Option<BundleId> {
+        self.relationship_bundle_ids.get(&relationship).copied()
+    }
+
+    pub(crate) fn init_relationship_info<'a>(
+        &'a mut self,
+        (relation_kind, relation): (&RelationshipKindInfo, &RelationshipInfo),
+    ) -> &'a BundleInfo {
+        let bundle_infos = &mut self.bundle_infos;
+        let id = self
+            .relationship_bundle_ids
+            .entry(relation.id())
+            .or_insert_with(|| {
+                let id = BundleId(bundle_infos.len());
+                let bundle_info = BundleInfo {
+                    id,
+                    relationship_ids: vec![relation.id()],
+                    storage_types: vec![relation_kind.data_layout().storage_type()],
+                };
+                bundle_infos.push(bundle_info);
+                id
+            });
+        &self.bundle_infos[id.0]
+    }
+
     pub(crate) fn init_info<'a, T: Bundle>(
         &'a mut self,
-        components: &mut Components,
+        components: &mut Relationships,
     ) -> &'a BundleInfo {
         let bundle_infos = &mut self.bundle_infos;
         let id = self.bundle_ids.entry(TypeId::of::<T>()).or_insert_with(|| {
@@ -221,17 +294,16 @@ fn initialize_bundle(
     bundle_type_name: &'static str,
     type_info: &[TypeInfo],
     id: BundleId,
-    components: &mut Components,
+    components: &mut Relationships,
 ) -> BundleInfo {
     let mut component_ids = Vec::new();
     let mut storage_types = Vec::new();
 
     for type_info in type_info {
-        let component_id = components.get_or_insert_with(type_info.type_id(), || type_info.clone());
-        // SAFE: get_with_type_info ensures info was created
-        let info = unsafe { components.get_info_unchecked(component_id) };
-        component_ids.push(component_id);
-        storage_types.push(info.storage_type());
+        let (component_kind, component_info) =
+            components.get_component_info_or_insert_with(type_info.type_id(), || type_info.clone());
+        component_ids.push(component_info.id());
+        storage_types.push(component_kind.data_layout().storage_type());
     }
 
     let mut deduped = component_ids.clone();
@@ -243,7 +315,7 @@ fn initialize_bundle(
 
     BundleInfo {
         id,
-        component_ids,
+        relationship_ids: component_ids,
         storage_types,
     }
 }

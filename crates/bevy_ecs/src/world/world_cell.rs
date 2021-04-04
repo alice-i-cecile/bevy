@@ -183,7 +183,10 @@ impl<'w> WorldCell<'w> {
     }
 
     pub fn get_resource<T: Component>(&self) -> Option<WorldBorrow<'_, T>> {
-        let component_id = self.world.components.get_resource_id(TypeId::of::<T>())?;
+        let component_id = self
+            .world
+            .relationships
+            .get_resource_id(TypeId::of::<T>())?;
         let resource_archetype = self.world.archetypes.resource();
         let archetype_component_id = resource_archetype.get_archetype_component_id(component_id)?;
         Some(WorldBorrow::new(
@@ -195,7 +198,10 @@ impl<'w> WorldCell<'w> {
     }
 
     pub fn get_resource_mut<T: Component>(&self) -> Option<WorldBorrowMut<'_, T>> {
-        let component_id = self.world.components.get_resource_id(TypeId::of::<T>())?;
+        let component_id = self
+            .world
+            .relationships
+            .get_resource_id(TypeId::of::<T>())?;
         let resource_archetype = self.world.archetypes.resource();
         let archetype_component_id = resource_archetype.get_archetype_component_id(component_id)?;
         Some(WorldBorrowMut::new(
@@ -210,7 +216,10 @@ impl<'w> WorldCell<'w> {
     }
 
     pub fn get_non_send<T: 'static>(&self) -> Option<WorldBorrow<'_, T>> {
-        let component_id = self.world.components.get_resource_id(TypeId::of::<T>())?;
+        let component_id = self
+            .world
+            .relationships
+            .get_resource_id(TypeId::of::<T>())?;
         let resource_archetype = self.world.archetypes.resource();
         let archetype_component_id = resource_archetype.get_archetype_component_id(component_id)?;
         Some(WorldBorrow::new(
@@ -222,7 +231,10 @@ impl<'w> WorldCell<'w> {
     }
 
     pub fn get_non_send_mut<T: 'static>(&self) -> Option<WorldBorrowMut<'_, T>> {
-        let component_id = self.world.components.get_resource_id(TypeId::of::<T>())?;
+        let component_id = self
+            .world
+            .relationships
+            .get_resource_id(TypeId::of::<T>())?;
         let resource_archetype = self.world.archetypes.resource();
         let archetype_component_id = resource_archetype.get_archetype_component_id(component_id)?;
         Some(WorldBorrowMut::new(
@@ -293,7 +305,7 @@ mod tests {
         }
 
         let u32_component_id = world
-            .components
+            .relationships
             .get_resource_id(TypeId::of::<u32>())
             .unwrap();
         let resource_archetype = world.archetypes.get(ArchetypeId::resource()).unwrap();

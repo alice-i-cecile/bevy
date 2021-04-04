@@ -5,6 +5,8 @@ use crate::{
     world::World,
 };
 
+use super::QueryAccessCache;
+
 /// An [`Iterator`] over query results of a [`Query`](crate::system::Query).
 ///
 /// This struct is created by the [`Query::iter`](crate::system::Query::iter) and
@@ -16,6 +18,7 @@ where
     tables: &'w Tables,
     archetypes: &'w Archetypes,
     query_state: &'s QueryState<Q, F>,
+    query_access_cache: &'s QueryAccessCache,
     world: &'w World,
     table_id_iter: std::slice::Iter<'s, TableId>,
     archetype_id_iter: std::slice::Iter<'s, ArchetypeId>,
@@ -48,16 +51,18 @@ where
             last_change_tick,
             change_tick,
         );
+        let query_access_cache = query_state.current_query_access_cache();
         QueryIter {
             is_dense: fetch.is_dense() && filter.is_dense(),
             world,
             query_state,
+            query_access_cache,
             fetch,
             filter,
             tables: &world.storages().tables,
             archetypes: &world.archetypes,
-            table_id_iter: query_state.matched_table_ids.iter(),
-            archetype_id_iter: query_state.matched_archetype_ids.iter(),
+            table_id_iter: query_access_cache.matched_table_ids.iter(),
+            archetype_id_iter: query_access_cache.matched_archetype_ids.iter(),
             current_len: 0,
             current_index: 0,
         }
@@ -78,8 +83,16 @@ where
                     if self.current_index == self.current_len {
                         let table_id = self.table_id_iter.next()?;
                         let table = &self.tables[*table_id];
-                        self.fetch.set_table(&self.query_state.fetch_state, table);
-                        self.filter.set_table(&self.query_state.filter_state, table);
+                        self.fetch.set_table(
+                            &self.query_state.fetch_state,
+                            &self.query_state.current_relation_filter.0,
+                            table,
+                        );
+                        self.filter.set_table(
+                            &self.query_state.filter_state,
+                            &self.query_state.current_relation_filter.1,
+                            table,
+                        );
                         self.current_len = table.len();
                         self.current_index = 0;
                         continue;
@@ -91,7 +104,6 @@ where
                     }
 
                     let item = self.fetch.table_fetch(self.current_index);
-
                     self.current_index += 1;
                     return Some(item);
                 }
@@ -102,11 +114,13 @@ where
                         let archetype = &self.archetypes[*archetype_id];
                         self.fetch.set_archetype(
                             &self.query_state.fetch_state,
+                            &self.query_state.current_relation_filter.0,
                             archetype,
                             self.tables,
                         );
                         self.filter.set_archetype(
                             &self.query_state.filter_state,
+                            &self.query_state.current_relation_filter.1,
                             archetype,
                             self.tables,
                         );
@@ -150,7 +164,7 @@ where
 // TODO: add an ArchetypeOnlyFilter that enables us to implement this for filters like With<T>
 impl<'w, 's, Q: WorldQuery> ExactSizeIterator for QueryIter<'w, 's, Q, ()> {
     fn len(&self) -> usize {
-        self.query_state
+        self.query_access_cache
             .matched_archetypes
             .ones()
             .map(|index| self.world.archetypes[ArchetypeId::new(index)].len())

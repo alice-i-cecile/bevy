@@ -34,7 +34,7 @@ where
 
         let (lower, upper) = iter.size_hint();
 
-        let bundle_info = world.bundles.init_info::<I::Item>(&mut world.components);
+        let bundle_info = world.bundles.init_info::<I::Item>(&mut world.relationships);
 
         let length = upper.unwrap_or(lower);
         // SAFE: empty archetype exists and bundle components were initialized above
@@ -42,7 +42,7 @@ where
             add_bundle_to_archetype(
                 &mut world.archetypes,
                 &mut world.storages,
-                &mut world.components,
+                &mut world.relationships,
                 ArchetypeId::empty(),
                 bundle_info,
             )

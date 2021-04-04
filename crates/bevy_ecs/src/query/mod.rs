@@ -2,20 +2,19 @@ mod access;
 mod fetch;
 mod filter;
 mod iter;
+mod relation_filter;
 mod state;
 
 pub use access::*;
 pub use fetch::*;
 pub use filter::*;
 pub use iter::*;
+pub use relation_filter::QueryRelationFilter;
 pub use state::*;
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        component::{ComponentDescriptor, StorageType},
-        world::World,
-    };
+    use crate::{component::StorageType, world::World};
 
     #[derive(Debug, Eq, PartialEq)]
     struct A(usize);
@@ -41,7 +40,7 @@ mod tests {
     fn multi_storage_query() {
         let mut world = World::new();
         world
-            .register_component(ComponentDescriptor::new::<A>(StorageType::SparseSet))
+            .register_component::<A>(StorageType::SparseSet)
             .unwrap();
 
         world.spawn().insert_bundle((A(1), B(2)));

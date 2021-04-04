@@ -1,5 +1,5 @@
 use crate::{
-    component::{ComponentId, ComponentInfo, ComponentTicks},
+    component::{ComponentTicks, DataLayout, RelationshipId},
     entity::Entity,
     storage::BlobVec,
 };
@@ -93,7 +93,7 @@ pub struct ComponentSparseSet {
 }
 
 impl ComponentSparseSet {
-    pub fn new(component_info: &ComponentInfo, capacity: usize) -> Self {
+    pub fn new(component_info: &DataLayout, capacity: usize) -> Self {
         Self {
             dense: BlobVec::new(component_info.layout(), component_info.drop(), capacity),
             ticks: UnsafeCell::new(Vec::with_capacity(capacity)),
@@ -386,26 +386,32 @@ impl_sparse_set_index!(u8, u16, u32, u64, usize);
 
 #[derive(Default)]
 pub struct SparseSets {
-    sets: SparseSet<ComponentId, ComponentSparseSet>,
+    sets: SparseSet<RelationshipId, ComponentSparseSet>,
 }
 
 impl SparseSets {
-    pub fn get_or_insert(&mut self, component_info: &ComponentInfo) -> &mut ComponentSparseSet {
+    pub fn get_or_insert(
+        &mut self,
+        (component_kind, component_info): (
+            &crate::component::RelationshipKindInfo,
+            &crate::component::RelationshipInfo,
+        ),
+    ) -> &mut ComponentSparseSet {
         if !self.sets.contains(component_info.id()) {
             self.sets.insert(
                 component_info.id(),
-                ComponentSparseSet::new(component_info, 64),
+                ComponentSparseSet::new(component_kind.data_layout(), 64),
             );
         }
 
         self.sets.get_mut(component_info.id()).unwrap()
     }
 
-    pub fn get(&self, component_id: ComponentId) -> Option<&ComponentSparseSet> {
+    pub fn get(&self, component_id: RelationshipId) -> Option<&ComponentSparseSet> {
         self.sets.get(component_id)
     }
 
-    pub fn get_mut(&mut self, component_id: ComponentId) -> Option<&mut ComponentSparseSet> {
+    pub fn get_mut(&mut self, component_id: RelationshipId) -> Option<&mut ComponentSparseSet> {
         self.sets.get_mut(component_id)
     }
 
