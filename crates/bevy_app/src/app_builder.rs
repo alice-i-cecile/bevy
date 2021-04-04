@@ -6,6 +6,7 @@ use crate::{
 use bevy_ecs::{
     component::{Component, ComponentDescriptor},
     event::Events,
+    component::{Component, StorageType},
     schedule::{
         RunOnce, Schedule, Stage, StageLabel, State, SystemDescriptor, SystemSet, SystemStage,
     },
@@ -520,8 +521,10 @@ impl AppBuilder {
     /// will result in an error.
     ///
     /// See [World::register_component]
-    pub fn register_component(&mut self, descriptor: ComponentDescriptor) -> &mut Self {
-        self.world_mut().register_component(descriptor).unwrap();
+    pub fn register_component<T: Component>(&mut self, storage_type: StorageType) -> &mut Self {
+        self.world_mut()
+            .register_component::<T>(storage_type)
+            .unwrap();
         self
     }
 
