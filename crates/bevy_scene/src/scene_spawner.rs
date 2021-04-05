@@ -174,7 +174,11 @@ impl SceneSpawner {
                             .and_then(|registration| {
                                 registration.data::<ReflectComponent>().ok_or_else(|| {
                                     SceneSpawnError::UnregisteredComponent {
-                                        type_name: component_info.0.data_layout().name().to_string(),
+                                        type_name: component_info
+                                            .0
+                                            .data_layout()
+                                            .name()
+                                            .to_string(),
                                     }
                                 })
                             })?;

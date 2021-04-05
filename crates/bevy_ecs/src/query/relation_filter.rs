@@ -65,7 +65,7 @@ impl<Q: WorldQuery, F: WorldQuery> QueryRelationFilter<Q, F> {
     }
 }
 
-// NOTE: This is hilarious type system hacking
+// NOTE: This is ~~hilarious~~ elegant type system hacking- thanks to @TheRawMeatball for coming up with this :)
 
 pub trait SpecifiesRelation<Kind: Component, Path> {
     type RelationFilter;

@@ -256,11 +256,11 @@ pub fn impl_query_set(_input: TokenStream) -> TokenStream {
                         // FIXME(Relationships) investigate this function
                         for cache in #query.relation_filter_accesses.values_mut() {
                             QueryState::<#query, #filter>::new_archetype(
-                                &#query.fetch_state, 
+                                &#query.fetch_state,
                                 &#query.filter_state,
-                                &mut #query.archetype_component_access, 
+                                &mut #query.archetype_component_access,
                                 &#query.current_relation_filter,
-                                cache, 
+                                cache,
                                 archetype
                             );
                         }
