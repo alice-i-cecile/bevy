@@ -5,7 +5,6 @@ pub use type_info::*;
 use std::collections::HashMap;
 
 use crate::{prelude::Entity, storage::SparseSetIndex};
-use bitflags::bitflags;
 use std::{
     alloc::Layout,
     any::{Any, TypeId},

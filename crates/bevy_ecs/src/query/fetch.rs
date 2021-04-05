@@ -597,9 +597,9 @@ impl<'w, T: Component> Fetch<'w> for WriteFetch<T> {
     }
 }
 
-pub struct Relations<T: Component>(std::marker::PhantomData<T>, [u8]);
+pub struct Relation<T: Component>(std::marker::PhantomData<T>, [u8]);
 
-impl<T: Component> WorldQuery for Relations<T> {
+impl<T: Component> WorldQuery for &Relation<T> {
     type Fetch = ReadRelationFetch<T>;
     type State = ReadRelationState<T>;
 }
@@ -615,7 +615,7 @@ pub struct ReadRelationFetch<T> {
 }
 
 unsafe impl<T: Component> FetchState for ReadRelationState<T> {
-    type RelationFilter = ();
+    type RelationFilter = smallvec::SmallVec<[Entity; 4]>;
 
     fn init(world: &mut World) -> Self {
         let (rel_kind, _) = world.relationships.get_component_info_or_insert::<T>();
@@ -654,7 +654,7 @@ unsafe impl<T: Component> FetchState for ReadRelationState<T> {
 impl<'w, T: Component> Fetch<'w> for ReadRelationFetch<T> {
     type Item = ();
     type State = ReadRelationState<T>;
-    type RelationFilter = ();
+    type RelationFilter = smallvec::SmallVec<[Entity; 4]>;
 
     unsafe fn init(
         world: &World,

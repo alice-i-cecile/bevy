@@ -28,10 +28,7 @@ pub use texture_atlas_builder::*;
 
 use bevy_app::prelude::*;
 use bevy_asset::{AddAsset, Assets, Handle, HandleUntyped};
-use bevy_ecs::{
-    component::{ComponentDescriptor, StorageType},
-    system::IntoSystem,
-};
+use bevy_ecs::{component::StorageType, system::IntoSystem};
 use bevy_math::Vec2;
 use bevy_reflect::TypeUuid;
 use bevy_render::{
@@ -98,9 +95,7 @@ impl Plugin for SpritePlugin {
         }
         let world = app.world_mut();
         world
-            .register_component(ComponentDescriptor::new::<OutsideFrustum>(
-                StorageType::SparseSet,
-            ))
+            .register_component::<OutsideFrustum>(StorageType::SparseSet)
             .unwrap();
 
         let world_cell = world.cell();
