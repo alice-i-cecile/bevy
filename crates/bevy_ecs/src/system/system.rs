@@ -2,7 +2,7 @@ use bevy_utils::tracing::warn;
 
 use crate::{
     archetype::{Archetype, ArchetypeComponentId},
-    component::RelationshipId,
+    component::RelationshipKindId,
     query::Access,
     world::World,
 };
@@ -44,7 +44,7 @@ pub trait System: Send + Sync + 'static {
     fn new_archetype(&mut self, archetype: &Archetype);
     // FIXME(Relationships) this is wrong, we need to be able to say we access either `ChildOf *` or `ChildOf parent`
     /// Returns the system's component [`Access`].
-    fn component_access(&self) -> &Access<RelationshipId>;
+    fn component_access(&self) -> &Access<RelationshipKindId>;
     /// Returns the system's archetype component [`Access`].
     fn archetype_component_access(&self) -> &Access<ArchetypeComponentId>;
     /// Returns true if the system is [`Send`].

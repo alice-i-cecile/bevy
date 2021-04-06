@@ -1013,9 +1013,6 @@ pub(crate) unsafe fn add_bundle_to_archetype(
             };
         };
 
-        dbg!(&table_components);
-        dbg!(&sparse_set_components);
-
         let new_archetype_id =
             archetypes.get_id_or_insert(table_id, table_components, sparse_set_components);
         // add an edge from the old archetype to the new archetype

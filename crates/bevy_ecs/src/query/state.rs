@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     archetype::{Archetype, ArchetypeComponentId, ArchetypeGeneration, ArchetypeId},
-    component::RelationshipId,
+    component::RelationshipKindId,
     entity::Entity,
     query::{
         Access, Fetch, FetchState, FilterFetch, FilteredAccess, QueryIter, ReadOnlyFetch,
@@ -33,7 +33,7 @@ where
 {
     world_id: WorldId,
     pub(crate) archetype_component_access: Access<ArchetypeComponentId>,
-    pub(crate) component_access: FilteredAccess<RelationshipId>,
+    pub(crate) component_access: FilteredAccess<RelationshipKindId>,
 
     // FIXME(Relationships) We need to clear this on `Query` drop impl so that filters dont
     // persist across system executions

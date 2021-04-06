@@ -515,8 +515,6 @@ impl Archetypes {
                     table_archetype_components,
                     sparse_set_archetype_components,
                 ));
-                dbg!(archetypes.len());
-                dbg!(id);
                 id
             })
     }

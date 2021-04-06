@@ -1,5 +1,5 @@
 use crate::{
-    component::RelationshipId,
+    component::RelationshipKindId,
     schedule::{
         graph_utils::{self, DependencyGraphError},
         BoxedRunCriteria, BoxedRunCriteriaLabel, BoxedSystemLabel, DuplicateLabelStrategy,
@@ -475,7 +475,7 @@ impl SystemStage {
         fn write_display_names_of_pairs(
             string: &mut String,
             systems: &[impl SystemContainer],
-            mut ambiguities: Vec<(usize, usize, Vec<RelationshipId>)>,
+            mut ambiguities: Vec<(usize, usize, Vec<RelationshipKindId>)>,
             world: &World,
         ) {
             for (index_a, index_b, conflicts) in ambiguities.drain(..) {
@@ -492,9 +492,8 @@ impl SystemStage {
                         .map(|id| {
                             world
                                 .components()
-                                .get_relationship_info(*id)
+                                .get_relationship_kind_info(*id)
                                 .unwrap()
-                                .0
                                 .data_layout()
                                 .name()
                         })
@@ -671,7 +670,9 @@ fn process_systems(
 /// Returns vector containing all pairs of indices of systems with ambiguous execution order,
 /// along with specific components that have triggered the warning.
 /// Systems must be topologically sorted beforehand.
-fn find_ambiguities(systems: &[impl SystemContainer]) -> Vec<(usize, usize, Vec<RelationshipId>)> {
+fn find_ambiguities(
+    systems: &[impl SystemContainer],
+) -> Vec<(usize, usize, Vec<RelationshipKindId>)> {
     let mut ambiguity_set_labels = HashMap::default();
     for set in systems.iter().flat_map(|c| c.ambiguity_sets()) {
         let len = ambiguity_set_labels.len();

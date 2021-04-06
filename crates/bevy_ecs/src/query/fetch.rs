@@ -134,7 +134,7 @@ pub unsafe trait FetchState: Send + Sync + Sized {
     type RelationFilter: Clone + std::hash::Hash + PartialEq + Eq + Default + Send + Sync + 'static;
 
     fn init(world: &mut World) -> Self;
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>);
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>);
     fn update_archetype_component_access(
         &self,
         archetype: &Archetype,
@@ -175,7 +175,7 @@ unsafe impl FetchState for EntityState {
         Self
     }
 
-    fn update_component_access(&self, _access: &mut FilteredAccess<RelationshipId>) {}
+    fn update_component_access(&self, _access: &mut FilteredAccess<RelationshipKindId>) {}
 
     fn update_archetype_component_access(
         &self,
@@ -260,6 +260,7 @@ impl<T: Component> WorldQuery for &T {
 /// The [`FetchState`] of `&T`.
 pub struct ReadState<T> {
     component_id: RelationshipId,
+    relation_kind_id: RelationshipKindId,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -274,12 +275,13 @@ unsafe impl<T: Component> FetchState for ReadState<T> {
             world.relationships.get_component_info_or_insert::<T>();
         ReadState {
             component_id: component_info.id(),
+            relation_kind_id: component_kind.id(),
             storage_type: component_kind.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
         if access.access().has_write(self.component_id) {
             panic!("&{} conflicts with a previous access in this query. Shared access cannot coincide with exclusive access.",
                 std::any::type_name::<T>());
@@ -434,6 +436,7 @@ pub struct WriteFetch<T> {
 /// The [`FetchState`] of `&mut T`.
 pub struct WriteState<T> {
     component_id: RelationshipId,
+    relation_kind_id: RelationshipKindId,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -448,17 +451,18 @@ unsafe impl<T: Component> FetchState for WriteState<T> {
             world.relationships.get_component_info_or_insert::<T>();
         WriteState {
             component_id: component_info.id(),
+            relation_kind_id: component_kind.id(),
             storage_type: component_kind.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
-        if access.access().has_read(self.component_id) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+        if access.access().has_read(self.relation_kind_id) {
             panic!("&mut {} conflicts with a previous access in this query. Mutable component access must be unique.",
                 std::any::type_name::<T>());
         }
-        access.add_write(self.component_id);
+        access.add_write(self.relation_kind_id);
     }
 
     fn update_archetype_component_access(
@@ -626,7 +630,7 @@ unsafe impl<T: Component> FetchState for ReadRelationState<T> {
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
         todo!()
     }
 
@@ -727,7 +731,7 @@ unsafe impl<T: FetchState> FetchState for OptionState<T> {
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
         self.state.update_component_access(access);
     }
 
@@ -897,6 +901,7 @@ impl<T: Component> WorldQuery for ChangeTrackers<T> {
 /// The [`FetchState`] of [`ChangeTrackers`].
 pub struct ChangeTrackersState<T> {
     component_id: RelationshipId,
+    relation_kind_id: RelationshipKindId,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -912,12 +917,13 @@ unsafe impl<T: Component> FetchState for ChangeTrackersState<T> {
             world.relationships.get_component_info_or_insert::<T>();
         Self {
             component_id: component_info.id(),
+            relation_kind_id: component_kind.id(),
             storage_type: component_kind.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
         if access.access().has_write(self.component_id) {
             panic!("ChangeTrackers<{}> conflicts with a previous access in this query. Shared access cannot coincide with exclusive access.",
                 std::any::type_name::<T>());
@@ -1132,7 +1138,7 @@ macro_rules! impl_tuple_fetch {
                 ($($name::init(_world),)*)
             }
 
-            fn update_component_access(&self, _access: &mut FilteredAccess<RelationshipId>) {
+            fn update_component_access(&self, _access: &mut FilteredAccess<RelationshipKindId>) {
                 let ($($name,)*) = self;
                 $($name.update_component_access(_access);)*
             }

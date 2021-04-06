@@ -124,6 +124,10 @@ impl From<TypeInfo> for DataLayout {
     }
 }
 
+// FIXME(Relationships) this is a huge PITA cos the only data stored in relation info
+// is (KindId, Option<Entity>) and we often want to get a `KindId` out of a `RelationshipId`
+// which is a paaaaaaaaaaain. Also this means we get ram bloat just from making relations which is
+// really unfortunate and not great.
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct RelationshipId(usize);
 
@@ -177,6 +181,18 @@ impl RelationshipInfo {
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct RelationshipKindId(usize);
+
+impl SparseSetIndex for RelationshipKindId {
+    #[inline]
+    fn sparse_set_index(&self) -> usize {
+        self.0
+    }
+
+    fn get_sparse_set_index(value: usize) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug)]
 pub struct RelationshipKindInfo {
     data: DataLayout,
@@ -426,6 +442,13 @@ impl Relationships {
 
         // Safety: just inserted
         unsafe { self.get_relationship_info_unchecked(id) }
+    }
+
+    pub fn get_relationship_kind_info(
+        &self,
+        id: RelationshipKindId,
+    ) -> Option<&RelationshipKindInfo> {
+        self.kinds.get(id.0)
     }
 }
 

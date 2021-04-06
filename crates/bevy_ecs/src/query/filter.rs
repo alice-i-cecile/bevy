@@ -1,7 +1,7 @@
 use crate::{
     archetype::{Archetype, ArchetypeComponentId},
     bundle::Bundle,
-    component::{Component, ComponentTicks, RelationshipId, StorageType},
+    component::{Component, ComponentTicks, RelationshipId, RelationshipKindId, StorageType},
     entity::Entity,
     query::{Access, Fetch, FetchState, FilteredAccess, WorldQuery},
     storage::{ComponentSparseSet, Table, Tables},
@@ -93,6 +93,7 @@ pub struct WithFetch<T> {
 /// The [`FetchState`] of [`With`].
 pub struct WithState<T> {
     component_id: RelationshipId,
+    relation_kind_id: RelationshipKindId,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -106,14 +107,15 @@ unsafe impl<T: Component> FetchState for WithState<T> {
             world.relationships.get_component_info_or_insert::<T>();
         Self {
             component_id: component_info.id(),
+            relation_kind_id: component_kind.id(),
             storage_type: component_kind.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
     #[inline]
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
-        access.add_with(self.component_id);
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+        access.add_with(self.relation_kind_id);
     }
 
     #[inline]
@@ -227,6 +229,7 @@ pub struct WithoutFetch<T> {
 /// The [`FetchState`] of [`Without`].
 pub struct WithoutState<T> {
     component_id: RelationshipId,
+    relation_kind_id: RelationshipKindId,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -240,14 +243,15 @@ unsafe impl<T: Component> FetchState for WithoutState<T> {
             world.relationships.get_component_info_or_insert::<T>();
         Self {
             component_id: component_info.id(),
+            relation_kind_id: component_kind.id(),
             storage_type: component_kind.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
     #[inline]
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
-        access.add_without(self.component_id);
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+        access.add_without(self.relation_kind_id);
     }
 
     #[inline]
@@ -337,6 +341,7 @@ pub struct WithBundleFetch<T: Bundle> {
 
 pub struct WithBundleState<T: Bundle> {
     component_ids: Vec<RelationshipId>,
+    relation_kind_ids: Vec<RelationshipKindId>,
     is_dense: bool,
     marker: PhantomData<T>,
 }
@@ -348,8 +353,14 @@ unsafe impl<T: Bundle> FetchState for WithBundleState<T> {
     fn init(world: &mut World) -> Self {
         let bundle_info = world.bundles.init_info::<T>(&mut world.relationships);
         let components = &world.relationships;
+        let relation_kind_ids = bundle_info
+            .relationship_ids
+            .iter()
+            .map(|id| components.get_relationship_info(*id).unwrap().0.id())
+            .collect();
         Self {
             component_ids: bundle_info.relationship_ids.clone(),
+            relation_kind_ids,
             is_dense: !bundle_info.relationship_ids.iter().any(|id| unsafe {
                 components
                     .get_relationship_info_unchecked(*id)
@@ -363,8 +374,8 @@ unsafe impl<T: Bundle> FetchState for WithBundleState<T> {
     }
 
     #[inline]
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
-        for component_id in self.component_ids.iter().cloned() {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+        for component_id in self.relation_kind_ids.iter().cloned() {
             access.add_with(component_id);
         }
     }
@@ -574,7 +585,7 @@ macro_rules! impl_query_filter_tuple {
                 Or(($($filter::init(world),)*))
             }
 
-            fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
+            fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
                 let ($($filter,)*) = &self.0;
                 $($filter.update_component_access(access);)*
             }
@@ -630,6 +641,7 @@ macro_rules! impl_tick_filter {
         $(#[$state_meta])*
         pub struct $state_name<T> {
             component_id: RelationshipId,
+            relation_kind_id: RelationshipKindId,
             storage_type: StorageType,
             marker: PhantomData<T>,
         }
@@ -649,13 +661,14 @@ macro_rules! impl_tick_filter {
                 let (component_kind, component_info) = world.relationships.get_component_info_or_insert::<T>();
                 Self {
                     component_id: component_info.id(),
+                    relation_kind_id: component_kind.id(),
                     storage_type: component_kind.data_layout().storage_type(),
                     marker: PhantomData,
                 }
             }
 
             #[inline]
-            fn update_component_access(&self, access: &mut FilteredAccess<RelationshipId>) {
+            fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
                 if access.access().has_write(self.component_id) {
                     panic!("$state_name<{}> conflicts with a previous access in this query. Shared access cannot coincide with exclusive access.",
                         std::any::type_name::<T>());
