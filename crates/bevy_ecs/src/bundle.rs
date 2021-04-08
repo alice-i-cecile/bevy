@@ -3,8 +3,8 @@ pub use bevy_ecs_macros::Bundle;
 use crate::{
     archetype::ComponentStatus,
     component::{
-        Component, ComponentTicks, RelationshipId, RelationshipInfo, RelationshipKindInfo,
-        Relationships, StorageType, TypeInfo,
+        Component, ComponentTicks, RelationKindId, RelationshipKindInfo, Relationships,
+        StorageType, TypeInfo,
     },
     entity::Entity,
     storage::{SparseSetIndex, SparseSets, Table},
@@ -120,7 +120,7 @@ impl SparseSetIndex for BundleId {
 
 pub struct BundleInfo {
     pub(crate) id: BundleId,
-    pub(crate) relationship_ids: Vec<RelationshipId>,
+    pub(crate) relationship_ids: Vec<(RelationKindId, Option<Entity>)>,
     pub(crate) storage_types: Vec<StorageType>,
 }
 
@@ -168,12 +168,11 @@ impl BundleInfo {
         component_ptr: *mut u8,
         change_tick: u32,
     ) {
-        // SAFE: component_id was initialized by get_dynamic_bundle_info
-        let component_id = *self.relationship_ids.get_unchecked(relationship_index);
+        let (kind_id, target) = self.relationship_ids[relationship_index];
         let component_status = bundle_status.get_unchecked(relationship_index);
         match self.storage_types[relationship_index] {
             StorageType::Table => {
-                let column = table.get_column(component_id).unwrap();
+                let column = table.get_column(kind_id, target).unwrap();
                 column.set_unchecked(table_row, component_ptr);
                 let column_status = column.get_ticks_unchecked_mut(table_row);
                 match component_status {
@@ -186,7 +185,7 @@ impl BundleInfo {
                 }
             }
             StorageType::SparseSet => {
-                let sparse_set = sparse_sets.get_mut(component_id).unwrap();
+                let sparse_set = sparse_sets.get_mut(kind_id, target).unwrap();
                 sparse_set.insert(entity, component_ptr, change_tick);
             }
         }
@@ -198,7 +197,7 @@ impl BundleInfo {
     }
 
     #[inline]
-    pub fn components(&self) -> &[RelationshipId] {
+    pub fn components(&self) -> &[(RelationKindId, Option<Entity>)] {
         &self.relationship_ids
     }
 
@@ -212,7 +211,7 @@ impl BundleInfo {
 pub struct Bundles {
     bundle_infos: Vec<BundleInfo>,
     bundle_ids: HashMap<TypeId, BundleId>,
-    relationship_bundle_ids: HashMap<RelationshipId, BundleId>,
+    relationship_bundle_ids: HashMap<(RelationKindId, Option<Entity>), BundleId>,
 }
 
 impl Bundles {
@@ -226,23 +225,30 @@ impl Bundles {
         self.bundle_ids.get(&type_id).cloned()
     }
 
-    pub fn get_relationship_bundle_id(&self, relationship: RelationshipId) -> Option<BundleId> {
-        self.relationship_bundle_ids.get(&relationship).copied()
+    pub fn get_relationship_bundle_id(
+        &self,
+        relation_kind: RelationKindId,
+        relation_target: Option<Entity>,
+    ) -> Option<BundleId> {
+        self.relationship_bundle_ids
+            .get(&(relation_kind, relation_target))
+            .copied()
     }
 
     pub(crate) fn init_relationship_info<'a>(
         &'a mut self,
-        (relation_kind, relation): (&RelationshipKindInfo, &RelationshipInfo),
+        relation_kind: &RelationshipKindInfo,
+        relation_target: Option<Entity>,
     ) -> &'a BundleInfo {
         let bundle_infos = &mut self.bundle_infos;
         let id = self
             .relationship_bundle_ids
-            .entry(relation.id())
+            .entry((relation_kind.id(), relation_target))
             .or_insert_with(|| {
                 let id = BundleId(bundle_infos.len());
                 let bundle_info = BundleInfo {
                     id,
-                    relationship_ids: vec![relation.id()],
+                    relationship_ids: vec![(relation_kind.id(), relation_target)],
                     storage_types: vec![relation_kind.data_layout().storage_type()],
                 };
                 bundle_infos.push(bundle_info);
@@ -264,8 +270,7 @@ impl Bundles {
             bundle_infos.push(bundle_info);
             id
         });
-        // SAFE: index either exists, or was initialized
-        unsafe { self.bundle_infos.get_unchecked(id.0) }
+        &self.bundle_infos[id.0]
     }
 }
 
@@ -279,10 +284,10 @@ fn initialize_bundle(
     let mut storage_types = Vec::new();
 
     for type_info in type_info {
-        let (component_kind, component_info) =
-            components.get_component_info_or_insert_with(type_info.type_id(), || type_info.clone());
-        component_ids.push(component_info.id());
-        storage_types.push(component_kind.data_layout().storage_type());
+        let kind_info =
+            components.get_component_kind_or_insert(type_info.type_id(), type_info.clone().into());
+        component_ids.push((kind_info.id(), None));
+        storage_types.push(kind_info.data_layout().storage_type());
     }
 
     let mut deduped = component_ids.clone();

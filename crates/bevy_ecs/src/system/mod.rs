@@ -395,11 +395,12 @@ mod tests {
                     .get_id(std::any::TypeId::of::<(i32, bool)>())
                     .expect("Bundle used to spawn entity should exist");
                 let bundle_info = bundles.get(bundle_id).unwrap();
+                // FIXME(Relationships) make sure this is using `(RelationKindId, Option<Entity>)`
                 let mut bundle_components = bundle_info.components().to_vec();
                 bundle_components.sort();
-                for component_id in bundle_components.iter() {
+                for (kind_id, _) in bundle_components.iter() {
                     assert!(
-                        components.get_relationship_info(*component_id).is_some(),
+                        components.get_relation_kind(*kind_id).is_some(),
                         "every bundle component exists in Components"
                     );
                 }
@@ -432,23 +433,13 @@ mod tests {
         let conflicts = x.component_access().get_conflicts(y.component_access());
         let b_id = world
             .components()
-            .get_resource_id(TypeId::of::<B>())
-            .unwrap();
-        let b_id = world
-            .components()
-            .get_relationship_info(b_id)
+            .get_resource_kind(TypeId::of::<B>())
             .unwrap()
-            .0
             .id();
         let d_id = world
             .components()
-            .get_component_id(TypeId::of::<D>())
-            .unwrap();
-        let d_id = world
-            .components()
-            .get_relationship_info(d_id)
+            .get_component_kind(TypeId::of::<D>())
             .unwrap()
-            .0
             .id();
         assert_eq!(conflicts, vec![b_id, d_id]);
     }

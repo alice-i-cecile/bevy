@@ -1,14 +1,14 @@
 use crate::{
     archetype::{Archetype, ArchetypeComponentId},
     bundle::Bundle,
-    component::{Component, ComponentTicks, RelationshipId, RelationshipKindId, StorageType},
+    component::{Component, ComponentDescriptor, ComponentTicks, RelationKindId, StorageType},
     entity::Entity,
     query::{Access, Fetch, FetchState, FilteredAccess, WorldQuery},
     storage::{ComponentSparseSet, Table, Tables},
     world::World,
 };
 use bevy_ecs_macros::all_tuples;
-use std::{marker::PhantomData, ptr};
+use std::{any::TypeId, marker::PhantomData, ptr};
 
 // TODO: uncomment this and use as shorthand (remove where F::Fetch: FilterFetch everywhere) when
 // this bug is fixed in Rust 1.51: https://github.com/rust-lang/rust/pull/81671
@@ -92,8 +92,7 @@ pub struct WithFetch<T> {
 
 /// The [`FetchState`] of [`With`].
 pub struct WithState<T> {
-    component_id: RelationshipId,
-    relation_kind_id: RelationshipKindId,
+    relation_kind_id: RelationKindId,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -103,18 +102,19 @@ unsafe impl<T: Component> FetchState for WithState<T> {
     type RelationFilter = ();
 
     fn init(world: &mut World) -> Self {
-        let (component_kind, component_info) =
-            world.relationships.get_component_info_or_insert::<T>();
+        let kind_info = world.relationships.get_component_kind_or_insert(
+            TypeId::of::<T>(),
+            ComponentDescriptor::from_generic::<T>(StorageType::Table),
+        );
         Self {
-            component_id: component_info.id(),
-            relation_kind_id: component_kind.id(),
-            storage_type: component_kind.data_layout().storage_type(),
+            relation_kind_id: kind_info.id(),
+            storage_type: kind_info.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
     #[inline]
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
         access.add_with(self.relation_kind_id);
     }
 
@@ -131,11 +131,11 @@ unsafe impl<T: Component> FetchState for WithState<T> {
         archetype: &Archetype,
         _relation_filter: &Self::RelationFilter,
     ) -> bool {
-        archetype.contains(self.component_id)
+        archetype.contains(self.relation_kind_id, None)
     }
 
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
-        table.has_column(self.component_id)
+        table.has_column(self.relation_kind_id, None)
     }
 }
 
@@ -228,8 +228,7 @@ pub struct WithoutFetch<T> {
 
 /// The [`FetchState`] of [`Without`].
 pub struct WithoutState<T> {
-    component_id: RelationshipId,
-    relation_kind_id: RelationshipKindId,
+    relation_kind_id: RelationKindId,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -239,18 +238,19 @@ unsafe impl<T: Component> FetchState for WithoutState<T> {
     type RelationFilter = ();
 
     fn init(world: &mut World) -> Self {
-        let (component_kind, component_info) =
-            world.relationships.get_component_info_or_insert::<T>();
+        let kind_info = world.relationships.get_component_kind_or_insert(
+            TypeId::of::<T>(),
+            ComponentDescriptor::from_generic::<T>(StorageType::Table),
+        );
         Self {
-            component_id: component_info.id(),
-            relation_kind_id: component_kind.id(),
-            storage_type: component_kind.data_layout().storage_type(),
+            relation_kind_id: kind_info.id(),
+            storage_type: kind_info.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
     #[inline]
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
         access.add_without(self.relation_kind_id);
     }
 
@@ -267,11 +267,11 @@ unsafe impl<T: Component> FetchState for WithoutState<T> {
         archetype: &Archetype,
         _relation_filter: &Self::RelationFilter,
     ) -> bool {
-        !archetype.contains(self.component_id)
+        !archetype.contains(self.relation_kind_id, None)
     }
 
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
-        !table.has_column(self.component_id)
+        !table.has_column(self.relation_kind_id, None)
     }
 }
 
@@ -340,8 +340,7 @@ pub struct WithBundleFetch<T: Bundle> {
 }
 
 pub struct WithBundleState<T: Bundle> {
-    component_ids: Vec<RelationshipId>,
-    relation_kind_ids: Vec<RelationshipKindId>,
+    relation_kind_ids: Vec<(RelationKindId, Option<Entity>)>,
     is_dense: bool,
     marker: PhantomData<T>,
 }
@@ -353,30 +352,24 @@ unsafe impl<T: Bundle> FetchState for WithBundleState<T> {
     fn init(world: &mut World) -> Self {
         let bundle_info = world.bundles.init_info::<T>(&mut world.relationships);
         let components = &world.relationships;
-        let relation_kind_ids = bundle_info
-            .relationship_ids
-            .iter()
-            .map(|id| components.get_relationship_info(*id).unwrap().0.id())
-            .collect();
         Self {
-            component_ids: bundle_info.relationship_ids.clone(),
-            relation_kind_ids,
-            is_dense: !bundle_info.relationship_ids.iter().any(|id| unsafe {
+            relation_kind_ids: bundle_info.relationship_ids.clone(),
+            is_dense: bundle_info.relationship_ids.iter().all(|(kind_id, _)| {
                 components
-                    .get_relationship_info_unchecked(*id)
-                    .0
+                    .get_relation_kind(*kind_id)
+                    .unwrap()
                     .data_layout()
                     .storage_type()
-                    != StorageType::Table
+                    == StorageType::Table
             }),
             marker: PhantomData,
         }
     }
 
     #[inline]
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
-        for component_id in self.relation_kind_ids.iter().cloned() {
-            access.add_with(component_id);
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
+        for (kind_id, _) in self.relation_kind_ids.iter().cloned() {
+            access.add_with(kind_id);
         }
     }
 
@@ -393,11 +386,15 @@ unsafe impl<T: Bundle> FetchState for WithBundleState<T> {
         archetype: &Archetype,
         _relation_filter: &Self::RelationFilter,
     ) -> bool {
-        self.component_ids.iter().all(|id| archetype.contains(*id))
+        self.relation_kind_ids
+            .iter()
+            .all(|&(kind_id, target)| archetype.contains(kind_id, target))
     }
 
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
-        self.component_ids.iter().all(|id| table.has_column(*id))
+        self.relation_kind_ids
+            .iter()
+            .all(|&(kind_id, target)| table.has_column(kind_id, target))
     }
 }
 
@@ -585,7 +582,7 @@ macro_rules! impl_query_filter_tuple {
                 Or(($($filter::init(world),)*))
             }
 
-            fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+            fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
                 let ($($filter,)*) = &self.0;
                 $($filter.update_component_access(access);)*
             }
@@ -640,8 +637,8 @@ macro_rules! impl_tick_filter {
 
         $(#[$state_meta])*
         pub struct $state_name<T> {
-            component_id: RelationshipId,
-            relation_kind_id: RelationshipKindId,
+            relation_kind_id: RelationKindId,
+            relation_target: Option<Entity>,
             storage_type: StorageType,
             marker: PhantomData<T>,
         }
@@ -658,17 +655,23 @@ macro_rules! impl_tick_filter {
             type RelationFilter = ();
 
             fn init(world: &mut World) -> Self {
-                let (component_kind, component_info) = world.relationships.get_component_info_or_insert::<T>();
+                let kind_info = world
+                    .relationships
+                    .get_component_kind_or_insert(
+                        TypeId::of::<T>(),
+                        ComponentDescriptor::from_generic::<T>(StorageType::Table)
+                    );
+
                 Self {
-                    component_id: component_info.id(),
-                    relation_kind_id: component_kind.id(),
-                    storage_type: component_kind.data_layout().storage_type(),
+                    relation_kind_id: kind_info.id(),
+                    relation_target: None,
+                    storage_type: kind_info.data_layout().storage_type(),
                     marker: PhantomData,
                 }
             }
 
             #[inline]
-            fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+            fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
                 if access.access().has_write(self.component_id) {
                     panic!("$state_name<{}> conflicts with a previous access in this query. Shared access cannot coincide with exclusive access.",
                         std::any::type_name::<T>());
@@ -682,17 +685,17 @@ macro_rules! impl_tick_filter {
                 archetype: &Archetype,
                 access: &mut Access<ArchetypeComponentId>,
             ) {
-                if let Some(archetype_component_id) = archetype.get_archetype_component_id(self.component_id) {
+                if let Some(archetype_component_id) = archetype.get_archetype_component_id(self.relation_kind_id, self.relation_target) {
                     access.add_read(archetype_component_id);
                 }
             }
 
             fn matches_archetype(&self, archetype: &Archetype, _relation_filter: &Self::RelationFilter) -> bool {
-                archetype.contains(self.component_id)
+                archetype.contains(self.relation_kind_id, self.relation_target)
             }
 
             fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
-                table.has_column(self.component_id)
+                table.has_column(self.relation_kind_id, self.relation_target)
             }
         }
 
@@ -717,7 +720,7 @@ macro_rules! impl_tick_filter {
                     value.sparse_set = world
                         .storages()
                         .sparse_sets
-                        .get(state.component_id).unwrap();
+                        .get(state.relation_kind_id, state.relation_target).unwrap();
                 }
                 value
             }
@@ -729,7 +732,7 @@ macro_rules! impl_tick_filter {
 
             unsafe fn set_table(&mut self, state: &Self::State, _relation_filter: &Self::RelationFilter, table: &Table) {
                 self.table_ticks = table
-                    .get_column(state.component_id).unwrap()
+                    .get_column(state.relation_kind_id, state.relation_target).unwrap()
                     .get_ticks_mut_ptr();
             }
 
@@ -739,7 +742,7 @@ macro_rules! impl_tick_filter {
                         self.entity_table_rows = archetype.entity_table_rows().as_ptr();
                         let table = &tables[archetype.table_id()];
                         self.table_ticks = table
-                            .get_column(state.component_id).unwrap()
+                            .get_column(state.relation_kind_id, state.relation_target).unwrap()
                             .get_ticks_mut_ptr();
                     }
                     StorageType::SparseSet => self.entities = archetype.entities().as_ptr(),

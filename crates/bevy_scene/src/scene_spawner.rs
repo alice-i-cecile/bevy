@@ -159,26 +159,22 @@ impl SceneSpawner {
                         .entity_map
                         .entry(*scene_entity)
                         .or_insert_with(|| world.spawn().id());
-                    for component_id in archetype.components() {
+                    for (kind_id, _) in archetype.components() {
                         let component_info = scene
                             .world
                             .components()
-                            .get_relationship_info(component_id)
+                            .get_relation_kind(kind_id)
                             .expect("component_ids in archetypes should have ComponentInfo");
 
                         let reflect_component = type_registry
-                            .get(component_info.0.data_layout().type_id().unwrap())
+                            .get(component_info.data_layout().type_id().unwrap())
                             .ok_or_else(|| SceneSpawnError::UnregisteredType {
-                                type_name: component_info.0.data_layout().name().to_string(),
+                                type_name: component_info.data_layout().name().to_string(),
                             })
                             .and_then(|registration| {
                                 registration.data::<ReflectComponent>().ok_or_else(|| {
                                     SceneSpawnError::UnregisteredComponent {
-                                        type_name: component_info
-                                            .0
-                                            .data_layout()
-                                            .name()
-                                            .to_string(),
+                                        type_name: component_info.data_layout().name().to_string(),
                                     }
                                 })
                             })?;

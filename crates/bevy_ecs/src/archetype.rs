@@ -1,12 +1,13 @@
+use bevy_utils::HashMap;
+
 use crate::{
     bundle::BundleId,
-    component::{RelationshipId, StorageType},
+    component::{RelationKindId, StorageType},
     entity::{Entity, EntityLocation},
     storage::{Column, SparseArray, SparseSet, SparseSetIndex, TableId},
 };
 use std::{
     borrow::Cow,
-    collections::HashMap,
     hash::Hash,
     ops::{Index, IndexMut},
 };
@@ -124,47 +125,65 @@ pub struct Archetype {
     entities: Vec<Entity>,
     edges: Edges,
     table_info: TableInfo,
-    table_components: Cow<'static, [RelationshipId]>,
-    sparse_set_components: Cow<'static, [RelationshipId]>,
-    pub(crate) unique_components: SparseSet<RelationshipId, Column>,
-    pub(crate) components: SparseSet<RelationshipId, ArchetypeComponentInfo>,
+    table_components: Cow<'static, [(RelationKindId, Option<Entity>)]>,
+    sparse_set_components: Cow<'static, [(RelationKindId, Option<Entity>)]>,
+    pub(crate) unique_components: SparseSet<RelationKindId, Column>,
+    pub(crate) components: SparseSet<
+        RelationKindId,
+        (
+            Option<ArchetypeComponentInfo>,
+            HashMap<Entity, ArchetypeComponentInfo>,
+        ),
+    >,
 }
 
 impl Archetype {
     pub fn new(
         id: ArchetypeId,
         table_id: TableId,
-        table_components: Cow<'static, [RelationshipId]>,
-        sparse_set_components: Cow<'static, [RelationshipId]>,
+        table_components: Cow<'static, [(RelationKindId, Option<Entity>)]>,
+        sparse_set_components: Cow<'static, [(RelationKindId, Option<Entity>)]>,
         table_archetype_components: Vec<ArchetypeComponentId>,
         sparse_set_archetype_components: Vec<ArchetypeComponentId>,
     ) -> Self {
         let mut components =
             SparseSet::with_capacity(table_components.len() + sparse_set_components.len());
-        for (component_id, archetype_component_id) in
+        for ((kind_id, target), archetype_component_id) in
             table_components.iter().zip(table_archetype_components)
         {
-            components.insert(
-                *component_id,
-                ArchetypeComponentInfo {
-                    storage_type: StorageType::Table,
-                    archetype_component_id,
-                },
-            );
+            let components = components.get_or_insert_with(*kind_id, || (None, HashMap::default()));
+
+            let arch_comp_info = ArchetypeComponentInfo {
+                storage_type: StorageType::Table,
+                archetype_component_id,
+            };
+
+            match target {
+                Some(target) => {
+                    components.1.insert(*target, arch_comp_info);
+                }
+                None => components.0 = Some(arch_comp_info),
+            }
         }
 
-        for (component_id, archetype_component_id) in sparse_set_components
+        for ((kind_id, target), archetype_component_id) in sparse_set_components
             .iter()
             .zip(sparse_set_archetype_components)
         {
-            components.insert(
-                *component_id,
-                ArchetypeComponentInfo {
-                    storage_type: StorageType::SparseSet,
-                    archetype_component_id,
-                },
-            );
+            let components = components.get_or_insert_with(*kind_id, || (None, HashMap::default()));
+            let arch_comp_info = ArchetypeComponentInfo {
+                storage_type: StorageType::SparseSet,
+                archetype_component_id,
+            };
+
+            match target {
+                Some(target) => {
+                    components.1.insert(*target, arch_comp_info);
+                }
+                None => components.0 = Some(arch_comp_info),
+            }
         }
+
         Self {
             id,
             table_info: TableInfo {
@@ -201,28 +220,39 @@ impl Archetype {
     }
 
     #[inline]
-    pub fn table_components(&self) -> &[RelationshipId] {
+    pub fn table_components(&self) -> &[(RelationKindId, Option<Entity>)] {
         &self.table_components
     }
 
     #[inline]
-    pub fn sparse_set_components(&self) -> &[RelationshipId] {
+    pub fn sparse_set_components(&self) -> &[(RelationKindId, Option<Entity>)] {
         &self.sparse_set_components
     }
 
     #[inline]
-    pub fn unique_components(&self) -> &SparseSet<RelationshipId, Column> {
+    pub fn unique_components(&self) -> &SparseSet<RelationKindId, Column> {
         &self.unique_components
     }
 
     #[inline]
-    pub fn unique_components_mut(&mut self) -> &mut SparseSet<RelationshipId, Column> {
+    pub fn unique_components_mut(&mut self) -> &mut SparseSet<RelationKindId, Column> {
         &mut self.unique_components
     }
 
     #[inline]
-    pub fn components(&self) -> impl Iterator<Item = RelationshipId> + '_ {
-        self.components.indices()
+    pub fn components(&self) -> impl Iterator<Item = (RelationKindId, Option<Entity>)> + '_ {
+        self.components
+            .indices()
+            .map(move |kind_id| {
+                let foo = self.components.get(kind_id).unwrap();
+                foo.1
+                    .keys()
+                    .copied()
+                    .map(Option::Some)
+                    .chain(foo.0.as_ref().map(|_| None))
+                    .map(move |target| (kind_id, target))
+            })
+            .flatten()
     }
 
     #[inline]
@@ -289,24 +319,44 @@ impl Archetype {
     }
 
     #[inline]
-    pub fn contains(&self, component_id: RelationshipId) -> bool {
-        self.components.contains(component_id)
+    pub fn contains(&self, relation_kind: RelationKindId, relation_target: Option<Entity>) -> bool {
+        self.components
+            .get(relation_kind)
+            .and_then(|targets| match relation_target {
+                Some(target) => targets.1.get(&target),
+                None => targets.0.as_ref(),
+            })
+            .is_some()
     }
 
+    // FIXME(Relationships) technically the target is unnecessary here as all `KindId` have the same storage type
     #[inline]
-    pub fn get_storage_type(&self, component_id: RelationshipId) -> Option<StorageType> {
+    pub fn get_storage_type(
+        &self,
+        relation_kind: RelationKindId,
+        relation_target: Option<Entity>,
+    ) -> Option<StorageType> {
         self.components
-            .get(component_id)
+            .get(relation_kind)
+            .and_then(|info| match relation_target {
+                None => info.0.as_ref(),
+                Some(target) => info.1.get(&target),
+            })
             .map(|info| info.storage_type)
     }
 
     #[inline]
     pub fn get_archetype_component_id(
         &self,
-        component_id: RelationshipId,
+        relation_kind: RelationKindId,
+        relation_target: Option<Entity>,
     ) -> Option<ArchetypeComponentId> {
         self.components
-            .get(component_id)
+            .get(relation_kind)
+            .and_then(|info| match relation_target {
+                None => info.0.as_ref(),
+                Some(target) => info.1.get(&target),
+            })
             .map(|info| info.archetype_component_id)
     }
 }
@@ -329,8 +379,8 @@ impl ArchetypeGeneration {
 
 #[derive(Hash, PartialEq, Eq)]
 pub struct ArchetypeIdentity {
-    table_components: Cow<'static, [RelationshipId]>,
-    sparse_set_components: Cow<'static, [RelationshipId]>,
+    table_components: Cow<'static, [(RelationKindId, Option<Entity>)]>,
+    sparse_set_components: Cow<'static, [(RelationKindId, Option<Entity>)]>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -479,8 +529,8 @@ impl Archetypes {
     pub(crate) fn get_id_or_insert(
         &mut self,
         table_id: TableId,
-        table_components: Vec<RelationshipId>,
-        sparse_set_components: Vec<RelationshipId>,
+        table_components: Vec<(RelationKindId, Option<Entity>)>,
+        sparse_set_components: Vec<(RelationKindId, Option<Entity>)>,
     ) -> ArchetypeId {
         let table_components = Cow::from(table_components);
         let sparse_set_components = Cow::from(sparse_set_components);

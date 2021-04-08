@@ -1,8 +1,6 @@
 use crate::{
     archetype::ArchetypeId,
-    component::{
-        ComponentTicks, RelationshipId, RelationshipInfo, RelationshipKindInfo, Relationships,
-    },
+    component::{ComponentTicks, RelationKindId, RelationshipKindInfo, Relationships},
     entity::Entity,
     storage::{BlobVec, SparseSet},
 };
@@ -35,7 +33,7 @@ impl TableId {
 }
 
 pub struct Column {
-    pub(crate) relationship_id: RelationshipId,
+    pub(crate) relationship: (RelationKindId, Option<Entity>),
     pub(crate) data: BlobVec,
     pub(crate) ticks: UnsafeCell<Vec<ComponentTicks>>,
 }
@@ -43,17 +41,15 @@ pub struct Column {
 impl Column {
     #[inline]
     pub fn with_capacity(
-        (relationship_kind, relationship_info): (
-            &crate::component::RelationshipKindInfo,
-            &crate::component::RelationshipInfo,
-        ),
+        relation_kind: &RelationshipKindInfo,
+        target: Option<Entity>,
         capacity: usize,
     ) -> Self {
         Column {
-            relationship_id: relationship_info.id(),
+            relationship: (relation_kind.id(), target),
             data: BlobVec::new(
-                relationship_kind.data_layout().layout(),
-                relationship_kind.data_layout().drop(),
+                relation_kind.data_layout().layout(),
+                relation_kind.data_layout().drop(),
                 capacity,
             ),
             ticks: UnsafeCell::new(Vec::with_capacity(capacity)),
@@ -164,7 +160,7 @@ impl Column {
 }
 
 pub struct Table {
-    columns: SparseSet<RelationshipId, Column>,
+    columns: SparseSet<RelationKindId, (Option<Column>, HashMap<Entity, Column>)>,
     entities: Vec<Entity>,
     archetypes: Vec<ArchetypeId>,
     grow_amount: usize,
@@ -192,6 +188,20 @@ impl Table {
         }
     }
 
+    pub fn columns(&self) -> impl Iterator<Item = &Column> {
+        self.columns
+            .values()
+            .map(|columns| columns.1.values().chain(columns.0.as_ref()))
+            .flatten()
+    }
+
+    fn columns_mut(&mut self) -> impl Iterator<Item = &mut Column> {
+        self.columns
+            .values_mut()
+            .map(|columns| columns.1.values_mut().chain(columns.0.as_mut()))
+            .flatten()
+    }
+
     #[inline]
     pub fn entities(&self) -> &[Entity] {
         &self.entities
@@ -201,14 +211,22 @@ impl Table {
         self.archetypes.push(archetype_id);
     }
 
-    pub fn add_column(
-        &mut self,
-        (component_kind, component_info): (&RelationshipKindInfo, &RelationshipInfo),
-    ) {
-        self.columns.insert(
-            component_info.id(),
-            Column::with_capacity((component_kind, component_info), self.capacity()),
-        )
+    pub fn add_column(&mut self, component_kind: &RelationshipKindInfo, target: Option<Entity>) {
+        let column = self
+            .columns
+            .get_or_insert_with(component_kind.id(), || (None, HashMap::default()));
+
+        match target {
+            Some(target) => {
+                column.1.insert(
+                    target,
+                    Column::with_capacity(component_kind, Some(target), self.capacity),
+                );
+            }
+            None => {
+                column.0 = Some(Column::with_capacity(component_kind, None, self.capacity));
+            }
+        }
     }
 
     /// Removes the entity at the given row and returns the entity swapped in to replace it (if an
@@ -217,7 +235,7 @@ impl Table {
     /// # Safety
     /// `row` must be in-bounds
     pub unsafe fn swap_remove_unchecked(&mut self, row: usize) -> Option<Entity> {
-        for column in self.columns.values_mut() {
+        for column in self.columns_mut() {
             column.swap_remove_unchecked(row);
         }
         let is_last = row == self.entities.len() - 1;
@@ -244,9 +262,11 @@ impl Table {
         debug_assert!(row < self.len());
         let is_last = row == self.entities.len() - 1;
         let new_row = new_table.allocate(self.entities.swap_remove(row));
-        for column in self.columns.values_mut() {
+        for column in self.columns_mut() {
             let (data, ticks) = column.swap_remove_and_forget_unchecked(row);
-            if let Some(new_column) = new_table.get_column_mut(column.relationship_id) {
+            if let Some(new_column) =
+                new_table.get_column_mut(column.relationship.0, column.relationship.1)
+            {
                 new_column.set_unchecked(new_row, data);
                 *new_column.get_ticks_unchecked_mut(new_row) = ticks;
             }
@@ -275,8 +295,10 @@ impl Table {
         debug_assert!(row < self.len());
         let is_last = row == self.entities.len() - 1;
         let new_row = new_table.allocate(self.entities.swap_remove(row));
-        for column in self.columns.values_mut() {
-            if let Some(new_column) = new_table.get_column_mut(column.relationship_id) {
+        for column in self.columns_mut() {
+            if let Some(new_column) =
+                new_table.get_column_mut(column.relationship.0, column.relationship.1)
+            {
                 let (data, ticks) = column.swap_remove_and_forget_unchecked(row);
                 new_column.set_unchecked(new_row, data);
                 *new_column.get_ticks_unchecked_mut(new_row) = ticks;
@@ -308,8 +330,10 @@ impl Table {
         debug_assert!(row < self.len());
         let is_last = row == self.entities.len() - 1;
         let new_row = new_table.allocate(self.entities.swap_remove(row));
-        for column in self.columns.values_mut() {
-            let new_column = new_table.get_column_mut(column.relationship_id).unwrap();
+        for column in self.columns_mut() {
+            let new_column = new_table
+                .get_column_mut(column.relationship.0, column.relationship.1)
+                .unwrap();
             let (data, ticks) = column.swap_remove_and_forget_unchecked(row);
             new_column.set_unchecked(new_row, data);
             *new_column.get_ticks_unchecked_mut(new_row) = ticks;
@@ -325,18 +349,40 @@ impl Table {
     }
 
     #[inline]
-    pub fn get_column(&self, component_id: RelationshipId) -> Option<&Column> {
-        self.columns.get(component_id)
+    pub fn get_column(
+        &self,
+        component_id: RelationKindId,
+        target: Option<Entity>,
+    ) -> Option<&Column> {
+        let col = self.columns.get(component_id)?;
+        match target {
+            Some(target) => col.1.get(&target),
+            None => col.0.as_ref(),
+        }
     }
 
     #[inline]
-    pub fn get_column_mut(&mut self, component_id: RelationshipId) -> Option<&mut Column> {
-        self.columns.get_mut(component_id)
+    pub fn get_column_mut(
+        &mut self,
+        component_id: RelationKindId,
+        target: Option<Entity>,
+    ) -> Option<&mut Column> {
+        let col = self.columns.get_mut(component_id)?;
+        match target {
+            Some(target) => col.1.get_mut(&target),
+            None => col.0.as_mut(),
+        }
     }
 
     #[inline]
-    pub fn has_column(&self, component_id: RelationshipId) -> bool {
-        self.columns.contains(component_id)
+    pub fn has_column(&self, component_id: RelationKindId, target: Option<Entity>) -> bool {
+        self.columns
+            .get(component_id)
+            .and_then(|col| match target {
+                None => col.0.as_ref(),
+                Some(target) => col.1.get(&target),
+            })
+            .is_some()
     }
 
     pub fn reserve(&mut self, amount: usize) {
@@ -348,7 +394,7 @@ impl Table {
             let new_capacity =
                 ((min_capacity + self.grow_amount - 1) / self.grow_amount) * self.grow_amount;
             let reserve_amount = new_capacity - self.len();
-            for column in self.columns.values_mut() {
+            for column in self.columns_mut() {
                 column.reserve(reserve_amount);
             }
             self.entities.reserve(reserve_amount);
@@ -364,8 +410,8 @@ impl Table {
         self.reserve(1);
         let index = self.entities.len();
         self.entities.push(entity);
-        for column in self.columns.values_mut() {
-            column.data.set_len(self.entities.len());
+        for column in self.columns_mut() {
+            column.data.set_len(index + 1);
             (*column.ticks.get()).push(ComponentTicks::new(0));
         }
         index
@@ -387,13 +433,9 @@ impl Table {
     }
 
     pub(crate) fn check_change_ticks(&mut self, change_tick: u32) {
-        for column in self.columns.values_mut() {
+        for column in self.columns_mut() {
             column.check_change_ticks(change_tick);
         }
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &Column> {
-        self.columns.values()
     }
 }
 
@@ -453,7 +495,7 @@ impl Tables {
     /// `component_ids` must contain components that exist in `components`
     pub unsafe fn get_id_or_insert(
         &mut self,
-        component_ids: &[RelationshipId],
+        component_ids: &[(RelationKindId, Option<Entity>)],
         components: &Relationships,
     ) -> TableId {
         let mut hasher = AHasher::default();
@@ -463,7 +505,10 @@ impl Tables {
         *self.table_ids.entry(hash).or_insert_with(move || {
             let mut table = Table::with_capacity(0, component_ids.len(), 64);
             for component_id in component_ids.iter() {
-                table.add_column(components.get_relationship_info_unchecked(*component_id));
+                table.add_column(
+                    components.get_relation_kind(component_id.0).unwrap(),
+                    component_id.1,
+                );
             }
             tables.push(table);
             TableId(tables.len() - 1)
@@ -500,7 +545,7 @@ impl IndexMut<TableId> for Tables {
 #[cfg(test)]
 mod tests {
     use crate::{
-        component::{Relationships, TypeInfo},
+        component::{ComponentDescriptor, Relationships, StorageType, TypeInfo},
         entity::Entity,
         storage::Table,
     };
@@ -509,13 +554,12 @@ mod tests {
     fn table() {
         let mut components = Relationships::default();
         let type_info = TypeInfo::of::<usize>();
-        let component_id = components
-            .get_component_info_or_insert_with(type_info.type_id(), || type_info)
-            .1
-            .id();
-        let columns = &[component_id];
-        let mut table = Table::with_capacity(0, columns.len(), 64);
-        table.add_column(components.get_relationship_info(component_id).unwrap());
+        let component_id = components.get_component_kind_or_insert(
+            type_info.type_id(),
+            ComponentDescriptor::from_generic::<usize>(StorageType::Table),
+        );
+        let mut table = Table::with_capacity(0, 1, 64);
+        table.add_column(component_id, None);
         let entities = (0..200).map(Entity::new).collect::<Vec<_>>();
         for (row, entity) in entities.iter().cloned().enumerate() {
             unsafe {
@@ -523,7 +567,7 @@ mod tests {
                 let mut value = row;
                 let value_ptr = ((&mut value) as *mut usize).cast::<u8>();
                 table
-                    .get_column(component_id)
+                    .get_column(component_id.id(), None)
                     .unwrap()
                     .set_unchecked(row, value_ptr);
             };

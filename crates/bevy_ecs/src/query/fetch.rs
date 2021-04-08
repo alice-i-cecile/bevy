@@ -1,6 +1,6 @@
 use crate::{
     archetype::{Archetype, ArchetypeComponentId},
-    component::{Component, ComponentTicks, RelationshipId, RelationshipKindId, StorageType},
+    component::{Component, ComponentDescriptor, ComponentTicks, RelationKindId, StorageType},
     entity::Entity,
     query::{Access, FilteredAccess},
     storage::{ComponentSparseSet, Table, Tables},
@@ -8,6 +8,7 @@ use crate::{
 };
 use bevy_ecs_macros::all_tuples;
 use std::{
+    any::TypeId,
     marker::PhantomData,
     ptr::{self, NonNull},
 };
@@ -134,7 +135,7 @@ pub unsafe trait FetchState: Send + Sync + Sized {
     type RelationFilter: Clone + std::hash::Hash + PartialEq + Eq + Default + Send + Sync + 'static;
 
     fn init(world: &mut World) -> Self;
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>);
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>);
     fn update_archetype_component_access(
         &self,
         archetype: &Archetype,
@@ -175,7 +176,7 @@ unsafe impl FetchState for EntityState {
         Self
     }
 
-    fn update_component_access(&self, _access: &mut FilteredAccess<RelationshipKindId>) {}
+    fn update_component_access(&self, _access: &mut FilteredAccess<RelationKindId>) {}
 
     fn update_archetype_component_access(
         &self,
@@ -259,8 +260,8 @@ impl<T: Component> WorldQuery for &T {
 
 /// The [`FetchState`] of `&T`.
 pub struct ReadState<T> {
-    component_id: RelationshipId,
-    relation_kind_id: RelationshipKindId,
+    relation_kind_id: RelationKindId,
+    relation_target: Option<Entity>,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -271,17 +272,19 @@ unsafe impl<T: Component> FetchState for ReadState<T> {
     type RelationFilter = ();
 
     fn init(world: &mut World) -> Self {
-        let (component_kind, component_info) =
-            world.relationships.get_component_info_or_insert::<T>();
+        let kind_info = world.relationships.get_component_kind_or_insert(
+            TypeId::of::<T>(),
+            ComponentDescriptor::from_generic::<T>(StorageType::Table),
+        );
         ReadState {
-            component_id: component_info.id(),
-            relation_kind_id: component_kind.id(),
-            storage_type: component_kind.data_layout().storage_type(),
+            relation_kind_id: kind_info.id(),
+            relation_target: None,
+            storage_type: kind_info.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
         if access.access().has_write(self.component_id) {
             panic!("&{} conflicts with a previous access in this query. Shared access cannot coincide with exclusive access.",
                 std::any::type_name::<T>());
@@ -295,7 +298,7 @@ unsafe impl<T: Component> FetchState for ReadState<T> {
         access: &mut Access<ArchetypeComponentId>,
     ) {
         if let Some(archetype_component_id) =
-            archetype.get_archetype_component_id(self.component_id)
+            archetype.get_archetype_component_id(self.relation_kind_id, self.relation_target)
         {
             access.add_read(archetype_component_id);
         }
@@ -306,11 +309,11 @@ unsafe impl<T: Component> FetchState for ReadState<T> {
         archetype: &Archetype,
         _relation_filter: &Self::RelationFilter,
     ) -> bool {
-        archetype.contains(self.component_id)
+        archetype.contains(self.relation_kind_id, self.relation_target)
     }
 
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
-        table.has_column(self.component_id)
+        table.has_column(self.relation_kind_id, self.relation_target)
     }
 }
 
@@ -356,7 +359,7 @@ impl<'w, T: Component> Fetch<'w> for ReadFetch<T> {
             value.sparse_set = world
                 .storages()
                 .sparse_sets
-                .get(state.component_id)
+                .get(state.relation_kind_id, state.relation_target)
                 .unwrap();
         }
         value
@@ -374,7 +377,7 @@ impl<'w, T: Component> Fetch<'w> for ReadFetch<T> {
             StorageType::Table => {
                 self.entity_table_rows = archetype.entity_table_rows().as_ptr();
                 let column = tables[archetype.table_id()]
-                    .get_column(state.component_id)
+                    .get_column(state.relation_kind_id, state.relation_target)
                     .unwrap();
                 self.table_components = column.get_ptr().cast::<T>();
             }
@@ -390,7 +393,7 @@ impl<'w, T: Component> Fetch<'w> for ReadFetch<T> {
         table: &Table,
     ) {
         self.table_components = table
-            .get_column(state.component_id)
+            .get_column(state.relation_kind_id, state.relation_target)
             .unwrap()
             .get_ptr()
             .cast::<T>();
@@ -435,8 +438,8 @@ pub struct WriteFetch<T> {
 
 /// The [`FetchState`] of `&mut T`.
 pub struct WriteState<T> {
-    component_id: RelationshipId,
-    relation_kind_id: RelationshipKindId,
+    relation_kind_id: RelationKindId,
+    relation_target: Option<Entity>,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -447,17 +450,19 @@ unsafe impl<T: Component> FetchState for WriteState<T> {
     type RelationFilter = ();
 
     fn init(world: &mut World) -> Self {
-        let (component_kind, component_info) =
-            world.relationships.get_component_info_or_insert::<T>();
+        let kind_info = world.relationships.get_component_kind_or_insert(
+            TypeId::of::<T>(),
+            ComponentDescriptor::from_generic::<T>(StorageType::Table),
+        );
         WriteState {
-            component_id: component_info.id(),
-            relation_kind_id: component_kind.id(),
-            storage_type: component_kind.data_layout().storage_type(),
+            relation_kind_id: kind_info.id(),
+            relation_target: None,
+            storage_type: kind_info.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
         if access.access().has_read(self.relation_kind_id) {
             panic!("&mut {} conflicts with a previous access in this query. Mutable component access must be unique.",
                 std::any::type_name::<T>());
@@ -471,7 +476,7 @@ unsafe impl<T: Component> FetchState for WriteState<T> {
         access: &mut Access<ArchetypeComponentId>,
     ) {
         if let Some(archetype_component_id) =
-            archetype.get_archetype_component_id(self.component_id)
+            archetype.get_archetype_component_id(self.relation_kind_id, self.relation_target)
         {
             access.add_write(archetype_component_id);
         }
@@ -482,13 +487,11 @@ unsafe impl<T: Component> FetchState for WriteState<T> {
         archetype: &Archetype,
         _relation_filter: &Self::RelationFilter,
     ) -> bool {
-        // FIXME(Relationships) there's a bunch of this self.component_id stuff- this should
-        // be to ignore the relation_filter as long as the component ID is for Relation(T, None)
-        archetype.contains(self.component_id)
+        archetype.contains(self.relation_kind_id, self.relation_target)
     }
 
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
-        table.has_column(self.component_id)
+        table.has_column(self.relation_kind_id, self.relation_target)
     }
 }
 
@@ -525,7 +528,7 @@ impl<'w, T: Component> Fetch<'w> for WriteFetch<T> {
             value.sparse_set = world
                 .storages()
                 .sparse_sets
-                .get(state.component_id)
+                .get(state.relation_kind_id, state.relation_target)
                 .unwrap();
         }
         value
@@ -543,7 +546,7 @@ impl<'w, T: Component> Fetch<'w> for WriteFetch<T> {
             StorageType::Table => {
                 self.entity_table_rows = archetype.entity_table_rows().as_ptr();
                 let column = tables[archetype.table_id()]
-                    .get_column(state.component_id)
+                    .get_column(state.relation_kind_id, state.relation_target)
                     .unwrap();
                 self.table_components = column.get_ptr().cast::<T>();
                 self.table_ticks = column.get_ticks_mut_ptr();
@@ -559,7 +562,9 @@ impl<'w, T: Component> Fetch<'w> for WriteFetch<T> {
         _relation_filter: &Self::RelationFilter,
         table: &Table,
     ) {
-        let column = table.get_column(state.component_id).unwrap();
+        let column = table
+            .get_column(state.relation_kind_id, state.relation_target)
+            .unwrap();
         self.table_components = column.get_ptr().cast::<T>();
         self.table_ticks = column.get_ticks_mut_ptr();
     }
@@ -610,7 +615,7 @@ impl<T: Component> WorldQuery for &Relation<T> {
 
 pub struct ReadRelationState<T> {
     p: PhantomData<T>,
-    relation_kind: RelationshipKindId,
+    relation_kind: RelationKindId,
     storage_type: StorageType,
 }
 
@@ -622,15 +627,18 @@ unsafe impl<T: Component> FetchState for ReadRelationState<T> {
     type RelationFilter = smallvec::SmallVec<[Entity; 4]>;
 
     fn init(world: &mut World) -> Self {
-        let (rel_kind, _) = world.relationships.get_component_info_or_insert::<T>();
+        let kind_info = world.relationships.get_component_kind_or_insert(
+            TypeId::of::<T>(),
+            ComponentDescriptor::from_generic::<T>(StorageType::Table),
+        );
         Self {
             p: PhantomData,
-            relation_kind: rel_kind.id(),
-            storage_type: rel_kind.data_layout().storage_type(),
+            relation_kind: kind_info.id(),
+            storage_type: kind_info.data_layout().storage_type(),
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
         todo!()
     }
 
@@ -731,7 +739,7 @@ unsafe impl<T: FetchState> FetchState for OptionState<T> {
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
         self.state.update_component_access(access);
     }
 
@@ -900,8 +908,8 @@ impl<T: Component> WorldQuery for ChangeTrackers<T> {
 
 /// The [`FetchState`] of [`ChangeTrackers`].
 pub struct ChangeTrackersState<T> {
-    component_id: RelationshipId,
-    relation_kind_id: RelationshipKindId,
+    relation_kind_id: RelationKindId,
+    relation_target: Option<Entity>,
     storage_type: StorageType,
     marker: PhantomData<T>,
 }
@@ -909,21 +917,22 @@ pub struct ChangeTrackersState<T> {
 // SAFETY: component access and archetype component access are properly updated to reflect that T is
 // read
 unsafe impl<T: Component> FetchState for ChangeTrackersState<T> {
-    // FIXME(Relationships) ?????????
     type RelationFilter = ();
 
     fn init(world: &mut World) -> Self {
-        let (component_kind, component_info) =
-            world.relationships.get_component_info_or_insert::<T>();
+        let kind_info = world.relationships.get_component_kind_or_insert(
+            TypeId::of::<T>(),
+            ComponentDescriptor::from_generic::<T>(StorageType::Table),
+        );
         Self {
-            component_id: component_info.id(),
-            relation_kind_id: component_kind.id(),
-            storage_type: component_kind.data_layout().storage_type(),
+            relation_kind_id: kind_info.id(),
+            relation_target: None,
+            storage_type: kind_info.data_layout().storage_type(),
             marker: PhantomData,
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationshipKindId>) {
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
         if access.access().has_write(self.component_id) {
             panic!("ChangeTrackers<{}> conflicts with a previous access in this query. Shared access cannot coincide with exclusive access.",
                 std::any::type_name::<T>());
@@ -937,7 +946,7 @@ unsafe impl<T: Component> FetchState for ChangeTrackersState<T> {
         access: &mut Access<ArchetypeComponentId>,
     ) {
         if let Some(archetype_component_id) =
-            archetype.get_archetype_component_id(self.component_id)
+            archetype.get_archetype_component_id(self.relation_kind_id, self.relation_target)
         {
             access.add_read(archetype_component_id);
         }
@@ -948,11 +957,11 @@ unsafe impl<T: Component> FetchState for ChangeTrackersState<T> {
         archetype: &Archetype,
         _relation_filter: &Self::RelationFilter,
     ) -> bool {
-        archetype.contains(self.component_id)
+        archetype.contains(self.relation_kind_id, self.relation_target)
     }
 
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
-        table.has_column(self.component_id)
+        table.has_column(self.relation_kind_id, self.relation_target)
     }
 }
 
@@ -974,7 +983,6 @@ unsafe impl<T> ReadOnlyFetch for ChangeTrackersFetch<T> {}
 impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
     type Item = ChangeTrackers<T>;
     type State = ChangeTrackersState<T>;
-    // FIXME(Relationships) ??????????????/
     type RelationFilter = ();
 
     #[inline]
@@ -1005,7 +1013,7 @@ impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
             value.sparse_set = world
                 .storages()
                 .sparse_sets
-                .get(state.component_id)
+                .get(state.relation_kind_id, state.relation_target)
                 .unwrap();
         }
         value
@@ -1023,7 +1031,7 @@ impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
             StorageType::Table => {
                 self.entity_table_rows = archetype.entity_table_rows().as_ptr();
                 let column = tables[archetype.table_id()]
-                    .get_column(state.component_id)
+                    .get_column(state.relation_kind_id, state.relation_target)
                     .unwrap();
                 self.table_ticks = column.get_ticks_mut_ptr().cast::<ComponentTicks>();
             }
@@ -1039,7 +1047,7 @@ impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
         table: &Table,
     ) {
         self.table_ticks = table
-            .get_column(state.component_id)
+            .get_column(state.relation_kind_id, state.relation_target)
             .unwrap()
             .get_ticks_mut_ptr()
             .cast::<ComponentTicks>();
@@ -1138,7 +1146,7 @@ macro_rules! impl_tuple_fetch {
                 ($($name::init(_world),)*)
             }
 
-            fn update_component_access(&self, _access: &mut FilteredAccess<RelationshipKindId>) {
+            fn update_component_access(&self, _access: &mut FilteredAccess<RelationKindId>) {
                 let ($($name,)*) = self;
                 $($name.update_component_access(_access);)*
             }

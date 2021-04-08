@@ -1,5 +1,7 @@
+use bevy_utils::HashMap;
+
 use crate::{
-    component::{ComponentTicks, DataLayout, RelationshipId},
+    component::{ComponentDescriptor, ComponentTicks, RelationKindId, RelationshipKindInfo},
     entity::Entity,
     storage::BlobVec,
 };
@@ -93,7 +95,7 @@ pub struct ComponentSparseSet {
 }
 
 impl ComponentSparseSet {
-    pub fn new(component_info: &DataLayout, capacity: usize) -> Self {
+    pub fn new(component_info: &ComponentDescriptor, capacity: usize) -> Self {
         Self {
             dense: BlobVec::new(component_info.layout(), component_info.drop(), capacity),
             ticks: UnsafeCell::new(Vec::with_capacity(capacity)),
@@ -386,38 +388,62 @@ impl_sparse_set_index!(u8, u16, u32, u64, usize);
 
 #[derive(Default)]
 pub struct SparseSets {
-    sets: SparseSet<RelationshipId, ComponentSparseSet>,
+    sets: SparseSet<RelationKindId, (ComponentSparseSet, HashMap<Entity, ComponentSparseSet>)>,
 }
 
 impl SparseSets {
     pub fn get_or_insert(
         &mut self,
-        (component_kind, component_info): (
-            &crate::component::RelationshipKindInfo,
-            &crate::component::RelationshipInfo,
-        ),
+        relation_kind: &RelationshipKindInfo,
+        target: Option<Entity>,
     ) -> &mut ComponentSparseSet {
-        if !self.sets.contains(component_info.id()) {
+        if !self.sets.contains(relation_kind.id()) {
             self.sets.insert(
-                component_info.id(),
-                ComponentSparseSet::new(component_kind.data_layout(), 64),
+                relation_kind.id(),
+                (ComponentSparseSet::new(relation_kind.data_layout(), 64), {
+                    let mut hm = HashMap::default();
+                    if let Some(target) = target {
+                        hm.insert(
+                            target,
+                            ComponentSparseSet::new(relation_kind.data_layout(), 64),
+                        );
+                    }
+                    hm
+                }),
             );
         }
 
-        self.sets.get_mut(component_info.id()).unwrap()
+        self.get_mut(relation_kind.id(), target).unwrap()
     }
 
-    pub fn get(&self, component_id: RelationshipId) -> Option<&ComponentSparseSet> {
-        self.sets.get(component_id)
+    pub fn get(
+        &self,
+        component_id: RelationKindId,
+        target: Option<Entity>,
+    ) -> Option<&ComponentSparseSet> {
+        match &target {
+            Some(target) => self.sets.get(component_id)?.1.get(target),
+            None => self.sets.get(component_id).map(|v| &v.0),
+        }
     }
 
-    pub fn get_mut(&mut self, component_id: RelationshipId) -> Option<&mut ComponentSparseSet> {
-        self.sets.get_mut(component_id)
+    pub fn get_mut(
+        &mut self,
+        component_id: RelationKindId,
+        target: Option<Entity>,
+    ) -> Option<&mut ComponentSparseSet> {
+        match &target {
+            Some(target) => self.sets.get_mut(component_id)?.1.get_mut(target),
+            None => self.sets.get_mut(component_id).map(|v| &mut v.0),
+        }
     }
 
     pub(crate) fn check_change_ticks(&mut self, change_tick: u32) {
         for set in self.sets.values_mut() {
-            set.check_change_ticks(change_tick);
+            set.0.check_change_ticks(change_tick);
+            for set in set.1.values_mut() {
+                set.check_change_ticks(change_tick);
+            }
         }
     }
 }

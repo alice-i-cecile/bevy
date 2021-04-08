@@ -186,9 +186,11 @@ impl<'w> WorldCell<'w> {
         let component_id = self
             .world
             .relationships
-            .get_resource_id(TypeId::of::<T>())?;
+            .get_resource_kind(TypeId::of::<T>())?
+            .id();
         let resource_archetype = self.world.archetypes.resource();
-        let archetype_component_id = resource_archetype.get_archetype_component_id(component_id)?;
+        let archetype_component_id =
+            resource_archetype.get_archetype_component_id(component_id, None)?;
         Some(WorldBorrow::new(
             // SAFE: ComponentId matches TypeId
             unsafe { self.world.get_resource_with_id(component_id)? },
@@ -201,9 +203,11 @@ impl<'w> WorldCell<'w> {
         let component_id = self
             .world
             .relationships
-            .get_resource_id(TypeId::of::<T>())?;
+            .get_resource_kind(TypeId::of::<T>())?
+            .id();
         let resource_archetype = self.world.archetypes.resource();
-        let archetype_component_id = resource_archetype.get_archetype_component_id(component_id)?;
+        let archetype_component_id =
+            resource_archetype.get_archetype_component_id(component_id, None)?;
         Some(WorldBorrowMut::new(
             // SAFE: ComponentId matches TypeId and access is checked by WorldBorrowMut
             unsafe {
@@ -219,9 +223,11 @@ impl<'w> WorldCell<'w> {
         let component_id = self
             .world
             .relationships
-            .get_resource_id(TypeId::of::<T>())?;
+            .get_resource_kind(TypeId::of::<T>())?
+            .id();
         let resource_archetype = self.world.archetypes.resource();
-        let archetype_component_id = resource_archetype.get_archetype_component_id(component_id)?;
+        let archetype_component_id =
+            resource_archetype.get_archetype_component_id(component_id, None)?;
         Some(WorldBorrow::new(
             // SAFE: ComponentId matches TypeId
             unsafe { self.world.get_non_send_with_id(component_id)? },
@@ -234,9 +240,11 @@ impl<'w> WorldCell<'w> {
         let component_id = self
             .world
             .relationships
-            .get_resource_id(TypeId::of::<T>())?;
+            .get_resource_kind(TypeId::of::<T>())?
+            .id();
         let resource_archetype = self.world.archetypes.resource();
-        let archetype_component_id = resource_archetype.get_archetype_component_id(component_id)?;
+        let archetype_component_id =
+            resource_archetype.get_archetype_component_id(component_id, None)?;
         Some(WorldBorrowMut::new(
             // SAFE: ComponentId matches TypeId and access is checked by WorldBorrowMut
             unsafe {
@@ -306,11 +314,12 @@ mod tests {
 
         let u32_component_id = world
             .relationships
-            .get_resource_id(TypeId::of::<u32>())
-            .unwrap();
+            .get_resource_kind(TypeId::of::<u32>())
+            .unwrap()
+            .id();
         let resource_archetype = world.archetypes.get(ArchetypeId::resource()).unwrap();
         let u32_archetype_component_id = resource_archetype
-            .get_archetype_component_id(u32_component_id)
+            .get_archetype_component_id(u32_component_id, None)
             .unwrap();
         assert_eq!(world.archetype_component_access.access.len(), 1);
         assert_eq!(

@@ -334,11 +334,12 @@ where
             .ok_or(QueryComponentError::NoSuchEntity)?;
         let component_id = world
             .components()
-            .get_component_id(TypeId::of::<T>())
-            .ok_or(QueryComponentError::MissingComponent)?;
+            .get_component_kind(TypeId::of::<T>())
+            .ok_or(QueryComponentError::MissingComponent)?
+            .id();
         let archetype_component = entity_ref
             .archetype()
-            .get_archetype_component_id(component_id)
+            .get_archetype_component_id(component_id, None)
             .ok_or(QueryComponentError::MissingComponent)?;
         if self
             .state
@@ -384,11 +385,12 @@ where
             .ok_or(QueryComponentError::NoSuchEntity)?;
         let component_id = world
             .components()
-            .get_component_id(TypeId::of::<T>())
-            .ok_or(QueryComponentError::MissingComponent)?;
+            .get_component_kind(TypeId::of::<T>())
+            .ok_or(QueryComponentError::MissingComponent)?
+            .id();
         let archetype_component = entity_ref
             .archetype()
-            .get_archetype_component_id(component_id)
+            .get_archetype_component_id(component_id, None)
             .ok_or(QueryComponentError::MissingComponent)?;
         if self
             .state
