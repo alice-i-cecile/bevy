@@ -7,6 +7,7 @@ use crate::{
     world::{Mut, World},
 };
 use bevy_ecs_macros::all_tuples;
+use smallvec::SmallVec;
 use std::{
     any::TypeId,
     marker::PhantomData,
@@ -620,6 +621,7 @@ pub struct ReadRelationState<T> {
 }
 
 pub struct ReadRelationFetch<T> {
+    storage_type: StorageType,
     p: PhantomData<T>,
 }
 
@@ -639,7 +641,7 @@ unsafe impl<T: Component> FetchState for ReadRelationState<T> {
     }
 
     fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
-        todo!()
+        access.add_read(self.relation_kind);
     }
 
     fn update_archetype_component_access(
@@ -647,23 +649,42 @@ unsafe impl<T: Component> FetchState for ReadRelationState<T> {
         archetype: &Archetype,
         access: &mut Access<ArchetypeComponentId>,
     ) {
-        todo!()
+        if self.matches_archetype(archetype, &Default::default()) {
+            let targets = archetype.components.get(self.relation_kind).unwrap();
+            if let Some(id) = &targets.0 {
+                access.add_read(id.archetype_component_id);
+            }
+            for id in targets.1.values() {
+                access.add_read(id.archetype_component_id);
+            }
+        }
     }
 
     fn matches_archetype(
         &self,
         archetype: &Archetype,
-        relation_filter: &Self::RelationFilter,
+        relation_filter: &SmallVec<[Entity; 4]>,
     ) -> bool {
-        todo!()
+        if archetype.components.get(self.relation_kind).is_none() {
+            return false;
+        }
+        relation_filter
+            .iter()
+            .all(|target| archetype.contains(self.relation_kind, Some(*target)))
     }
 
-    fn matches_table(&self, table: &Table, relation_filter: &Self::RelationFilter) -> bool {
-        todo!()
+    fn matches_table(&self, table: &Table, relation_filter: &SmallVec<[Entity; 4]>) -> bool {
+        if table.columns.get(self.relation_kind).is_none() {
+            return false;
+        }
+        relation_filter
+            .iter()
+            .all(|target| table.has_column(self.relation_kind, Some(*target)))
     }
 }
 
 impl<'w, T: Component> Fetch<'w> for ReadRelationFetch<T> {
+    // FIXME(Relationships) need to actually make a thing here :p
     type Item = ();
     type State = ReadRelationState<T>;
     type RelationFilter = smallvec::SmallVec<[Entity; 4]>;
@@ -671,14 +692,27 @@ impl<'w, T: Component> Fetch<'w> for ReadRelationFetch<T> {
     unsafe fn init(
         world: &World,
         state: &Self::State,
-        last_change_tick: u32,
-        change_tick: u32,
+        _last_change_tick: u32,
+        _change_tick: u32,
     ) -> Self {
-        todo!()
+        let storage_type = world
+            .components()
+            .get_relation_kind(state.relation_kind)
+            .unwrap()
+            .data_layout()
+            .storage_type();
+
+        Self {
+            storage_type,
+            p: PhantomData,
+        }
     }
 
     fn is_dense(&self) -> bool {
-        todo!()
+        match self.storage_type {
+            StorageType::Table => true,
+            StorageType::SparseSet => false,
+        }
     }
 
     unsafe fn set_archetype(
@@ -688,7 +722,7 @@ impl<'w, T: Component> Fetch<'w> for ReadRelationFetch<T> {
         archetype: &Archetype,
         tables: &Tables,
     ) {
-        todo!()
+        ()
     }
 
     unsafe fn set_table(
@@ -697,15 +731,15 @@ impl<'w, T: Component> Fetch<'w> for ReadRelationFetch<T> {
         relation_filter: &Self::RelationFilter,
         table: &Table,
     ) {
-        todo!()
+        ()
     }
 
     unsafe fn archetype_fetch(&mut self, archetype_index: usize) -> Self::Item {
-        todo!()
+        ()
     }
 
     unsafe fn table_fetch(&mut self, table_row: usize) -> Self::Item {
-        todo!()
+        ()
     }
 }
 

@@ -21,6 +21,10 @@ pub mod prelude {
         entity::Entity,
         event::{EventReader, EventWriter},
         query::{Added, ChangeTrackers, Changed, Or, QueryState, With, WithBundle, Without},
+        query::{
+            Added, ChangeTrackers, Changed, Or, QueryRelationFilter, QueryState, Relation, With,
+            WithBundle, Without,
+        },
         schedule::{
             AmbiguitySetLabel, ExclusiveSystemDescriptorCoercion, ParallelSystemDescriptorCoercion,
             RunCriteria, RunCriteriaDescriptorCoercion, RunCriteriaLabel, RunCriteriaPiping,

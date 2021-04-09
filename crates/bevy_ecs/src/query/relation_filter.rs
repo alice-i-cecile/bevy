@@ -55,13 +55,18 @@ impl_trait!(
 );
 
 impl<Q: WorldQuery, F: WorldQuery> QueryRelationFilter<Q, F> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     // FIXME(Relationships) should the behaviour for this be target AND other_target AND other_other_target
     // or should it be target OR other_target OR other_other_target
-    pub fn add_target_filter<T: Component, Path>(&mut self, target: Entity)
+    pub fn add_target_filter<T: Component, Path>(mut self, target: Entity) -> Self
     where
         Self: SpecifiesRelation<T, Path, RelationFilter = Self>,
     {
-        Self::__add_target_filter(target, self);
+        Self::__add_target_filter(target, &mut self);
+        self
     }
 }
 
@@ -192,14 +197,13 @@ fn target_filter_tests() {
     assert_impl::<u64, _, QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()>>();
     assert_impl::<u32, _, QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()>>();
 
-    let mut foo: QueryRelationFilter<&Relation<u32>, ()> = Default::default();
-
-    foo.add_target_filter::<u32, _>(Entity::new(1));
+    let foo: QueryRelationFilter<&Relation<u32>, ()> = Default::default();
+    let foo = foo.add_target_filter::<u32, _>(Entity::new(1));
     dbg!(&foo.0);
 
-    let mut foo: QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()> = Default::default();
-
-    foo.add_target_filter::<u32, _>(Entity::new(1));
-    foo.add_target_filter::<u64, _>(Entity::new(12));
+    let foo: QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()> = Default::default();
+    let foo = foo
+        .add_target_filter::<u32, _>(Entity::new(1))
+        .add_target_filter::<u64, _>(Entity::new(12));
     dbg!(&foo.0);
 }

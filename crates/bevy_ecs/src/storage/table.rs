@@ -160,7 +160,7 @@ impl Column {
 }
 
 pub struct Table {
-    columns: SparseSet<RelationKindId, (Option<Column>, HashMap<Entity, Column>)>,
+    pub(crate) columns: SparseSet<RelationKindId, (Option<Column>, HashMap<Entity, Column>)>,
     entities: Vec<Entity>,
     archetypes: Vec<ArchetypeId>,
     grow_amount: usize,
