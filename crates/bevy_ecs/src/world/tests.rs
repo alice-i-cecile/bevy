@@ -61,4 +61,24 @@ fn query() {
     let mut iter = query.iter_mut(&mut world);
     assert!(iter.next() == Some((child2, ())));
     assert!(iter.next() == None);
+
+    query.set_relation_filter(
+        &world,
+        QueryRelationFilter::new()
+            .add_target_filter::<ChildOf, _>(parent1)
+            .add_target_filter::<ChildOf, _>(parent2),
+    );
+    let mut iter = query.iter_mut(&mut world);
+    assert!(iter.next() == None);
+}
+
+fn is_this_unsound() {
+    let mut world = World::new();
+
+    let mut query = world.query::<&u32>();
+
+    let borrows = query.iter(&world).collect::<Vec<_>>();
+    query.set_relation_filter(&world, QueryRelationFilter::new());
+    let borrows2 = query.iter(&world).collect::<Vec<_>>();
+    dbg!(borrows);
 }
