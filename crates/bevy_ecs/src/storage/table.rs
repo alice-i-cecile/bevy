@@ -159,6 +159,29 @@ impl Column {
     }
 }
 
+// FIXME(Relationships) do we want `T None` to be yielded from a `Relation<T>` query
+// honestly there are a lot of places we need to think about this, for example the
+// add_relation_filter method takes `Entity` not `Option<Entity>` lol
+pub struct ColIter<'a> {
+    no_target_col: Option<&'a Column>,
+    target_cols: std::collections::hash_map::Iter<'a, Entity, Column>,
+}
+
+impl<'a> Iterator for ColIter<'a> {
+    type Item = (Option<Entity>, &'a Column);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(col) = self.no_target_col.take() {
+            return Some((None, col));
+        }
+
+        match self.target_cols.next() {
+            Some((e, col)) => return Some((Some(*e), col)),
+            None => return None,
+        }
+    }
+}
+
 pub struct Table {
     pub(crate) columns: SparseSet<RelationKindId, (Option<Column>, HashMap<Entity, Column>)>,
     entities: Vec<Entity>,
@@ -186,6 +209,14 @@ impl Table {
             grow_amount,
             capacity,
         }
+    }
+
+    pub fn columns_of_kind(&self, kind: RelationKindId) -> Option<ColIter> {
+        let columns = self.columns.get(kind)?;
+        Some(ColIter {
+            no_target_col: columns.0.as_ref(),
+            target_cols: columns.1.iter(),
+        })
     }
 
     pub fn columns(&self) -> impl Iterator<Item = &Column> {

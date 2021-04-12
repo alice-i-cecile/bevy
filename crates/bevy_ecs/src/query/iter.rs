@@ -42,12 +42,14 @@ where
         let fetch = <Q::Fetch as Fetch>::init(
             world,
             &query_state.fetch_state,
+            &query_state.current_relation_filter.0,
             last_change_tick,
             change_tick,
         );
         let filter = <F::Fetch as Fetch>::init(
             world,
             &query_state.filter_state,
+            &query_state.current_relation_filter.1,
             last_change_tick,
             change_tick,
         );

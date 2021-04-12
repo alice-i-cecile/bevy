@@ -3,10 +3,11 @@ use crate::{
     component::{Component, ComponentDescriptor, ComponentTicks, RelationKindId, StorageType},
     entity::Entity,
     query::{Access, FilteredAccess},
-    storage::{ComponentSparseSet, Table, Tables},
+    storage::{Column, ComponentSparseSet, Table, Tables},
     world::{Mut, World},
 };
 use bevy_ecs_macros::all_tuples;
+use bevy_utils::HashMap;
 use smallvec::SmallVec;
 use std::{
     any::TypeId,
@@ -64,6 +65,7 @@ pub trait Fetch<'w, 's>: Sized {
     unsafe fn init(
         world: &World,
         state: &Self::State,
+        relation_filter: &Self::RelationFilter,
         last_change_tick: u32,
         change_tick: u32,
     ) -> Self;
@@ -215,6 +217,7 @@ impl<'w, 's> Fetch<'w, 's> for EntityFetch {
     unsafe fn init(
         _world: &World,
         _state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
         _last_change_tick: u32,
         _change_tick: u32,
     ) -> Self {
@@ -347,6 +350,7 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for ReadFetch<T> {
     unsafe fn init(
         world: &World,
         state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
         _last_change_tick: u32,
         _change_tick: u32,
     ) -> Self {
@@ -513,6 +517,7 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for WriteFetch<T> {
     unsafe fn init(
         world: &World,
         state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
         last_change_tick: u32,
         change_tick: u32,
     ) -> Self {
@@ -621,13 +626,6 @@ pub struct ReadRelationState<T> {
     storage_type: StorageType,
 }
 
-pub struct ReadRelationFetch<T> {
-    storage_type: StorageType,
-    p: PhantomData<T>,
-}
-
-unsafe impl<T: Component> ReadOnlyFetch for ReadRelationFetch<T> {}
-
 unsafe impl<T: Component> FetchState for ReadRelationState<T> {
     type RelationFilter = smallvec::SmallVec<[Entity; 4]>;
 
@@ -686,18 +684,61 @@ unsafe impl<T: Component> FetchState for ReadRelationState<T> {
     }
 }
 
+pub struct ReadRelationFetch<T> {
+    relation_kind: RelationKindId,
+    relation_filter_ptr: *const [Entity],
+    table_ptr: *const Table,
+    storage_type: StorageType,
+    p: PhantomData<T>,
+}
+
+unsafe impl<T: Component> ReadOnlyFetch for ReadRelationFetch<T> {}
+
+pub enum Either<T, U> {
+    T(T),
+    U(U),
+}
+
 pub struct RelationAccess<'w, 's, T: Component> {
-    p: PhantomData<(&'w T, &'s T)>,
+    current_idx: usize,
+    columns: &'w (Option<Column>, HashMap<Entity, Column>),
+    iter: Either<crate::storage::ColIter<'w>, std::slice::Iter<'s, Entity>>,
+    p: PhantomData<&'w T>,
+}
+
+impl<'w, 's, T: Component> Iterator for RelationAccess<'w, 's, T> {
+    type Item = (Option<Entity>, &'w T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.iter {
+            Either::T(col_iter) => unsafe {
+                let (target, col) = col_iter.next()?;
+                let ptr = col.get_unchecked(self.current_idx) as *mut T;
+                return Some((target, &*ptr));
+            },
+            Either::U(target_iter) => {
+                let target = target_iter.next()?;
+                match self.columns.1.get(target) {
+                    Some(col) => unsafe {
+                        let ptr = col.get_unchecked(self.current_idx) as *mut T;
+                        return Some((Some(*target), &*ptr));
+                    },
+                    None => unsafe { std::hint::unreachable_unchecked() },
+                }
+            }
+        }
+    }
 }
 
 impl<'w, 's, T: Component> Fetch<'w, 's> for ReadRelationFetch<T> {
     type Item = RelationAccess<'w, 's, T>;
     type State = ReadRelationState<T>;
-    type RelationFilter = smallvec::SmallVec<[Entity; 4]>;
+    type RelationFilter = SmallVec<[Entity; 4]>;
 
     unsafe fn init(
         world: &World,
         state: &Self::State,
+        relation_filter: &Self::RelationFilter,
         _last_change_tick: u32,
         _change_tick: u32,
     ) -> Self {
@@ -709,6 +750,9 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for ReadRelationFetch<T> {
             .storage_type();
 
         Self {
+            relation_kind: state.relation_kind,
+            relation_filter_ptr: relation_filter.as_slice(),
+            table_ptr: 0x0 as _,
             storage_type,
             p: PhantomData,
         }
@@ -728,7 +772,7 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for ReadRelationFetch<T> {
         archetype: &Archetype,
         tables: &Tables,
     ) {
-        ()
+        todo!()
     }
 
     unsafe fn set_table(
@@ -737,7 +781,7 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for ReadRelationFetch<T> {
         relation_filter: &Self::RelationFilter,
         table: &Table,
     ) {
-        ()
+        self.table_ptr = table;
     }
 
     unsafe fn archetype_fetch(&mut self, archetype_index: usize) -> Self::Item {
@@ -745,7 +789,20 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for ReadRelationFetch<T> {
     }
 
     unsafe fn table_fetch(&mut self, table_row: usize) -> Self::Item {
-        todo!()
+        let table = &*self.table_ptr;
+
+        let target_filters = &*self.relation_filter_ptr;
+        let iter = match target_filters.len() {
+            0 => Either::U(target_filters.iter()),
+            _ => Either::T(table.columns_of_kind(self.relation_kind).unwrap()),
+        };
+
+        RelationAccess {
+            columns: table.columns.get(self.relation_kind).unwrap(),
+            current_idx: table_row,
+            iter,
+            p: PhantomData,
+        }
     }
 }
 
@@ -821,11 +878,18 @@ impl<'w, 's, T: Fetch<'w, 's>> Fetch<'w, 's> for OptionFetch<T> {
     unsafe fn init(
         world: &World,
         state: &Self::State,
+        relation_filter: &Self::RelationFilter,
         last_change_tick: u32,
         change_tick: u32,
     ) -> Self {
         Self {
-            fetch: T::init(world, &state.state, last_change_tick, change_tick),
+            fetch: T::init(
+                world,
+                &state.state,
+                &relation_filter,
+                last_change_tick,
+                change_tick,
+            ),
             matches: false,
         }
     }
@@ -1036,6 +1100,7 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for ChangeTrackersFetch<T> {
     unsafe fn init(
         world: &World,
         state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
         last_change_tick: u32,
         change_tick: u32,
     ) -> Self {
@@ -1136,9 +1201,10 @@ macro_rules! impl_tuple_fetch {
             type State = ($($name::State,)*);
             type RelationFilter = ($($name::RelationFilter,)*);
 
-            unsafe fn init(_world: &World, state: &Self::State, _last_change_tick: u32, _change_tick: u32) -> Self {
+            unsafe fn init(_world: &World, state: &Self::State, relation_filter: &Self::RelationFilter, _last_change_tick: u32, _change_tick: u32) -> Self {
                 let ($($name,)*) = state;
-                ($($name::init(_world, $name, _last_change_tick, _change_tick),)*)
+                let ($($relation_filter,)*) = relation_filter;
+                ($($name::init(_world, $name, $relation_filter, _last_change_tick, _change_tick),)*)
             }
 
 

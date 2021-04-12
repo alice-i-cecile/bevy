@@ -232,10 +232,20 @@ where
             return Err(QueryEntityError::QueryDoesNotMatch);
         }
         let archetype = &world.archetypes[location.archetype_id];
-        let mut fetch =
-            <Q::Fetch as Fetch>::init(world, &self.fetch_state, last_change_tick, change_tick);
-        let mut filter =
-            <F::Fetch as Fetch>::init(world, &self.filter_state, last_change_tick, change_tick);
+        let mut fetch = <Q::Fetch as Fetch>::init(
+            world,
+            &self.fetch_state,
+            &self.current_relation_filter.0,
+            last_change_tick,
+            change_tick,
+        );
+        let mut filter = <F::Fetch as Fetch>::init(
+            world,
+            &self.filter_state,
+            &self.current_relation_filter.1,
+            last_change_tick,
+            change_tick,
+        );
 
         fetch.set_archetype(
             &self.fetch_state,
@@ -411,10 +421,20 @@ where
         last_change_tick: u32,
         change_tick: u32,
     ) {
-        let mut fetch =
-            <Q::Fetch as Fetch>::init(world, &self.fetch_state, last_change_tick, change_tick);
-        let mut filter =
-            <F::Fetch as Fetch>::init(world, &self.filter_state, last_change_tick, change_tick);
+        let mut fetch = <Q::Fetch as Fetch>::init(
+            world,
+            &self.fetch_state,
+            &self.current_relation_filter.0,
+            last_change_tick,
+            change_tick,
+        );
+        let mut filter = <F::Fetch as Fetch>::init(
+            world,
+            &self.filter_state,
+            &self.current_relation_filter.1,
+            last_change_tick,
+            change_tick,
+        );
         if fetch.is_dense() && filter.is_dense() {
             let tables = &world.storages().tables;
             for table_id in self.current_query_access_cache().matched_table_ids.iter() {
@@ -478,10 +498,20 @@ where
         change_tick: u32,
     ) {
         task_pool.scope(|scope| {
-            let fetch =
-                <Q::Fetch as Fetch>::init(world, &self.fetch_state, last_change_tick, change_tick);
-            let filter =
-                <F::Fetch as Fetch>::init(world, &self.filter_state, last_change_tick, change_tick);
+            let fetch = <Q::Fetch as Fetch>::init(
+                world,
+                &self.fetch_state,
+                &self.current_relation_filter.0,
+                last_change_tick,
+                change_tick,
+            );
+            let filter = <F::Fetch as Fetch>::init(
+                world,
+                &self.filter_state,
+                &self.current_relation_filter.1,
+                last_change_tick,
+                change_tick,
+            );
 
             if fetch.is_dense() && filter.is_dense() {
                 let tables = &world.storages().tables;
@@ -494,12 +524,14 @@ where
                             let mut fetch = <Q::Fetch as Fetch>::init(
                                 world,
                                 &self.fetch_state,
+                                &self.current_relation_filter.0,
                                 last_change_tick,
                                 change_tick,
                             );
                             let mut filter = <F::Fetch as Fetch>::init(
                                 world,
                                 &self.filter_state,
+                                &self.current_relation_filter.1,
                                 last_change_tick,
                                 change_tick,
                             );
@@ -542,12 +574,14 @@ where
                             let mut fetch = <Q::Fetch as Fetch>::init(
                                 world,
                                 &self.fetch_state,
+                                &self.current_relation_filter.0,
                                 last_change_tick,
                                 change_tick,
                             );
                             let mut filter = <F::Fetch as Fetch>::init(
                                 world,
                                 &self.filter_state,
+                                &self.current_relation_filter.1,
                                 last_change_tick,
                                 change_tick,
                             );

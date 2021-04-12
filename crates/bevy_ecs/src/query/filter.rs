@@ -147,6 +147,7 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for WithFetch<T> {
     unsafe fn init(
         _world: &World,
         state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
         _last_change_tick: u32,
         _change_tick: u32,
     ) -> Self {
@@ -283,6 +284,7 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for WithoutFetch<T> {
     unsafe fn init(
         _world: &World,
         state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
         _last_change_tick: u32,
         _change_tick: u32,
     ) -> Self {
@@ -406,6 +408,7 @@ impl<'w, 's, T: Bundle> Fetch<'w, 's> for WithBundleFetch<T> {
     unsafe fn init(
         _world: &World,
         state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
         _last_change_tick: u32,
         _change_tick: u32,
     ) -> Self {
@@ -519,10 +522,11 @@ macro_rules! impl_query_filter_tuple {
             type Item = bool;
             type RelationFilter = ($(<$filter as Fetch<'w, 's>>::RelationFilter,)*);
 
-            unsafe fn init(world: &World, state: &Self::State, last_change_tick: u32, change_tick: u32) -> Self {
+            unsafe fn init(world: &World, state: &Self::State, relation_filter: &Self::RelationFilter, last_change_tick: u32, change_tick: u32) -> Self {
                 let ($($filter,)*) = &state.0;
+                let ($($relation_filter,)*) = relation_filter;
                 Or(($(OrFetch {
-                    fetch: $filter::init(world, $filter, last_change_tick, change_tick),
+                    fetch: $filter::init(world, $filter, $relation_filter, last_change_tick, change_tick),
                     matches: false,
                 },)*))
             }
@@ -704,7 +708,7 @@ macro_rules! impl_tick_filter {
             type Item = bool;
             type RelationFilter = ();
 
-            unsafe fn init(world: &World, state: &Self::State, last_change_tick: u32, change_tick: u32) -> Self {
+            unsafe fn init(world: &World, state: &Self::State, _relation_filter: &Self::RelationFilter, last_change_tick: u32, change_tick: u32) -> Self {
                 let mut value = Self {
                     storage_type: state.storage_type,
                     table_ticks: ptr::null_mut::<ComponentTicks>(),

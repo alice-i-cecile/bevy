@@ -73,6 +73,80 @@ fn query() {
 }
 
 #[test]
+fn relation_access() {
+    #[derive(PartialEq, Eq)]
+    struct ChildOf {
+        despawn_recursive: bool,
+    }
+    let mut world = World::new();
+
+    let parent1 = world.spawn().id();
+    let parent2 = world.spawn().id();
+    let child1 = world
+        .spawn()
+        .insert_relation(
+            ChildOf {
+                despawn_recursive: true,
+            },
+            parent1,
+        )
+        .id();
+    let child2 = world
+        .spawn()
+        .insert_relation(
+            ChildOf {
+                despawn_recursive: false,
+            },
+            parent2,
+        )
+        .id();
+
+    let mut query = world.query::<(Entity, &Relation<ChildOf>)>();
+
+    query.set_relation_filter(
+        &world,
+        QueryRelationFilter::new().add_target_filter::<ChildOf, _>(parent1),
+    );
+    let mut iter = query.iter(&world);
+    let (child, mut accessor) = iter.next().unwrap();
+    assert!(child == child1);
+    assert!(
+        accessor.next().unwrap()
+            == (
+                // FIXME(Relationships) honestly having Option<Entity> is really annoying
+                // i should just make a statically knowable entity to represent None...
+                Some(parent1),
+                &ChildOf {
+                    despawn_recursive: true
+                }
+            )
+    );
+    assert!(matches!(accessor.next(), None));
+    assert!(matches!(iter.next(), None));
+
+    query.set_relation_filter(
+        &world,
+        QueryRelationFilter::new().add_target_filter::<ChildOf, _>(parent2),
+    );
+    let mut iter = query.iter(&world);
+    let (child, mut accessor) = iter.next().unwrap();
+    assert!(child == child2);
+    assert!(
+        accessor.next().unwrap()
+            == (
+                // FIXME(Relationships) honestly having Option<Entity> is really annoying
+                // i should just make a statically knowable entity to represent None...
+                Some(parent2),
+                &ChildOf {
+                    despawn_recursive: false
+                }
+            )
+    );
+    assert!(matches!(accessor.next(), None));
+    assert!(matches!(iter.next(), None));
+}
+
+#[test]
 fn compiles() {
     let mut world = World::new();
 
