@@ -41,15 +41,16 @@ use std::{
 ///
 /// [`Or`]: crate::query::Or
 pub trait WorldQuery {
-    type Fetch: for<'a> Fetch<
-        'a,
+    type Fetch: for<'w, 's> Fetch<
+        'w,
+        's,
         State = Self::State,
         RelationFilter = <Self::State as FetchState>::RelationFilter,
     >;
     type State: FetchState;
 }
 
-pub trait Fetch<'w>: Sized {
+pub trait Fetch<'w, 's>: Sized {
     type Item;
     type State: FetchState<RelationFilter = Self::RelationFilter>;
     type RelationFilter: Clone + std::hash::Hash + PartialEq + Eq + Default + Send + Sync + 'static;
@@ -201,7 +202,7 @@ unsafe impl FetchState for EntityState {
     }
 }
 
-impl<'w> Fetch<'w> for EntityFetch {
+impl<'w, 's> Fetch<'w, 's> for EntityFetch {
     type Item = Entity;
     type State = EntityState;
     type RelationFilter = ();
@@ -330,7 +331,7 @@ pub struct ReadFetch<T> {
 /// SAFETY: access is read only
 unsafe impl<T> ReadOnlyFetch for ReadFetch<T> {}
 
-impl<'w, T: Component> Fetch<'w> for ReadFetch<T> {
+impl<'w, 's, T: Component> Fetch<'w, 's> for ReadFetch<T> {
     type Item = &'w T;
     type State = ReadState<T>;
     type RelationFilter = ();
@@ -496,7 +497,7 @@ unsafe impl<T: Component> FetchState for WriteState<T> {
     }
 }
 
-impl<'w, T: Component> Fetch<'w> for WriteFetch<T> {
+impl<'w, 's, T: Component> Fetch<'w, 's> for WriteFetch<T> {
     type Item = Mut<'w, T>;
     type State = WriteState<T>;
     type RelationFilter = ();
@@ -625,6 +626,8 @@ pub struct ReadRelationFetch<T> {
     p: PhantomData<T>,
 }
 
+unsafe impl<T: Component> ReadOnlyFetch for ReadRelationFetch<T> {}
+
 unsafe impl<T: Component> FetchState for ReadRelationState<T> {
     type RelationFilter = smallvec::SmallVec<[Entity; 4]>;
 
@@ -683,9 +686,12 @@ unsafe impl<T: Component> FetchState for ReadRelationState<T> {
     }
 }
 
-impl<'w, T: Component> Fetch<'w> for ReadRelationFetch<T> {
-    // FIXME(Relationships) need to actually make a thing here :p
-    type Item = ();
+pub struct RelationAccess<'w, 's, T: Component> {
+    p: PhantomData<(&'w T, &'s T)>,
+}
+
+impl<'w, 's, T: Component> Fetch<'w, 's> for ReadRelationFetch<T> {
+    type Item = RelationAccess<'w, 's, T>;
     type State = ReadRelationState<T>;
     type RelationFilter = smallvec::SmallVec<[Entity; 4]>;
 
@@ -735,11 +741,11 @@ impl<'w, T: Component> Fetch<'w> for ReadRelationFetch<T> {
     }
 
     unsafe fn archetype_fetch(&mut self, archetype_index: usize) -> Self::Item {
-        ()
+        todo!()
     }
 
     unsafe fn table_fetch(&mut self, table_row: usize) -> Self::Item {
-        ()
+        todo!()
     }
 }
 
@@ -802,7 +808,7 @@ unsafe impl<T: FetchState> FetchState for OptionState<T> {
     }
 }
 
-impl<'w, T: Fetch<'w>> Fetch<'w> for OptionFetch<T> {
+impl<'w, 's, T: Fetch<'w, 's>> Fetch<'w, 's> for OptionFetch<T> {
     type Item = Option<T::Item>;
     type State = OptionState<T::State>;
     type RelationFilter = T::RelationFilter;
@@ -1014,7 +1020,7 @@ pub struct ChangeTrackersFetch<T> {
 /// SAFETY: access is read only
 unsafe impl<T> ReadOnlyFetch for ChangeTrackersFetch<T> {}
 
-impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
+impl<'w, 's, T: Component> Fetch<'w, 's> for ChangeTrackersFetch<T> {
     type Item = ChangeTrackers<T>;
     type State = ChangeTrackersState<T>;
     type RelationFilter = ();
@@ -1125,7 +1131,7 @@ impl<'w, T: Component> Fetch<'w> for ChangeTrackersFetch<T> {
 macro_rules! impl_tuple_fetch {
     ($(($name: ident, $state: ident, $relation_filter: ident)),*) => {
         #[allow(non_snake_case)]
-        impl<'a, $($name: Fetch<'a>),*> Fetch<'a> for ($($name,)*) {
+        impl<'w, 's, $($name: Fetch<'w, 's>),*> Fetch<'w, 's> for ($($name,)*) {
             type Item = ($($name::Item,)*);
             type State = ($($name::State,)*);
             type RelationFilter = ($($name::RelationFilter,)*);

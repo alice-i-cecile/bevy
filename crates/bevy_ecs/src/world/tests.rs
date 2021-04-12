@@ -42,25 +42,25 @@ fn query() {
 
     let mut query = world.query::<(Entity, &Relation<ChildOf>)>();
     let mut iter = query.iter_mut(&mut world);
-    assert!(iter.next() == Some((child1, ())));
-    assert!(iter.next() == Some((child2, ())));
-    assert!(iter.next() == None);
+    assert!(iter.next().unwrap().0 == child1);
+    assert!(iter.next().unwrap().0 == child2);
+    assert!(matches!(iter.next(), None));
 
     query.set_relation_filter(
         &world,
         QueryRelationFilter::new().add_target_filter::<ChildOf, _>(parent1),
     );
     let mut iter = query.iter_mut(&mut world);
-    assert!(iter.next() == Some((child1, ())));
-    assert!(iter.next() == None);
+    assert!(iter.next().unwrap().0 == child1);
+    assert!(matches!(iter.next(), None));
 
     query.set_relation_filter(
         &world,
         QueryRelationFilter::new().add_target_filter::<ChildOf, _>(parent2),
     );
     let mut iter = query.iter_mut(&mut world);
-    assert!(iter.next() == Some((child2, ())));
-    assert!(iter.next() == None);
+    assert!(iter.next().unwrap().0 == child2);
+    assert!(matches!(iter.next(), None));
 
     query.set_relation_filter(
         &world,
@@ -69,16 +69,30 @@ fn query() {
             .add_target_filter::<ChildOf, _>(parent2),
     );
     let mut iter = query.iter_mut(&mut world);
-    assert!(iter.next() == None);
+    assert!(matches!(iter.next(), None));
 }
 
-fn is_this_unsound() {
+#[test]
+fn compiles() {
     let mut world = World::new();
 
     let mut query = world.query::<&u32>();
 
     let borrows = query.iter(&world).collect::<Vec<_>>();
     query.set_relation_filter(&world, QueryRelationFilter::new());
-    let borrows2 = query.iter(&world).collect::<Vec<_>>();
+    let _borrows2 = query.iter(&world).collect::<Vec<_>>();
     dbg!(borrows);
+}
+
+#[test]
+fn compile_fail() {
+    let mut world = World::new();
+
+    let mut query = world.query::<&Relation<u32>>();
+
+    let borrows = query.iter(&world).collect::<Vec<_>>();
+    query.set_relation_filter(&world, QueryRelationFilter::new());
+    let _borrows2 = query.iter(&world).collect::<Vec<_>>();
+    // FIXME(Relationships) sort out a proper compile_fail test here
+    // drop(borrows);
 }
