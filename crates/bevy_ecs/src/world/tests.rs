@@ -30,7 +30,7 @@ fn foo() {
 }
 
 #[test]
-fn query() {
+fn table_query() {
     struct ChildOf;
 
     let mut world = World::new();
@@ -73,13 +73,14 @@ fn query() {
 }
 
 #[test]
-fn relation_access() {
-    #[derive(PartialEq, Eq)]
+fn table_relation_access() {
+    #[derive(Debug, PartialEq, Eq)]
     struct ChildOf {
         despawn_recursive: bool,
     }
     let mut world = World::new();
 
+    let random_parent = world.spawn().id();
     let parent1 = world.spawn().id();
     let parent2 = world.spawn().id();
     let child1 = world
@@ -90,6 +91,12 @@ fn relation_access() {
             },
             parent1,
         )
+        .insert_relation(
+            ChildOf {
+                despawn_recursive: false,
+            },
+            random_parent,
+        )
         .id();
     let child2 = world
         .spawn()
@@ -98,6 +105,12 @@ fn relation_access() {
                 despawn_recursive: false,
             },
             parent2,
+        )
+        .insert_relation(
+            ChildOf {
+                despawn_recursive: true,
+            },
+            random_parent,
         )
         .id();
 
@@ -131,16 +144,64 @@ fn relation_access() {
     let mut iter = query.iter(&world);
     let (child, mut accessor) = iter.next().unwrap();
     assert!(child == child2);
-    assert!(
-        accessor.next().unwrap()
-            == (
-                // FIXME(Relationships) honestly having Option<Entity> is really annoying
-                // i should just make a statically knowable entity to represent None...
-                Some(parent2),
-                &ChildOf {
-                    despawn_recursive: false
-                }
-            )
+    assert_eq!(
+        accessor.next().unwrap(),
+        (
+            // FIXME(Relationships) honestly having Option<Entity> is really annoying
+            // i should just make a statically knowable entity to represent None...
+            Some(parent2),
+            &ChildOf {
+                despawn_recursive: false
+            }
+        )
+    );
+    assert!(matches!(accessor.next(), None));
+    assert!(matches!(iter.next(), None));
+
+    query.set_relation_filter(&world, QueryRelationFilter::new());
+    let mut iter = query.iter(&world);
+    //
+    let (child, mut accessor) = iter.next().unwrap();
+    assert!(child == child1);
+    assert_eq!(
+        accessor.next().unwrap(),
+        (
+            Some(random_parent),
+            &ChildOf {
+                despawn_recursive: false
+            }
+        )
+    );
+    assert_eq!(
+        accessor.next().unwrap(),
+        (
+            Some(parent1),
+            &ChildOf {
+                despawn_recursive: true
+            }
+        )
+    );
+    assert!(matches!(accessor.next(), None));
+    //
+    let (child, mut accessor) = iter.next().unwrap();
+    assert!(child == child2);
+    assert_eq!(
+        accessor.next().unwrap(),
+        (
+            Some(random_parent),
+            &ChildOf {
+                despawn_recursive: true
+            }
+        )
+    );
+    assert_eq!(
+        accessor.next().unwrap(),
+        (
+            Some(parent2),
+            &ChildOf {
+                despawn_recursive: false
+            }
+        )
     );
     assert!(matches!(accessor.next(), None));
     assert!(matches!(iter.next(), None));

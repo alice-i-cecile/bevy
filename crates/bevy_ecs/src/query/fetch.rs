@@ -793,8 +793,8 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for ReadRelationFetch<T> {
 
         let target_filters = &*self.relation_filter_ptr;
         let iter = match target_filters.len() {
-            0 => Either::U(target_filters.iter()),
-            _ => Either::T(table.columns_of_kind(self.relation_kind).unwrap()),
+            0 => Either::T(table.columns_of_kind(self.relation_kind).unwrap()),
+            _ => Either::U(target_filters.iter()),
         };
 
         RelationAccess {

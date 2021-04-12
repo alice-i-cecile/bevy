@@ -187,7 +187,7 @@ where
     ///
     /// This can only be called for read-only queries, see [`Self::for_each_mut`] for write-queries.
     #[inline]
-    pub fn for_each(&self, f: impl FnMut(<Q::Fetch as Fetch<'w, '_>>::Item))
+    pub fn for_each<'s>(&'s self, f: impl FnMut(<Q::Fetch as Fetch<'w, 's>>::Item))
     where
         Q::Fetch: ReadOnlyFetch,
     {
@@ -224,11 +224,11 @@ where
     /// This can only be called for read-only queries, see [`Self::par_for_each_mut`] for
     /// write-queries.
     #[inline]
-    pub fn par_for_each(
-        &self,
+    pub fn par_for_each<'s>(
+        &'s self,
         task_pool: &TaskPool,
         batch_size: usize,
-        f: impl Fn(<Q::Fetch as Fetch<'w, '_>>::Item) + Send + Sync + Clone,
+        f: impl Fn(<Q::Fetch as Fetch<'w, 's>>::Item) + Send + Sync + Clone,
     ) where
         Q::Fetch: ReadOnlyFetch,
     {
@@ -248,11 +248,11 @@ where
 
     /// Runs `f` on each query result in parallel using the given task pool.
     #[inline]
-    pub fn par_for_each_mut(
-        &mut self,
+    pub fn par_for_each_mut<'s>(
+        &'s mut self,
         task_pool: &TaskPool,
         batch_size: usize,
-        f: impl Fn(<Q::Fetch as Fetch<'w, '_>>::Item) + Send + Sync + Clone,
+        f: impl Fn(<Q::Fetch as Fetch<'w, 's>>::Item) + Send + Sync + Clone,
     ) {
         // SAFE: system runs without conflicts with other systems. same-system queries have runtime
         // borrow checks when they conflict
