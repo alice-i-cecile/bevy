@@ -231,20 +231,10 @@ fn table_relation_access() {
     );
     assert!(matches!(accessor.next(), None));
     //
-    let (child, accessor) = iter.next().unwrap();
+    let (child, mut accessor) = iter.next().unwrap();
     assert!(child == child2);
-    let foo = accessor.collect::<Vec<_>>();
     assert_eq!(
-        foo[0],
-        (
-            Some(parent2),
-            &ChildOf {
-                despawn_recursive: false
-            }
-        )
-    );
-    assert_eq!(
-        foo[1],
+        accessor.next().unwrap(),
         (
             Some(random_parent),
             &ChildOf {
@@ -252,7 +242,16 @@ fn table_relation_access() {
             }
         )
     );
-    assert!(foo.len() == 2);
+    assert_eq!(
+        accessor.next().unwrap(),
+        (
+            Some(parent2),
+            &ChildOf {
+                despawn_recursive: false
+            }
+        )
+    );
+    assert!(matches!(accessor.next(), None));
     assert!(matches!(iter.next(), None));
 }
 
@@ -354,18 +353,18 @@ fn sparse_relation_access() {
     assert_eq!(
         accessor.next().unwrap(),
         (
-            Some(parent1),
+            Some(random_parent),
             &ChildOf {
-                despawn_recursive: true
+                despawn_recursive: false
             }
         )
     );
     assert_eq!(
         accessor.next().unwrap(),
         (
-            Some(random_parent),
+            Some(parent1),
             &ChildOf {
-                despawn_recursive: false
+                despawn_recursive: true
             }
         )
     );

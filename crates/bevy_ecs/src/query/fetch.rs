@@ -7,7 +7,7 @@ use crate::{
     world::{Mut, World},
 };
 use bevy_ecs_macros::all_tuples;
-use bevy_utils::HashMap;
+use bevy_utils::{HashMap, StableHashMap};
 use smallvec::SmallVec;
 use std::{
     any::TypeId,
@@ -714,7 +714,7 @@ pub enum Either<T, U> {
 pub enum RelationAccess<'w, 's, T: Component> {
     Table {
         current_idx: usize,
-        columns: &'w (Option<Column>, HashMap<Entity, Column>),
+        columns: &'w (Option<Column>, StableHashMap<Entity, Column>),
         iter: Either<crate::storage::ColIter<'w>, std::slice::Iter<'s, Entity>>,
         p: PhantomData<&'w T>,
     },

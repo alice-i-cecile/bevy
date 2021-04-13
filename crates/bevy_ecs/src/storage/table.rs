@@ -4,7 +4,7 @@ use crate::{
     entity::Entity,
     storage::{BlobVec, SparseSet},
 };
-use bevy_utils::{AHasher, HashMap};
+use bevy_utils::{AHasher, HashMap, StableHashMap};
 use std::{
     cell::UnsafeCell,
     hash::{Hash, Hasher},
@@ -159,7 +159,6 @@ impl Column {
     }
 }
 
-// FIXME(Relationships) hashmap iters are nondet and causing tests to fail
 pub struct ColIter<'a> {
     no_target_col: Option<&'a Column>,
     target_cols: std::collections::hash_map::Iter<'a, Entity, Column>,
@@ -177,7 +176,7 @@ impl<'a> Iterator for ColIter<'a> {
 }
 
 pub struct Table {
-    pub(crate) columns: SparseSet<RelationKindId, (Option<Column>, HashMap<Entity, Column>)>,
+    pub(crate) columns: SparseSet<RelationKindId, (Option<Column>, StableHashMap<Entity, Column>)>,
     entities: Vec<Entity>,
     archetypes: Vec<ArchetypeId>,
     grow_amount: usize,
@@ -239,7 +238,7 @@ impl Table {
     pub fn add_column(&mut self, component_kind: &RelationshipKindInfo, target: Option<Entity>) {
         let column = self
             .columns
-            .get_or_insert_with(component_kind.id(), || (None, HashMap::default()));
+            .get_or_insert_with(component_kind.id(), || (None, StableHashMap::default()));
 
         match target {
             Some(target) => {

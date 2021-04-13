@@ -1,4 +1,5 @@
 use bevy_utils::HashMap;
+use bevy_utils::StableHashMap;
 
 use crate::{
     bundle::BundleId,
@@ -132,12 +133,10 @@ pub struct Archetype {
         RelationKindId,
         (
             Option<ArchetypeComponentInfo>,
-            HashMap<Entity, ArchetypeComponentInfo>,
+            StableHashMap<Entity, ArchetypeComponentInfo>,
         ),
     >,
 }
-
-// FIXME(Relationships) hashmap iters are nondet and causing tests to fail
 
 pub struct KindTargetsIter<'a> {
     no_target: Option<()>,
@@ -177,7 +176,8 @@ impl Archetype {
         for ((kind_id, target), archetype_component_id) in
             table_components.iter().zip(table_archetype_components)
         {
-            let components = components.get_or_insert_with(*kind_id, || (None, HashMap::default()));
+            let components =
+                components.get_or_insert_with(*kind_id, || (None, StableHashMap::default()));
 
             let arch_comp_info = ArchetypeComponentInfo {
                 storage_type: StorageType::Table,
@@ -196,7 +196,8 @@ impl Archetype {
             .iter()
             .zip(sparse_set_archetype_components)
         {
-            let components = components.get_or_insert_with(*kind_id, || (None, HashMap::default()));
+            let components =
+                components.get_or_insert_with(*kind_id, || (None, StableHashMap::default()));
             let arch_comp_info = ArchetypeComponentInfo {
                 storage_type: StorageType::SparseSet,
                 archetype_component_id,

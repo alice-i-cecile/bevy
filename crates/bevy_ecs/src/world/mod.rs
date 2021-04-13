@@ -6,7 +6,7 @@ mod world_cell;
 #[cfg(test)]
 mod tests;
 
-use bevy_utils::HashMap;
+use bevy_utils::{HashMap, StableHashMap};
 pub use entity_ref::*;
 pub use pointer::*;
 pub use spawn_batch::*;
@@ -887,7 +887,7 @@ impl World {
                             ),
                             storage_type: StorageType::Table,
                         }),
-                        HashMap::default(),
+                        StableHashMap::default(),
                     ),
                 );
                 *archetype_component_count += 1;
