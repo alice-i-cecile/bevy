@@ -163,6 +163,8 @@ impl World {
 
         // FIXME(Relationships) why does this need to be created, we cant create all sparsesets
         // upfront for all targets :/
+        //
+        // hi boxy: ^ because ReadFetch and friends just dive right in and .get().unwrap()
 
         // ensure sparse set is created for SparseSet components
         if storage_type == StorageType::SparseSet {

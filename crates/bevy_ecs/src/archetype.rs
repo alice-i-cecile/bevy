@@ -137,7 +137,33 @@ pub struct Archetype {
     >,
 }
 
+// FIXME(Relationships) hashmap iters are nondet and causing tests to fail
+
+pub struct KindTargetsIter<'a> {
+    no_target: Option<()>,
+    targets: std::collections::hash_map::Keys<'a, Entity, ArchetypeComponentInfo>,
+}
+
+impl<'a> Iterator for KindTargetsIter<'a> {
+    type Item = Option<Entity>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.targets.next() {
+            Some(&target) => Some(Some(target)),
+            None => self.no_target.take().map(|_| None),
+        }
+    }
+}
+
 impl Archetype {
+    pub fn targets_of_kind(&self, kind: RelationKindId) -> Option<KindTargetsIter> {
+        let targets = self.components.get(kind)?;
+        Some(KindTargetsIter {
+            no_target: targets.0.as_ref().map(|_| ()),
+            targets: targets.1.keys(),
+        })
+    }
+
     pub fn new(
         id: ArchetypeId,
         table_id: TableId,

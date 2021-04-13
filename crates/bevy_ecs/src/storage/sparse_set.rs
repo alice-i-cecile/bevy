@@ -388,32 +388,50 @@ impl_sparse_set_index!(u8, u16, u32, u64, usize);
 
 #[derive(Default)]
 pub struct SparseSets {
-    sets: SparseSet<RelationKindId, (ComponentSparseSet, HashMap<Entity, ComponentSparseSet>)>,
+    sets: SparseSet<
+        RelationKindId,
+        (
+            Option<ComponentSparseSet>,
+            HashMap<Entity, ComponentSparseSet>,
+        ),
+    >,
 }
 
 impl SparseSets {
+    // FIXME(Relationships) call this in register_component
+    pub fn try_insert_sets_of_kind(&mut self, kind: RelationKindId) {
+        self.sets
+            .get_or_insert_with(kind, || (None, HashMap::default()));
+    }
+
+    pub fn get_sets_of_kind(
+        &self,
+        kind: RelationKindId,
+    ) -> Option<&(
+        Option<ComponentSparseSet>,
+        HashMap<Entity, ComponentSparseSet>,
+    )> {
+        self.sets.get(kind)
+    }
+
     pub fn get_or_insert(
         &mut self,
         relation_kind: &RelationshipKindInfo,
         target: Option<Entity>,
     ) -> &mut ComponentSparseSet {
-        if !self.sets.contains(relation_kind.id()) {
-            self.sets.insert(
-                relation_kind.id(),
-                (ComponentSparseSet::new(relation_kind.data_layout(), 64), {
-                    let mut hm = HashMap::default();
-                    if let Some(target) = target {
-                        hm.insert(
-                            target,
-                            ComponentSparseSet::new(relation_kind.data_layout(), 64),
-                        );
-                    }
-                    hm
-                }),
-            );
-        }
+        let sets = self
+            .sets
+            .get_or_insert_with(relation_kind.id(), || (None, HashMap::default()));
 
-        self.get_mut(relation_kind.id(), target).unwrap()
+        match target {
+            None => sets
+                .0
+                .get_or_insert_with(|| ComponentSparseSet::new(relation_kind.data_layout(), 64)),
+            Some(target) => sets
+                .1
+                .entry(target)
+                .or_insert_with(|| ComponentSparseSet::new(relation_kind.data_layout(), 64)),
+        }
     }
 
     pub fn get(
@@ -423,7 +441,7 @@ impl SparseSets {
     ) -> Option<&ComponentSparseSet> {
         match &target {
             Some(target) => self.sets.get(component_id)?.1.get(target),
-            None => self.sets.get(component_id).map(|v| &v.0),
+            None => self.sets.get(component_id)?.0.as_ref(),
         }
     }
 
@@ -434,13 +452,15 @@ impl SparseSets {
     ) -> Option<&mut ComponentSparseSet> {
         match &target {
             Some(target) => self.sets.get_mut(component_id)?.1.get_mut(target),
-            None => self.sets.get_mut(component_id).map(|v| &mut v.0),
+            None => self.sets.get_mut(component_id)?.0.as_mut(),
         }
     }
 
     pub(crate) fn check_change_ticks(&mut self, change_tick: u32) {
         for set in self.sets.values_mut() {
-            set.0.check_change_ticks(change_tick);
+            if let Some(set) = &mut set.0 {
+                set.check_change_ticks(change_tick);
+            }
             for set in set.1.values_mut() {
                 set.check_change_ticks(change_tick);
             }
