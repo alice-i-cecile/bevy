@@ -613,6 +613,11 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for WriteFetch<T> {
     }
 }
 
+pub enum Either<T, U> {
+    T(T),
+    U(U),
+}
+
 pub struct Relation<T: Component>(std::marker::PhantomData<T>, [u8]);
 
 impl<T: Component> WorldQuery for &Relation<T> {
@@ -706,11 +711,6 @@ pub struct ReadRelationFetch<T> {
 
 unsafe impl<T: Component> ReadOnlyFetch for ReadRelationFetch<T> {}
 
-pub enum Either<T, U> {
-    T(T),
-    U(U),
-}
-
 pub enum RelationAccess<'w, 's, T: Component> {
     Table {
         current_idx: usize,
@@ -727,6 +727,14 @@ pub enum RelationAccess<'w, 's, T: Component> {
         iter: Either<crate::archetype::KindTargetsIter<'w>, std::slice::Iter<'s, Entity>>,
         p: PhantomData<&'w T>,
     },
+}
+
+impl<'w, 's, T: Component> RelationAccess<'w, 's, T> {
+    pub fn single(&mut self) -> <Self as Iterator>::Item {
+        let ret = self.next().unwrap();
+        assert!(matches!(self.next(), None));
+        ret
+    }
 }
 
 impl<'w, 's, T: Component> Iterator for RelationAccess<'w, 's, T> {
@@ -879,6 +887,326 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for ReadRelationFetch<T> {
         RelationAccess::Table {
             columns: table.columns.get(self.relation_kind).unwrap(),
             current_idx: table_row,
+            iter,
+            p: PhantomData,
+        }
+    }
+}
+
+impl<T: Component> WorldQuery for &mut Relation<T> {
+    type Fetch = WriteRelationFetch<T>;
+    type State = WriteRelationState<T>;
+}
+
+pub struct WriteRelationState<T> {
+    p: PhantomData<T>,
+    relation_kind: RelationKindId,
+    storage_type: StorageType,
+}
+
+unsafe impl<T: Component> FetchState for WriteRelationState<T> {
+    type RelationFilter = smallvec::SmallVec<[Entity; 4]>;
+
+    fn init(world: &mut World) -> Self {
+        // FIXME(Relationships) call world.register_component instead?
+        let kind_info = world.relationships.get_component_kind_or_insert(
+            TypeId::of::<T>(),
+            ComponentDescriptor::from_generic::<T>(StorageType::Table),
+        );
+        world
+            .storages
+            .sparse_sets
+            .try_insert_sets_of_kind(kind_info.id());
+
+        Self {
+            p: PhantomData,
+            relation_kind: kind_info.id(),
+            storage_type: kind_info.data_layout().storage_type(),
+        }
+    }
+
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
+        access.add_write(self.relation_kind);
+    }
+
+    fn update_archetype_component_access(
+        &self,
+        archetype: &Archetype,
+        access: &mut Access<ArchetypeComponentId>,
+    ) {
+        if self.matches_archetype(archetype, &Default::default()) {
+            let targets = archetype.components.get(self.relation_kind).unwrap();
+            if let Some(id) = &targets.0 {
+                access.add_write(id.archetype_component_id);
+            }
+            for id in targets.1.values() {
+                access.add_write(id.archetype_component_id);
+            }
+        }
+    }
+
+    fn matches_archetype(
+        &self,
+        archetype: &Archetype,
+        relation_filter: &SmallVec<[Entity; 4]>,
+    ) -> bool {
+        if archetype.components.get(self.relation_kind).is_none() {
+            return false;
+        }
+        relation_filter
+            .iter()
+            .all(|target| archetype.contains(self.relation_kind, Some(*target)))
+    }
+
+    fn matches_table(&self, table: &Table, relation_filter: &SmallVec<[Entity; 4]>) -> bool {
+        if table.columns.get(self.relation_kind).is_none() {
+            return false;
+        }
+        relation_filter
+            .iter()
+            .all(|target| table.has_column(self.relation_kind, Some(*target)))
+    }
+}
+
+pub struct WriteRelationFetch<T> {
+    relation_kind: RelationKindId,
+    relation_filter_ptr: *const [Entity],
+    last_change_tick: u32,
+    change_tick: u32,
+
+    table_ptr: *const Table,
+    archetype_ptr: *const Archetype,
+    entity_table_rows: *const [usize],
+    entities: *const [Entity],
+    sparse_sets: *const SparseSets,
+
+    storage_type: StorageType,
+    p: PhantomData<T>,
+}
+
+pub enum RelationAccessMut<'w, 's, T: Component> {
+    Table {
+        current_idx: usize,
+        columns: &'w (Option<Column>, StableHashMap<Entity, Column>),
+        iter: Either<crate::storage::ColIter<'w>, std::slice::Iter<'s, Entity>>,
+        last_change_tick: u32,
+        change_tick: u32,
+        p: PhantomData<&'w T>,
+    },
+    Sparse {
+        current_entity: Entity,
+        sparse_sets: &'w (
+            Option<ComponentSparseSet>,
+            HashMap<Entity, ComponentSparseSet>,
+        ),
+        iter: Either<crate::archetype::KindTargetsIter<'w>, std::slice::Iter<'s, Entity>>,
+        last_change_tick: u32,
+        change_tick: u32,
+        p: PhantomData<&'w T>,
+    },
+}
+
+impl<'w, 's, T: Component> RelationAccessMut<'w, 's, T> {
+    pub fn single(&mut self) -> <Self as Iterator>::Item {
+        let ret = self.next().unwrap();
+        assert!(matches!(self.next(), None));
+        ret
+    }
+}
+
+impl<'w, 's, T: Component> Iterator for RelationAccessMut<'w, 's, T> {
+    type Item = (Option<Entity>, Mut<'w, T>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Table {
+                current_idx,
+                columns,
+                iter,
+                last_change_tick,
+                change_tick,
+                ..
+            } => match iter {
+                Either::T(col_iter) => unsafe {
+                    let (target, col) = col_iter.next()?;
+                    let ptr = col.get_unchecked(*current_idx) as *mut T;
+                    Some((
+                        target,
+                        Mut {
+                            value: &mut *ptr,
+                            // FIXME(Relationships) once we implement Changed<Relation<T>> we should test
+                            // that this works, until then I have no idea if i've hooked up all the ticks
+                            // stuff correctly... Oh well....
+                            component_ticks: &mut *col.get_ticks_mut_ptr().add(*current_idx),
+                            last_change_tick: *last_change_tick,
+                            change_tick: *change_tick,
+                        },
+                    ))
+                },
+                Either::U(target_iter) => {
+                    let target = target_iter.next()?;
+                    // FIXME(Relationships) do we want `T None` to be yielded from a `Relation<T>` query
+                    // honestly there are a lot of places we need to think about this, for example the
+                    // add_relation_filter method takes `Entity` not `Option<Entity>` lol
+                    match columns.1.get(target) {
+                        Some(col) => unsafe {
+                            let ptr = col.get_unchecked(*current_idx) as *mut T;
+                            Some((
+                                Some(*target),
+                                Mut {
+                                    value: &mut *ptr,
+                                    component_ticks: &mut *col
+                                        .get_ticks_mut_ptr()
+                                        .add(*current_idx),
+                                    last_change_tick: *last_change_tick,
+                                    change_tick: *change_tick,
+                                },
+                            ))
+                        },
+                        None => unreachable!(),
+                    }
+                }
+            },
+            Self::Sparse {
+                current_entity,
+                sparse_sets,
+                iter,
+                last_change_tick,
+                change_tick,
+                ..
+            } => {
+                // FIXME(Relationships) do we want `T None` to be yielded from a `Relation<T>` query
+                // honestly there are a lot of places we need to think about this, for example the
+                // add_relation_filter method takes `Entity` not `Option<Entity>` lol
+                let target = match iter {
+                    Either::T(target_iter) => target_iter.next()?,
+                    Either::U(target_iter) => Some(*target_iter.next()?),
+                };
+
+                let set = match target {
+                    None => sparse_sets.0.as_ref().unwrap(),
+                    Some(target) => sparse_sets.1.get(&target).unwrap(),
+                };
+
+                unsafe {
+                    let (ptr, ticks) = set.get_with_ticks(*current_entity).unwrap();
+                    let ptr = ptr as *mut T;
+
+                    Some((
+                        target,
+                        Mut {
+                            value: &mut *ptr,
+                            component_ticks: &mut *ticks,
+                            last_change_tick: *last_change_tick,
+                            change_tick: *change_tick,
+                        },
+                    ))
+                }
+            }
+        }
+    }
+}
+
+impl<'w, 's, T: Component> Fetch<'w, 's> for WriteRelationFetch<T> {
+    type Item = RelationAccessMut<'w, 's, T>;
+    type State = WriteRelationState<T>;
+    type RelationFilter = SmallVec<[Entity; 4]>;
+
+    unsafe fn init(
+        world: &World,
+        state: &Self::State,
+        relation_filter: &Self::RelationFilter,
+        last_change_tick: u32,
+        change_tick: u32,
+    ) -> Self {
+        Self {
+            relation_kind: state.relation_kind,
+            relation_filter_ptr: relation_filter.as_slice(),
+            last_change_tick,
+            change_tick,
+
+            table_ptr: 0x0 as _,
+            archetype_ptr: 0x0 as _,
+            entity_table_rows: &[],
+            entities: &[],
+            sparse_sets: &world.storages.sparse_sets,
+
+            storage_type: state.storage_type,
+            p: PhantomData,
+        }
+    }
+
+    fn is_dense(&self) -> bool {
+        match self.storage_type {
+            StorageType::Table => true,
+            StorageType::SparseSet => false,
+        }
+    }
+
+    unsafe fn set_archetype(
+        &mut self,
+        _state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
+        archetype: &Archetype,
+        tables: &Tables,
+    ) {
+        self.entity_table_rows = archetype.entity_table_rows();
+        self.archetype_ptr = archetype;
+        self.table_ptr = &tables[archetype.table_id()];
+        self.entities = archetype.entities();
+    }
+
+    unsafe fn set_table(
+        &mut self,
+        _state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
+        table: &Table,
+    ) {
+        self.table_ptr = table;
+    }
+
+    unsafe fn archetype_fetch(&mut self, archetype_index: usize) -> Self::Item {
+        match self.storage_type {
+            StorageType::Table => {
+                let table_row = (&*self.entity_table_rows)[archetype_index];
+                self.table_fetch(table_row)
+            }
+            StorageType::SparseSet => {
+                let target_filters = &*self.relation_filter_ptr;
+                let sparse_sets = &*self.sparse_sets;
+                let archetype = &*self.archetype_ptr;
+
+                let iter = match target_filters.len() {
+                    0 => Either::T(archetype.targets_of_kind(self.relation_kind).unwrap()),
+                    _ => Either::U(target_filters.iter()),
+                };
+
+                RelationAccessMut::Sparse {
+                    current_entity: (&*self.entities)[archetype_index],
+                    sparse_sets: sparse_sets.get_sets_of_kind(self.relation_kind).unwrap(),
+                    change_tick: self.change_tick,
+                    last_change_tick: self.last_change_tick,
+                    iter,
+                    p: PhantomData,
+                }
+            }
+        }
+    }
+
+    unsafe fn table_fetch(&mut self, table_row: usize) -> Self::Item {
+        let table = &*self.table_ptr;
+
+        let target_filters = &*self.relation_filter_ptr;
+        let iter = match target_filters.len() {
+            0 => Either::T(table.columns_of_kind(self.relation_kind).unwrap()),
+            _ => Either::U(target_filters.iter()),
+        };
+
+        RelationAccessMut::Table {
+            columns: table.columns.get(self.relation_kind).unwrap(),
+            current_idx: table_row,
+            change_tick: self.change_tick,
+            last_change_tick: self.last_change_tick,
             iter,
             p: PhantomData,
         }

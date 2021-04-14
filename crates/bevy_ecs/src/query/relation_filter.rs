@@ -88,6 +88,13 @@ impl<Kind: Component> SpecifiesRelation<Kind, Intrinsic> for &Relation<Kind> {
         relation_filter.push(entity);
     }
 }
+impl<Kind: Component> SpecifiesRelation<Kind, Intrinsic> for &mut Relation<Kind> {
+    type RelationFilter = <<Self as WorldQuery>::State as FetchState>::RelationFilter;
+    fn __add_target_filter(entity: Entity, relation_filter: &mut smallvec::SmallVec<[Entity; 4]>) {
+        relation_filter.push(entity);
+    }
+}
+
 impl<Kind: Component, Path, Q: WorldQuery, F: WorldQuery>
     SpecifiesRelation<Kind, InData<Kind, Path>> for QueryRelationFilter<Q, F>
 where
