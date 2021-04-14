@@ -4,9 +4,8 @@ use crate::{
     CoreStage, PluginGroup, PluginGroupBuilder, StartupStage,
 };
 use bevy_ecs::{
-    component::{Component, ComponentDescriptor},
-    event::Events,
     component::{Component, StorageType},
+    event::Events,
     schedule::{
         RunOnce, Schedule, Stage, StageLabel, State, SystemDescriptor, SystemSet, SystemStage,
     },

@@ -20,7 +20,6 @@ pub mod prelude {
         bundle::Bundle,
         entity::Entity,
         event::{EventReader, EventWriter},
-        query::{Added, ChangeTrackers, Changed, Or, QueryState, With, WithBundle, Without},
         query::{
             Added, ChangeTrackers, Changed, Or, QueryRelationFilter, QueryState, Relation, With,
             WithBundle, Without,
