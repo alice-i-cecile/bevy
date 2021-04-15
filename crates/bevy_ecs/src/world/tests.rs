@@ -1,4 +1,4 @@
-use crate::component::StorageType;
+use crate::component::{ComponentDescriptor, StorageType};
 use crate::prelude::*;
 
 #[test]
@@ -9,7 +9,9 @@ fn relation_spawn() {
 fn relation_spawn_raw(storage_type: StorageType) {
     let mut world = World::new();
 
-    world.register_component::<ChildOf>(storage_type).unwrap();
+    world
+        .register_component(ComponentDescriptor::new::<ChildOf>(storage_type))
+        .unwrap();
 
     struct ChildOf;
 
@@ -39,7 +41,9 @@ fn relation_query_raw(storage_type: StorageType) {
 
     let mut world = World::new();
 
-    world.register_component::<ChildOf>(storage_type).unwrap();
+    world
+        .register_component(ComponentDescriptor::new::<ChildOf>(storage_type))
+        .unwrap();
 
     let parent1 = world.spawn().id();
     let child1 = world.spawn().insert_relation(ChildOf, parent1).id();
@@ -90,7 +94,9 @@ fn relation_access_raw(storage_type: StorageType) {
     }
     let mut world = World::new();
 
-    world.register_component::<ChildOf>(storage_type).unwrap();
+    world
+        .register_component(ComponentDescriptor::new::<ChildOf>(storage_type))
+        .unwrap();
 
     let random_parent = world.spawn().id();
     let parent1 = world.spawn().id();
@@ -233,7 +239,7 @@ fn relation_query_mut_raw(storage_type: StorageType) {
 
     let mut world = World::new();
     world
-        .register_component::<MyRelation>(storage_type)
+        .register_component(ComponentDescriptor::new::<MyRelation>(storage_type))
         .unwrap();
 
     let target1 = world.spawn().insert(Fragment::<1>).id();

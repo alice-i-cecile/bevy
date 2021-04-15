@@ -16,8 +16,8 @@ use crate::{
     archetype::{ArchetypeComponentId, ArchetypeComponentInfo, ArchetypeId, Archetypes},
     bundle::{Bundle, Bundles},
     component::{
-        Component, ComponentDescriptor, ComponentTicks, RelationKindId, Relationships,
-        RelationshipsError, StorageType,
+        Component, ComponentDescriptor, ComponentTicks, Components, RelationKindId, RelationsError,
+        StorageType,
     },
     entity::{Entities, Entity},
     query::{FilterFetch, QueryState, WorldQuery},
@@ -46,7 +46,7 @@ impl Default for WorldId {
 pub struct World {
     id: WorldId,
     pub(crate) entities: Entities,
-    pub(crate) relationships: Relationships,
+    pub(crate) components: Components,
     pub(crate) archetypes: Archetypes,
     pub(crate) storages: Storages,
     pub(crate) bundles: Bundles,
@@ -64,7 +64,7 @@ impl Default for World {
         Self {
             id: Default::default(),
             entities: Default::default(),
-            relationships: Default::default(),
+            components: Default::default(),
             archetypes: Default::default(),
             storages: Default::default(),
             bundles: Default::default(),
@@ -106,14 +106,14 @@ impl World {
 
     /// Retrieves this world's [Components] collection
     #[inline]
-    pub fn components(&self) -> &Relationships {
-        &self.relationships
+    pub fn components(&self) -> &Components {
+        &self.components
     }
 
     /// Retrieves a mutable reference to this world's [Components] collection
     #[inline]
-    pub fn components_mut(&mut self) -> &mut Relationships {
-        &mut self.relationships
+    pub fn components_mut(&mut self) -> &mut Components {
+        &mut self.components
     }
 
     /// Retrieves this world's [Storages] collection
@@ -135,14 +135,15 @@ impl World {
         WorldCell::new(self)
     }
 
-    /// Registers a new component using the given [DataLayout]. Components do not need to be manually
-    /// registered. This just provides a way to override default configuration. Attempting to register a component
-    /// with a type that has already been used by [World] will result in an error.
+    /// Registers a new component using the given [ComponentDescriptor]. Components do not need to
+    /// be manually registered. This just provides a way to override default configuration.
+    /// Attempting to register a component with a type that has already been used by [World]
+    /// will result in an error.
     ///
     /// The default component storage type can be overridden like this:
     ///
     /// ```
-    /// use bevy_ecs::{component::{StorageType}, world::World};
+    /// use bevy_ecs::{component::{ComponentDescriptor, StorageType}, world::World};
     ///
     /// struct Position {
     ///   x: f32,
@@ -150,21 +151,14 @@ impl World {
     /// }
     ///
     /// let mut world = World::new();
-    /// world.register_component::<Position>(StorageType::SparseSet).unwrap();
+    /// world.register_component(ComponentDescriptor::new::<Position>(StorageType::SparseSet)).unwrap();
     /// ```
-    pub fn register_component<T: Component>(
+    pub fn register_component(
         &mut self,
-        storage_type: StorageType,
-    ) -> Result<RelationKindId, RelationshipsError> {
-        let relation_kind = self.relationships.new_component_kind(
-            TypeId::of::<T>(),
-            ComponentDescriptor::from_generic::<T>(storage_type),
-        );
-
-        // FIXME(Relationships) why does this need to be created, we cant create all sparsesets
-        // upfront for all targets :/
-        //
-        // hi boxy: ^ because ReadFetch and friends just dive right in and .get().unwrap()
+        descriptor: ComponentDescriptor,
+    ) -> Result<RelationKindId, RelationsError> {
+        let storage_type = descriptor.storage_type();
+        let relation_kind = self.components.new_relation_kind(descriptor);
 
         // ensure sparse set is created for SparseSet components
         if storage_type == StorageType::SparseSet {
@@ -173,8 +167,6 @@ impl World {
 
         Ok(relation_kind.id())
     }
-
-    // FIXME(Relationships) add a register_component_dynamic that takes a `ComponentLayout` instead of a generic
 
     /// Retrieves an [EntityRef] that exposes read-only operations for the given `entity`.
     /// This will panic if the `entity` does not exist. Use [World::get_entity] if you want
@@ -513,7 +505,7 @@ impl World {
     /// Returns an iterator of entities that had components of type `T` removed
     /// since the last call to [World::clear_trackers].
     pub fn removed<T: Component>(&self) -> std::iter::Cloned<std::slice::Iter<'_, Entity>> {
-        if let Some(kind_info) = self.relationships.get_component_kind(TypeId::of::<T>()) {
+        if let Some(kind_info) = self.components.get_component_kind(TypeId::of::<T>()) {
             self.removed_with_id(kind_info.id(), None)
         } else {
             [].iter().cloned()
@@ -547,15 +539,12 @@ impl World {
     /// Resources are "unique" data of a given type.
     #[inline]
     pub fn insert_resource<T: Component>(&mut self, value: T) {
-        let kind_id = self
-            .relationships
-            .get_resource_kind_or_insert(
-                TypeId::of::<T>(),
-                ComponentDescriptor::from_generic::<T>(StorageType::Table),
-            )
+        let component_id = self
+            .components
+            .get_resource_kind_or_insert(ComponentDescriptor::new::<T>(StorageType::Table))
             .id();
         // SAFE: component_id just initialized and corresponds to resource of type T
-        unsafe { self.insert_resource_with_id(kind_id, value) };
+        unsafe { self.insert_resource_with_id(component_id, value) };
     }
 
     /// Inserts a new non-send resource with the given `value`.
@@ -564,11 +553,10 @@ impl World {
     pub fn insert_non_send<T: 'static>(&mut self, value: T) {
         self.validate_non_send_access::<T>();
         let component_id = self
-            .relationships
-            .get_resource_kind_or_insert(
-                TypeId::of::<T>(),
-                ComponentDescriptor::non_send_from_generic::<T>(StorageType::Table),
-            )
+            .components
+            .get_resource_kind_or_insert(ComponentDescriptor::new_non_send_sync::<T>(
+                StorageType::Table,
+            ))
             .id();
         // SAFE: component_id just initialized and corresponds to resource of type T
         unsafe { self.insert_resource_with_id(component_id, value) };
@@ -594,13 +582,10 @@ impl World {
     /// make sure you're on main thread if T isn't Send + Sync
     #[allow(unused_unsafe)]
     pub unsafe fn remove_resource_unchecked<T: 'static>(&mut self) -> Option<T> {
-        let kind_id = self
-            .relationships
-            .get_resource_kind(TypeId::of::<T>())?
-            .id();
+        let component_id = self.components.get_resource_kind(TypeId::of::<T>())?.id();
         let resource_archetype = self.archetypes.resource_mut();
         let unique_components = resource_archetype.unique_components_mut();
-        let column = unique_components.get_mut(kind_id)?;
+        let column = unique_components.get_mut(component_id)?;
         if column.is_empty() {
             return None;
         }
@@ -614,7 +599,7 @@ impl World {
     /// Returns `true` if a resource of type `T` exists. Otherwise returns `false`.
     #[inline]
     pub fn contains_resource<T: Component>(&self) -> bool {
-        self.relationships
+        self.components
             .get_resource_kind(TypeId::of::<T>())
             .and_then(|kind_info| self.get_populated_resource_column(kind_info.id()))
             .is_some()
@@ -624,16 +609,13 @@ impl World {
     /// Resources are "unique" data of a given type.
     #[inline]
     pub fn get_resource<T: Component>(&self) -> Option<&T> {
-        let component_id = self
-            .relationships
-            .get_resource_kind(TypeId::of::<T>())?
-            .id();
+        let component_id = self.components.get_resource_kind(TypeId::of::<T>())?.id();
         unsafe { self.get_resource_with_id(component_id) }
     }
 
     pub fn is_resource_added<T: Component>(&self) -> bool {
         let component_id = self
-            .relationships
+            .components
             .get_resource_kind(TypeId::of::<T>())
             .unwrap()
             .id();
@@ -644,7 +626,7 @@ impl World {
 
     pub fn is_resource_changed<T: Component>(&self) -> bool {
         let component_id = self
-            .relationships
+            .components
             .get_resource_kind(TypeId::of::<T>())
             .unwrap()
             .id();
@@ -683,10 +665,7 @@ impl World {
     /// that only one mutable access exists at a time.
     #[inline]
     pub unsafe fn get_resource_unchecked_mut<T: Component>(&self) -> Option<Mut<'_, T>> {
-        let component_id = self
-            .relationships
-            .get_resource_kind(TypeId::of::<T>())?
-            .id();
+        let component_id = self.components.get_resource_kind(TypeId::of::<T>())?.id();
         self.get_resource_unchecked_mut_with_id(component_id)
     }
 
@@ -694,10 +673,7 @@ impl World {
     /// [None] Resources are "unique" data of a given type.
     #[inline]
     pub fn get_non_send_resource<T: 'static>(&self) -> Option<&T> {
-        let component_id = self
-            .relationships
-            .get_resource_kind(TypeId::of::<T>())?
-            .id();
+        let component_id = self.components.get_resource_kind(TypeId::of::<T>())?.id();
         // SAFE: component id matches type T
         unsafe { self.get_non_send_with_id(component_id) }
     }
@@ -718,10 +694,7 @@ impl World {
     /// ensure that only one mutable access exists at a time.
     #[inline]
     pub unsafe fn get_non_send_resource_unchecked_mut<T: 'static>(&self) -> Option<Mut<'_, T>> {
-        let component_id = self
-            .relationships
-            .get_resource_kind(TypeId::of::<T>())?
-            .id();
+        let component_id = self.components.get_resource_kind(TypeId::of::<T>())?.id();
         self.get_non_send_unchecked_mut_with_id(component_id)
     }
 
@@ -747,7 +720,7 @@ impl World {
         f: impl FnOnce(&mut World, Mut<T>) -> U,
     ) -> U {
         let component_id = self
-            .relationships
+            .components
             .get_resource_kind(TypeId::of::<T>())
             .unwrap_or_else(|| panic!("resource does not exist: {}", std::any::type_name::<T>()))
             .id();
@@ -871,7 +844,7 @@ impl World {
             .get_unchecked_mut(ArchetypeId::resource().index());
         let resource_archetype_components = &mut resource_archetype.components;
         let archetype_component_count = &mut self.archetypes.archetype_component_count;
-        let components = &self.relationships;
+        let components = &self.components;
         resource_archetype
             .unique_components
             .get_or_insert_with(component_id, || {
@@ -891,18 +864,15 @@ impl World {
                     ),
                 );
                 *archetype_component_count += 1;
-                let component_info = components.get_relation_kind(component_id).unwrap();
+                let component_info = components.get_relation_kind(component_id);
                 Column::with_capacity(component_info, None, 1)
             })
     }
 
     pub(crate) fn initialize_resource<T: Component>(&mut self) -> RelationKindId {
         let component_id = self
-            .relationships
-            .get_resource_kind_or_insert(
-                TypeId::of::<T>(),
-                ComponentDescriptor::from_generic::<T>(StorageType::Table),
-            )
+            .components
+            .get_resource_kind_or_insert(ComponentDescriptor::new::<T>(StorageType::Table))
             .id();
         // SAFE: resource initialized above
         unsafe { self.initialize_resource_internal(component_id) };
@@ -911,11 +881,10 @@ impl World {
 
     pub(crate) fn initialize_non_send_resource<T: 'static>(&mut self) -> RelationKindId {
         let component_id = self
-            .relationships
-            .get_resource_kind_or_insert(
-                TypeId::of::<T>(),
-                ComponentDescriptor::non_send_from_generic::<T>(StorageType::Table),
-            )
+            .components
+            .get_resource_kind_or_insert(ComponentDescriptor::new_non_send_sync::<T>(
+                StorageType::Table,
+            ))
             .id();
         // SAFE: resource initialized above
         unsafe { self.initialize_resource_internal(component_id) };
@@ -1002,7 +971,7 @@ impl fmt::Debug for World {
             .field("id", &self.id)
             .field("entity_count", &self.entities.len())
             .field("archetype_count", &self.archetypes.len())
-            .field("component_count", &self.relationships.kinds_len())
+            .field("component_count", &self.components.len())
             .field(
                 "resource_count",
                 &self.archetypes.resource().unique_components.len(),

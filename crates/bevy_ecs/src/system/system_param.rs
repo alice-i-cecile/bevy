@@ -2,7 +2,7 @@ use crate::{
     archetype::{Archetype, Archetypes},
     bundle::Bundles,
     component::{
-        Component, ComponentDescriptor, ComponentTicks, RelationKindId, Relationships, StorageType,
+        Component, ComponentDescriptor, ComponentTicks, Components, RelationKindId, StorageType,
     },
     entity::{Entities, Entity},
     query::{FilterFetch, FilteredAccess, FilteredAccessSet, QueryState, WorldQuery},
@@ -153,7 +153,6 @@ fn assert_component_access_compatibility(
     system_name: &str,
     query_type: &'static str,
     filter_type: &'static str,
-    // FIXME(Relationships) is this right
     system_access: &FilteredAccessSet<RelationKindId>,
     current: &FilteredAccess<RelationKindId>,
     world: &World,
@@ -166,9 +165,8 @@ fn assert_component_access_compatibility(
         .drain(..)
         .map(|component_id| {
             world
-                .relationships
+                .components
                 .get_relation_kind(component_id)
-                .unwrap()
                 .data_layout()
                 .name()
         })
@@ -245,24 +243,24 @@ unsafe impl<T: Component> SystemParamState for ResState<T> {
     type Config = ();
 
     fn init(world: &mut World, system_state: &mut SystemState, _config: Self::Config) -> Self {
-        let kind_id = world.initialize_resource::<T>();
+        let component_id = world.initialize_resource::<T>();
         let combined_access = system_state.component_access_set.combined_access_mut();
-        if combined_access.has_write(kind_id) {
+        if combined_access.has_write(component_id) {
             panic!(
                 "Res<{}> in system {} conflicts with a previous ResMut<{0}> access. Allowing this would break Rust's mutability rules. Consider removing the duplicate access.",
                 std::any::type_name::<T>(), system_state.name);
         }
-        combined_access.add_read(kind_id);
+        combined_access.add_read(component_id);
 
         let resource_archetype = world.archetypes.resource();
         let archetype_component_id = resource_archetype
-            .get_archetype_component_id(kind_id, None)
+            .get_archetype_component_id(component_id, None)
             .unwrap();
         system_state
             .archetype_component_access
             .add_read(archetype_component_id);
         Self {
-            component_id: kind_id,
+            component_id,
             marker: PhantomData,
         }
     }
@@ -405,28 +403,28 @@ unsafe impl<T: Component> SystemParamState for ResMutState<T> {
     type Config = ();
 
     fn init(world: &mut World, system_state: &mut SystemState, _config: Self::Config) -> Self {
-        let kind_id = world.initialize_resource::<T>();
+        let component_id = world.initialize_resource::<T>();
         let combined_access = system_state.component_access_set.combined_access_mut();
-        if combined_access.has_write(kind_id) {
+        if combined_access.has_write(component_id) {
             panic!(
                 "ResMut<{}> in system {} conflicts with a previous ResMut<{0}> access. Allowing this would break Rust's mutability rules. Consider removing the duplicate access.",
                 std::any::type_name::<T>(), system_state.name);
-        } else if combined_access.has_read(kind_id) {
+        } else if combined_access.has_read(component_id) {
             panic!(
                 "ResMut<{}> in system {} conflicts with a previous Res<{0}> access. Allowing this would break Rust's mutability rules. Consider removing the duplicate access.",
                 std::any::type_name::<T>(), system_state.name);
         }
-        combined_access.add_write(kind_id);
+        combined_access.add_write(component_id);
 
         let resource_archetype = world.archetypes.resource();
         let archetype_component_id = resource_archetype
-            .get_archetype_component_id(kind_id, None)
+            .get_archetype_component_id(component_id, None)
             .unwrap();
         system_state
             .archetype_component_access
             .add_write(archetype_component_id);
         Self {
-            component_id: kind_id,
+            component_id,
             marker: PhantomData,
         }
     }
@@ -669,11 +667,8 @@ unsafe impl<T: Component> SystemParamState for RemovedComponentsState<T> {
     fn init(world: &mut World, _system_state: &mut SystemState, _config: Self::Config) -> Self {
         Self {
             component_id: world
-                .relationships
-                .get_component_kind_or_insert(
-                    TypeId::of::<T>(),
-                    ComponentDescriptor::from_generic::<T>(StorageType::Table),
-                )
+                .components
+                .get_component_kind_or_insert(ComponentDescriptor::new::<T>(StorageType::Table))
                 .id(),
             marker: PhantomData,
         }
@@ -767,24 +762,24 @@ unsafe impl<T: 'static> SystemParamState for NonSendState<T> {
     fn init(world: &mut World, system_state: &mut SystemState, _config: Self::Config) -> Self {
         system_state.set_non_send();
 
-        let kind_id = world.initialize_non_send_resource::<T>();
+        let component_id = world.initialize_non_send_resource::<T>();
         let combined_access = system_state.component_access_set.combined_access_mut();
-        if combined_access.has_write(kind_id) {
+        if combined_access.has_write(component_id) {
             panic!(
                 "NonSend<{}> in system {} conflicts with a previous mutable resource access ({0}). Allowing this would break Rust's mutability rules. Consider removing the duplicate access.",
                 std::any::type_name::<T>(), system_state.name);
         }
-        combined_access.add_read(kind_id);
+        combined_access.add_read(component_id);
 
         let resource_archetype = world.archetypes.resource();
         let archetype_component_id = resource_archetype
-            .get_archetype_component_id(kind_id, None)
+            .get_archetype_component_id(component_id, None)
             .unwrap();
         system_state
             .archetype_component_access
             .add_read(archetype_component_id);
         Self {
-            component_id: kind_id,
+            component_id,
             marker: PhantomData,
         }
     }
@@ -894,32 +889,34 @@ unsafe impl<T: 'static> SystemParamState for NonSendMutState<T> {
     fn init(world: &mut World, system_state: &mut SystemState, _config: Self::Config) -> Self {
         system_state.set_non_send();
 
-        let kind_info = world.relationships.get_resource_kind_or_insert(
-            TypeId::of::<T>(),
-            ComponentDescriptor::non_send_from_generic::<T>(StorageType::Table),
-        );
+        let component_id = world
+            .components
+            .get_resource_kind_or_insert(ComponentDescriptor::new_non_send_sync::<T>(
+                StorageType::Table,
+            ))
+            .id();
 
         let combined_access = system_state.component_access_set.combined_access_mut();
-        if combined_access.has_write(kind_info.id()) {
+        if combined_access.has_write(component_id) {
             panic!(
                 "NonSendMut<{}> in system {} conflicts with a previous mutable resource access ({0}). Allowing this would break Rust's mutability rules. Consider removing the duplicate access.",
                 std::any::type_name::<T>(), system_state.name);
-        } else if combined_access.has_read(kind_info.id()) {
+        } else if combined_access.has_read(component_id) {
             panic!(
                 "NonSendMut<{}> in system {} conflicts with a previous immutable resource access ({0}). Allowing this would break Rust's mutability rules. Consider removing the duplicate access.",
                 std::any::type_name::<T>(), system_state.name);
         }
-        combined_access.add_write(kind_info.id());
+        combined_access.add_write(component_id);
 
         let resource_archetype = world.archetypes.resource();
         let archetype_component_id = resource_archetype
-            .get_archetype_component_id(kind_info.id(), None)
+            .get_archetype_component_id(component_id, None)
             .unwrap();
         system_state
             .archetype_component_access
             .add_write(archetype_component_id);
         Self {
-            component_id: kind_info.id(),
+            component_id,
             marker: PhantomData,
         }
     }
@@ -988,7 +985,7 @@ impl<'a> SystemParamFetch<'a> for ArchetypesState {
     }
 }
 
-impl<'a> SystemParam for &'a Relationships {
+impl<'a> SystemParam for &'a Components {
     type Fetch = ComponentsState;
 }
 
@@ -1007,7 +1004,7 @@ unsafe impl SystemParamState for ComponentsState {
 }
 
 impl<'a> SystemParamFetch<'a> for ComponentsState {
-    type Item = &'a Relationships;
+    type Item = &'a Components;
 
     #[inline]
     unsafe fn get_param(

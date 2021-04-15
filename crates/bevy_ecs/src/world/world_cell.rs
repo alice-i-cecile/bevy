@@ -185,7 +185,7 @@ impl<'w> WorldCell<'w> {
     pub fn get_resource<T: Component>(&self) -> Option<WorldBorrow<'_, T>> {
         let component_id = self
             .world
-            .relationships
+            .components
             .get_resource_kind(TypeId::of::<T>())?
             .id();
         let resource_archetype = self.world.archetypes.resource();
@@ -202,7 +202,7 @@ impl<'w> WorldCell<'w> {
     pub fn get_resource_mut<T: Component>(&self) -> Option<WorldBorrowMut<'_, T>> {
         let component_id = self
             .world
-            .relationships
+            .components
             .get_resource_kind(TypeId::of::<T>())?
             .id();
         let resource_archetype = self.world.archetypes.resource();
@@ -222,7 +222,7 @@ impl<'w> WorldCell<'w> {
     pub fn get_non_send<T: 'static>(&self) -> Option<WorldBorrow<'_, T>> {
         let component_id = self
             .world
-            .relationships
+            .components
             .get_resource_kind(TypeId::of::<T>())?
             .id();
         let resource_archetype = self.world.archetypes.resource();
@@ -239,7 +239,7 @@ impl<'w> WorldCell<'w> {
     pub fn get_non_send_mut<T: 'static>(&self) -> Option<WorldBorrowMut<'_, T>> {
         let component_id = self
             .world
-            .relationships
+            .components
             .get_resource_kind(TypeId::of::<T>())?
             .id();
         let resource_archetype = self.world.archetypes.resource();
@@ -313,7 +313,7 @@ mod tests {
         }
 
         let u32_component_id = world
-            .relationships
+            .components
             .get_resource_kind(TypeId::of::<u32>())
             .unwrap()
             .id();

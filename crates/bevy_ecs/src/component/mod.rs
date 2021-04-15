@@ -48,7 +48,7 @@ pub struct ComponentDescriptor {
 }
 
 impl ComponentDescriptor {
-    pub unsafe fn new(
+    pub unsafe fn new_dynamic(
         name: Option<String>,
         storage_type: StorageType,
         is_send_and_sync: bool,
@@ -65,7 +65,7 @@ impl ComponentDescriptor {
         }
     }
 
-    pub fn from_generic<T: Component>(storage_type: StorageType) -> Self {
+    pub fn new<T: Component>(storage_type: StorageType) -> Self {
         Self {
             name: std::any::type_name::<T>().to_string(),
             storage_type,
@@ -76,7 +76,7 @@ impl ComponentDescriptor {
         }
     }
 
-    pub fn non_send_from_generic<T: 'static>(storage_type: StorageType) -> Self {
+    pub fn new_non_send_sync<T: 'static>(storage_type: StorageType) -> Self {
         Self {
             name: std::any::type_name::<T>().to_string(),
             storage_type,
@@ -146,12 +146,12 @@ impl SparseSetIndex for RelationKindId {
 }
 
 #[derive(Debug)]
-pub struct RelationshipKindInfo {
+pub struct RelationKindInfo {
     data: ComponentDescriptor,
     id: RelationKindId,
 }
 
-impl RelationshipKindInfo {
+impl RelationKindInfo {
     pub fn data_layout(&self) -> &ComponentDescriptor {
         &self.data
     }
@@ -161,17 +161,9 @@ impl RelationshipKindInfo {
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
-pub struct DummyInfo {
-    rust_type: Option<TypeId>,
-    id: DummyId,
-}
-#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
-pub struct DummyId(usize);
-
-#[derive(Default, Debug)]
-pub struct Relationships {
-    kinds: Vec<RelationshipKindInfo>,
+#[derive(Debug, Default)]
+pub struct Components {
+    kinds: Vec<RelationKindInfo>,
     // These are only used by bevy. Scripting/dynamic components should
     // use their own hashmap to lookup CustomId -> RelationshipKindId
     component_indices: HashMap<TypeId, RelationKindId, fxhash::FxBuildHasher>,
@@ -179,80 +171,86 @@ pub struct Relationships {
 }
 
 #[derive(Debug, Error)]
-pub enum RelationshipsError {
-    #[error("A relationship of type {0:?} already exists")]
-    RelationshipAlreadyExists(RelationKindId),
+pub enum RelationsError {
+    #[error("A component of type {name:?} ({type_id:?}) already exists")]
+    ComponentAlreadyExists { type_id: TypeId, name: String },
+    #[error("A resource of type {name:?} ({type_id:?}) already exists")]
+    ResourceAlreadyExists { type_id: TypeId, name: String },
 }
 
-impl Relationships {
-    pub fn new_component_kind(
-        &mut self,
-        type_id: TypeId,
-        layout: ComponentDescriptor,
-    ) -> &RelationshipKindInfo {
+impl Components {
+    pub fn new_relation_kind(&mut self, layout: ComponentDescriptor) -> &RelationKindInfo {
         let id = RelationKindId(self.kinds.len());
-        let prev_inserted = self.component_indices.insert(type_id, id);
-        assert!(prev_inserted.is_none());
-        self.kinds.push(RelationshipKindInfo { data: layout, id });
+        self.kinds.push(RelationKindInfo { data: layout, id });
         self.kinds.last().unwrap()
     }
 
-    pub fn new_resource_kind(
-        &mut self,
-        type_id: TypeId,
-        layout: ComponentDescriptor,
-    ) -> &RelationshipKindInfo {
+    pub fn new_component_kind(&mut self, layout: ComponentDescriptor) -> &RelationKindInfo {
         let id = RelationKindId(self.kinds.len());
-        let prev_inserted = self.resource_indices.insert(type_id, id);
+        let prev_inserted = self.component_indices.insert(layout.type_id().unwrap(), id);
         assert!(prev_inserted.is_none());
-        self.kinds.push(RelationshipKindInfo { data: layout, id });
+        self.kinds.push(RelationKindInfo { data: layout, id });
         self.kinds.last().unwrap()
     }
 
-    pub fn get_component_kind(&self, type_id: TypeId) -> Option<&RelationshipKindInfo> {
+    pub fn new_resource_kind(&mut self, layout: ComponentDescriptor) -> &RelationKindInfo {
+        let id = RelationKindId(self.kinds.len());
+        let prev_inserted = self.resource_indices.insert(layout.type_id().unwrap(), id);
+        assert!(prev_inserted.is_none());
+        self.kinds.push(RelationKindInfo { data: layout, id });
+        self.kinds.last().unwrap()
+    }
+
+    pub fn get_relation_kind(&self, id: RelationKindId) -> &RelationKindInfo {
+        self.kinds.get(id.0).unwrap()
+    }
+
+    pub fn get_component_kind(&self, type_id: TypeId) -> Option<&RelationKindInfo> {
         let id = self.component_indices.get(&type_id).copied()?;
         Some(&self.kinds[id.0])
     }
 
-    pub fn get_resource_kind(&self, type_id: TypeId) -> Option<&RelationshipKindInfo> {
+    pub fn get_resource_kind(&self, type_id: TypeId) -> Option<&RelationKindInfo> {
         let id = self.resource_indices.get(&type_id).copied()?;
         Some(&self.kinds[id.0])
     }
 
     pub fn get_component_kind_or_insert(
         &mut self,
-        type_id: TypeId,
         layout: ComponentDescriptor,
-    ) -> &RelationshipKindInfo {
-        match self.component_indices.get(&type_id).copied() {
+    ) -> &RelationKindInfo {
+        match self
+            .component_indices
+            .get(&layout.type_id().unwrap())
+            .copied()
+        {
             Some(kind) => &self.kinds[kind.0],
-            None => self.new_component_kind(type_id, layout),
+            None => self.new_component_kind(layout),
         }
     }
 
     pub fn get_resource_kind_or_insert(
         &mut self,
-        type_id: TypeId,
         layout: ComponentDescriptor,
-    ) -> &RelationshipKindInfo {
-        match self.resource_indices.get(&type_id).copied() {
+    ) -> &RelationKindInfo {
+        match self
+            .resource_indices
+            .get(&layout.type_id().unwrap())
+            .copied()
+        {
             Some(kind) => &self.kinds[kind.0],
-            None => self.new_resource_kind(type_id, layout),
+            None => self.new_resource_kind(layout),
         }
     }
 
     #[inline]
-    pub fn kinds_len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.kinds.len()
     }
 
     #[inline]
-    pub fn kinds_is_empty(&self) -> bool {
-        self.kinds.len() == 0
-    }
-
-    pub fn get_relation_kind(&self, id: RelationKindId) -> Option<&RelationshipKindInfo> {
-        self.kinds.get(id.0)
+    pub fn is_empty(&self) -> bool {
+        self.kinds.is_empty()
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
     archetype::ArchetypeId,
-    component::{ComponentTicks, RelationKindId, RelationshipKindInfo, Relationships},
+    component::{ComponentTicks, Components, RelationKindId, RelationKindInfo},
     entity::Entity,
     storage::{BlobVec, SparseSet},
 };
@@ -41,7 +41,7 @@ pub struct Column {
 impl Column {
     #[inline]
     pub fn with_capacity(
-        relation_kind: &RelationshipKindInfo,
+        relation_kind: &RelationKindInfo,
         target: Option<Entity>,
         capacity: usize,
     ) -> Self {
@@ -235,7 +235,7 @@ impl Table {
         self.archetypes.push(archetype_id);
     }
 
-    pub fn add_column(&mut self, component_kind: &RelationshipKindInfo, target: Option<Entity>) {
+    pub fn add_column(&mut self, component_kind: &RelationKindInfo, target: Option<Entity>) {
         let column = self
             .columns
             .get_or_insert_with(component_kind.id(), || (None, StableHashMap::default()));
@@ -520,7 +520,7 @@ impl Tables {
     pub unsafe fn get_id_or_insert(
         &mut self,
         component_ids: &[(RelationKindId, Option<Entity>)],
-        components: &Relationships,
+        components: &Components,
     ) -> TableId {
         let mut hasher = AHasher::default();
         component_ids.hash(&mut hasher);
@@ -529,10 +529,7 @@ impl Tables {
         *self.table_ids.entry(hash).or_insert_with(move || {
             let mut table = Table::with_capacity(0, component_ids.len(), 64);
             for component_id in component_ids.iter() {
-                table.add_column(
-                    components.get_relation_kind(component_id.0).unwrap(),
-                    component_id.1,
-                );
+                table.add_column(components.get_relation_kind(component_id.0), component_id.1);
             }
             tables.push(table);
             TableId(tables.len() - 1)
@@ -569,19 +566,16 @@ impl IndexMut<TableId> for Tables {
 #[cfg(test)]
 mod tests {
     use crate::{
-        component::{ComponentDescriptor, Relationships, StorageType, TypeInfo},
+        component::{ComponentDescriptor, Components, StorageType},
         entity::Entity,
         storage::Table,
     };
 
     #[test]
     fn table() {
-        let mut components = Relationships::default();
-        let type_info = TypeInfo::of::<usize>();
-        let component_id = components.get_component_kind_or_insert(
-            type_info.type_id(),
-            ComponentDescriptor::from_generic::<usize>(StorageType::Table),
-        );
+        let mut components = Components::default();
+        let component_id = components
+            .get_component_kind_or_insert(ComponentDescriptor::new::<usize>(StorageType::Table));
         let mut table = Table::with_capacity(0, 1, 64);
         table.add_column(component_id, None);
         let entities = (0..200).map(Entity::new).collect::<Vec<_>>();

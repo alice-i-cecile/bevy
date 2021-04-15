@@ -493,7 +493,6 @@ impl SystemStage {
                             world
                                 .components()
                                 .get_relation_kind(*id)
-                                .unwrap()
                                 .data_layout()
                                 .name()
                         })

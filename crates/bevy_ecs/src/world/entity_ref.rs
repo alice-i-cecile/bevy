@@ -4,7 +4,7 @@ use crate::{
     archetype::{Archetype, ArchetypeId, Archetypes, ComponentStatus},
     bundle::{Bundle, BundleInfo},
     component::{
-        Component, ComponentDescriptor, ComponentTicks, RelationKindId, Relationships, StorageType,
+        Component, ComponentDescriptor, ComponentTicks, Components, RelationKindId, StorageType,
     },
     component::{Component, ComponentId, ComponentTicks, Components, StorageType},
     entity::{Entities, Entity, EntityLocation},
@@ -53,11 +53,7 @@ impl<'w> EntityRef<'w> {
 
     #[inline]
     pub fn contains_relation<T: 'static>(&self, target: Entity) -> bool {
-        let kind = match self
-            .world
-            .relationships
-            .get_component_kind(TypeId::of::<T>())
-        {
+        let kind = match self.world.components.get_component_kind(TypeId::of::<T>()) {
             Some(kind) => kind,
             None => return false,
         };
@@ -147,11 +143,7 @@ impl<'w> EntityMut<'w> {
 
     #[inline]
     pub fn contains_relation<T: 'static>(&self, target: Entity) -> bool {
-        let kind = match self
-            .world
-            .relationships
-            .get_component_kind(TypeId::of::<T>())
-        {
+        let kind = match self.world.components.get_component_kind(TypeId::of::<T>()) {
             Some(kind) => kind,
             None => return false,
         };
@@ -223,14 +215,14 @@ impl<'w> EntityMut<'w> {
         let bundle_info = self
             .world
             .bundles
-            .init_info::<T>(&mut self.world.relationships);
+            .init_info::<T>(&mut self.world.components);
         let (archetype, bundle_status, archetype_index) = unsafe {
             Self::move_archetype_from_insert(
                 self.entity,
                 &mut self.location,
                 &mut self.world.entities,
                 &mut self.world.archetypes,
-                &mut self.world.relationships,
+                &mut self.world.components,
                 &mut self.world.storages,
                 &bundle_info,
             )
@@ -258,10 +250,10 @@ impl<'w> EntityMut<'w> {
         let change_tick = self.world.change_tick();
 
         let bundle_info = {
-            let kind = self.world.relationships.get_component_kind_or_insert(
-                TypeId::of::<T>(),
-                ComponentDescriptor::from_generic::<T>(StorageType::Table),
-            );
+            let kind = self
+                .world
+                .components
+                .get_component_kind_or_insert(ComponentDescriptor::new::<T>(StorageType::Table));
             self.world
                 .bundles
                 .init_relationship_info(kind, Some(target))
@@ -273,7 +265,7 @@ impl<'w> EntityMut<'w> {
                 &mut self.location,
                 &mut self.world.entities,
                 &mut self.world.archetypes,
-                &mut self.world.relationships,
+                &mut self.world.components,
                 &mut self.world.storages,
                 &bundle_info,
             )
@@ -303,7 +295,7 @@ impl<'w> EntityMut<'w> {
         location: &mut EntityLocation,
         entities: &mut Entities,
         archetypes: &'arch mut Archetypes,
-        relationships: &mut Relationships,
+        relationships: &mut Components,
         storages: &mut Storages,
         bundle_info: &BundleInfo,
     ) -> (&'arch Archetype, &'arch [ComponentStatus], usize) {
@@ -448,7 +440,7 @@ impl<'w> EntityMut<'w> {
     pub fn remove_bundle<T: Bundle>(&mut self) -> Option<T> {
         let archetypes = &mut self.world.archetypes;
         let storages = &mut self.world.storages;
-        let relationships = &mut self.world.relationships;
+        let relationships = &mut self.world.components;
         let entities = &mut self.world.entities;
         let removed_components = &mut self.world.removed_components;
 
@@ -533,7 +525,7 @@ impl<'w> EntityMut<'w> {
     pub fn remove_relation<T: Component>(&mut self, target: Entity) -> Option<T> {
         let kind = self
             .world
-            .relationships
+            .components
             .get_component_kind(TypeId::of::<T>())?;
         let bundle_info = self
             .world
@@ -543,7 +535,7 @@ impl<'w> EntityMut<'w> {
         let kind_id = kind.id();
         let archetypes = &mut self.world.archetypes;
         let storages = &mut self.world.storages;
-        let relationships = &mut self.world.relationships;
+        let relationships = &mut self.world.components;
         let entities = &mut self.world.entities;
         let removed_components = &mut self.world.removed_components;
 
@@ -625,7 +617,7 @@ impl<'w> EntityMut<'w> {
     pub fn remove_bundle_intersection<T: Bundle>(&mut self) {
         let archetypes = &mut self.world.archetypes;
         let storages = &mut self.world.storages;
-        let relationships = &mut self.world.relationships;
+        let relationships = &mut self.world.components;
         let entities = &mut self.world.entities;
         let removed_components = &mut self.world.removed_components;
 
@@ -793,10 +785,7 @@ unsafe fn get_component(
     location: EntityLocation,
 ) -> Option<*mut u8> {
     let archetype = &world.archetypes[location.archetype_id];
-    let kind_info = world
-        .relationships
-        .get_relation_kind(relation_kind)
-        .unwrap();
+    let kind_info = world.components.get_relation_kind(relation_kind);
     match kind_info.data_layout().storage_type() {
         StorageType::Table => {
             let table = &world.storages.tables[archetype.table_id()];
@@ -824,10 +813,7 @@ unsafe fn get_component_and_ticks(
     location: EntityLocation,
 ) -> Option<(*mut u8, *mut ComponentTicks)> {
     let archetype = &world.archetypes[location.archetype_id];
-    let kind_info = world
-        .relationships
-        .get_relation_kind(relation_kind)
-        .unwrap();
+    let kind_info = world.components.get_relation_kind(relation_kind);
     match kind_info.data_layout().storage_type() {
         StorageType::Table => {
             let table = &world.storages.tables[archetype.table_id()];
@@ -854,7 +840,7 @@ unsafe fn get_component_and_ticks(
 /// `component_id` must be valid
 #[inline]
 unsafe fn remove_component(
-    relationships: &Relationships,
+    relationships: &Components,
     storages: &mut Storages,
     archetype: &Archetype,
     removed_relationships: &mut SparseSet<
@@ -866,7 +852,7 @@ unsafe fn remove_component(
     entity: Entity,
     location: EntityLocation,
 ) -> *mut u8 {
-    let kind_info = relationships.get_relation_kind(relation_kind).unwrap();
+    let kind_info = relationships.get_relation_kind(relation_kind);
 
     let targets = removed_relationships.get_or_insert_with(relation_kind, || Default::default());
     match relation_target {
@@ -900,7 +886,7 @@ unsafe fn get_component_with_type(
     entity: Entity,
     location: EntityLocation,
 ) -> Option<*mut u8> {
-    let kind = world.relationships.get_component_kind(type_id)?;
+    let kind = world.components.get_component_kind(type_id)?;
     get_component(world, kind.id(), None, entity, location)
 }
 
@@ -912,12 +898,12 @@ pub(crate) unsafe fn get_component_and_ticks_with_type(
     entity: Entity,
     location: EntityLocation,
 ) -> Option<(*mut u8, *mut ComponentTicks)> {
-    let kind_info = world.relationships.get_component_kind(type_id)?;
+    let kind_info = world.components.get_component_kind(type_id)?;
     get_component_and_ticks(world, kind_info.id(), None, entity, location)
 }
 
 fn contains_component_with_type(world: &World, type_id: TypeId, location: EntityLocation) -> bool {
-    if let Some(kind) = world.relationships.get_component_kind(type_id) {
+    if let Some(kind) = world.components.get_component_kind(type_id) {
         contains_component_with_id(world, kind.id(), None, location)
     } else {
         false
@@ -942,7 +928,7 @@ fn contains_component_with_id(
 pub(crate) unsafe fn add_bundle_to_archetype(
     archetypes: &mut Archetypes,
     storages: &mut Storages,
-    components: &mut Relationships,
+    components: &mut Components,
     archetype_id: ArchetypeId,
     bundle_info: &BundleInfo,
 ) -> ArchetypeId {
@@ -962,7 +948,7 @@ pub(crate) unsafe fn add_bundle_to_archetype(
             bundle_status.push(ComponentStatus::Mutated);
         } else {
             bundle_status.push(ComponentStatus::Added);
-            let kind_info = components.get_relation_kind(kind_id).unwrap();
+            let kind_info = components.get_relation_kind(kind_id);
             match kind_info.data_layout().storage_type() {
                 StorageType::Table => new_table_components.push((kind_id, target)),
                 StorageType::SparseSet => {
@@ -1035,7 +1021,7 @@ pub(crate) unsafe fn add_bundle_to_archetype(
 unsafe fn remove_bundle_from_archetype(
     archetypes: &mut Archetypes,
     storages: &mut Storages,
-    components: &mut Relationships,
+    components: &mut Components,
     archetype_id: ArchetypeId,
     bundle_info: &BundleInfo,
     intersection: bool,
@@ -1065,7 +1051,7 @@ unsafe fn remove_bundle_from_archetype(
             let mut removed_sparse_set_components = Vec::new();
             for (kind_id, target) in bundle_info.relationship_ids.iter().cloned() {
                 if current_archetype.contains(kind_id, target) {
-                    let component_info = components.get_relation_kind(kind_id).unwrap();
+                    let component_info = components.get_relation_kind(kind_id);
                     match component_info.data_layout().storage_type() {
                         StorageType::Table => removed_table_components.push((kind_id, target)),
                         StorageType::SparseSet => {

@@ -1,7 +1,7 @@
 use bevy_utils::HashMap;
 
 use crate::{
-    component::{ComponentDescriptor, ComponentTicks, RelationKindId, RelationshipKindInfo},
+    component::{ComponentDescriptor, ComponentTicks, RelationKindId, RelationKindInfo},
     entity::Entity,
     storage::BlobVec,
 };
@@ -398,12 +398,6 @@ pub struct SparseSets {
 }
 
 impl SparseSets {
-    // FIXME(Relationships) call this in register_component
-    pub fn try_insert_sets_of_kind(&mut self, kind: RelationKindId) {
-        self.sets
-            .get_or_insert_with(kind, || (None, HashMap::default()));
-    }
-
     pub fn get_sets_of_kind(
         &self,
         kind: RelationKindId,
@@ -416,7 +410,7 @@ impl SparseSets {
 
     pub fn get_or_insert(
         &mut self,
-        relation_kind: &RelationshipKindInfo,
+        relation_kind: &RelationKindInfo,
         target: Option<Entity>,
     ) -> &mut ComponentSparseSet {
         let sets = self

@@ -14,7 +14,10 @@ pub use state::*;
 
 #[cfg(test)]
 mod tests {
-    use crate::{component::StorageType, world::World};
+    use crate::{
+        component::{ComponentDescriptor, StorageType},
+        world::World,
+    };
 
     #[derive(Debug, Eq, PartialEq)]
     struct A(usize);
@@ -40,7 +43,7 @@ mod tests {
     fn multi_storage_query() {
         let mut world = World::new();
         world
-            .register_component::<A>(StorageType::SparseSet)
+            .register_component(ComponentDescriptor::new::<A>(StorageType::SparseSet))
             .unwrap();
 
         world.spawn().insert_bundle((A(1), B(2)));

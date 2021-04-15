@@ -37,11 +37,10 @@ impl DynamicScene {
             }
 
             for (kind_id, _) in archetype.components() {
-                let reflect_component = world
-                    .components()
-                    .get_relation_kind(kind_id)
-                    // FIXME(Relationships) getting the TypeId here looks suspicious :thinking:
-                    .and_then(|info| type_registry.get(info.data_layout().type_id().unwrap()))
+                let kind_info = world.components().get_relation_kind(kind_id);
+                // FIXME(Relationships) getting the TypeId here looks suspicious :thinking:
+                let reflect_component = type_registry
+                    .get(kind_info.data_layout().type_id().unwrap())
                     .and_then(|registration| registration.data::<ReflectComponent>());
                 if let Some(reflect_component) = reflect_component {
                     for (i, entity) in archetype.entities().iter().enumerate() {

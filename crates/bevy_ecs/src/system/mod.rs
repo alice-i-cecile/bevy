@@ -22,7 +22,6 @@ mod tests {
     use crate::{
         archetype::Archetypes,
         bundle::Bundles,
-        component::Relationships,
         entity::{Entities, Entity},
         query::{Added, Changed, Or, With, Without},
         schedule::{Schedule, Stage, SystemStage},
@@ -380,7 +379,6 @@ mod tests {
         world.spawn().insert_bundle((42, true));
         fn sys(
             archetypes: &Archetypes,
-            components: &Relationships,
             entities: &Entities,
             bundles: &Bundles,
             query: Query<Entity, With<i32>>,
@@ -398,12 +396,6 @@ mod tests {
                 // FIXME(Relationships) make sure this is using `(RelationKindId, Option<Entity>)`
                 let mut bundle_components = bundle_info.components().to_vec();
                 bundle_components.sort();
-                for (kind_id, _) in bundle_components.iter() {
-                    assert!(
-                        components.get_relation_kind(*kind_id).is_some(),
-                        "every bundle component exists in Components"
-                    );
-                }
                 assert_eq!(
                     bundle_components, archetype_components,
                     "entity's bundle components exactly match entity's archetype components"

@@ -3,14 +3,14 @@ pub use bevy_ecs_macros::Bundle;
 use crate::{
     archetype::ComponentStatus,
     component::{
-        Component, ComponentTicks, RelationKindId, RelationshipKindInfo, Relationships,
-        StorageType, TypeInfo,
+        Component, ComponentTicks, Components, RelationKindId, RelationKindInfo, StorageType,
+        TypeInfo,
     },
     entity::Entity,
     storage::{SparseSetIndex, SparseSets, Table},
 };
 use bevy_ecs_macros::all_tuples;
-use std::{any::TypeId, collections::HashMap, u8};
+use std::{any::TypeId, collections::HashMap};
 
 /// An ordered collection of components, commonly used for spawning entities, and adding and
 /// removing components in bulk.
@@ -237,7 +237,7 @@ impl Bundles {
 
     pub(crate) fn init_relationship_info<'a>(
         &'a mut self,
-        relation_kind: &RelationshipKindInfo,
+        relation_kind: &RelationKindInfo,
         relation_target: Option<Entity>,
     ) -> &'a BundleInfo {
         let bundle_infos = &mut self.bundle_infos;
@@ -259,7 +259,7 @@ impl Bundles {
 
     pub(crate) fn init_info<'a, T: Bundle>(
         &'a mut self,
-        components: &mut Relationships,
+        components: &mut Components,
     ) -> &'a BundleInfo {
         let bundle_infos = &mut self.bundle_infos;
         let id = self.bundle_ids.entry(TypeId::of::<T>()).or_insert_with(|| {
@@ -278,14 +278,13 @@ fn initialize_bundle(
     bundle_type_name: &'static str,
     type_info: &[TypeInfo],
     id: BundleId,
-    components: &mut Relationships,
+    components: &mut Components,
 ) -> BundleInfo {
     let mut component_ids = Vec::new();
     let mut storage_types = Vec::new();
 
     for type_info in type_info {
-        let kind_info =
-            components.get_component_kind_or_insert(type_info.type_id(), type_info.clone().into());
+        let kind_info = components.get_component_kind_or_insert(type_info.clone().into());
         component_ids.push((kind_info.id(), None));
         storage_types.push(kind_info.data_layout().storage_type());
     }
