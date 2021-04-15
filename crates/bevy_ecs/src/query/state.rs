@@ -35,8 +35,6 @@ where
     pub(crate) archetype_component_access: Access<ArchetypeComponentId>,
     pub(crate) component_access: FilteredAccess<RelationKindId>,
 
-    // FIXME(Relationships) We need to clear this on `Query` drop impl so that filters dont
-    // persist across system executions
     pub(crate) current_relation_filter: QueryRelationFilter<Q, F>,
     pub(crate) relation_filter_accesses: HashMap<QueryRelationFilter<Q, F>, QueryAccessCache>,
 

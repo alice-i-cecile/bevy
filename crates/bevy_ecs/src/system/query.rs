@@ -1,6 +1,7 @@
 use crate::{
     component::Component,
     entity::Entity,
+    prelude::QueryRelationFilter,
     query::{
         Fetch, FilterFetch, QueryEntityError, QueryIter, QueryState, ReadOnlyFetch, WorldQuery,
     },
@@ -323,6 +324,8 @@ where
             .get_unchecked_manual(self.world, entity, self.last_change_tick, self.change_tick)
     }
 
+    // FIXME(Relationships) we likely want get_relation methods for both `T *` and `T some_entity`
+
     /// Gets a reference to the [`Entity`]'s [`Component`] of the given type. This will fail if the
     /// entity does not have the given component type or if the given component type does not match
     /// this query.
@@ -465,6 +468,19 @@ where
                 Self,
             >())),
         }
+    }
+
+    pub fn set_relation_filter(&mut self, relation_filter: QueryRelationFilter<Q, F>) {
+        self.state.set_relation_filter(&self.world, relation_filter);
+    }
+}
+
+impl<'w, Q: WorldQuery, F: WorldQuery> Drop for Query<'w, Q, F>
+where
+    F::Fetch: FilterFetch,
+{
+    fn drop(&mut self) {
+        self.set_relation_filter(QueryRelationFilter::new());
     }
 }
 
