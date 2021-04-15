@@ -653,6 +653,10 @@ unsafe impl<T: Component> FetchState for ReadRelationState<T> {
     }
 
     fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
+        if access.access().has_write(self.relation_kind) {
+            panic!("&Relation<{}> conflicts with a previous access in this query. Shared access cannot coincide with exclusive access.",
+                std::any::type_name::<T>());
+        }
         access.add_read(self.relation_kind);
     }
 
@@ -926,6 +930,10 @@ unsafe impl<T: Component> FetchState for WriteRelationState<T> {
     }
 
     fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
+        if access.access().has_read(self.relation_kind) {
+            panic!("&mut Relation<{}> conflicts with a previous access in this query. Mutable access must be exclusive.",
+                std::any::type_name::<T>());
+        }
         access.add_write(self.relation_kind);
     }
 

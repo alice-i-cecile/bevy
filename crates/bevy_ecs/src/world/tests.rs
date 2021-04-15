@@ -349,6 +349,56 @@ fn relation_query_mut_raw(storage_type: StorageType) {
     assert!(was_targeter1 && was_targeter2 && was_targeter3);
 }
 
+macro_rules! query_conflict_tests {
+    ($($name:ident => <$param:ty>)*) => {
+        $(
+            #[test]
+            #[should_panic]
+            fn $name() {
+                let mut world = World::new();
+                world.query::<$param>();
+            }
+        )*
+    };
+}
+
+query_conflict_tests!(
+    mut_and_rel_mut => <(&mut u32, &mut Relation<u32>)>
+    rel_mut_and_mut => <(&mut Relation<u32>, &mut u32)>
+    rel_and_mut => <(&Relation<u32>, &mut u32)>
+    mut_and_rel => <(&mut u32, &Relation<u32>)>
+    rel_mut_and_ref => <(&mut Relation<u32>, &u32)>
+    ref_and_rel_mut => <(&u32, &mut Relation<u32>)>
+);
+
+macro_rules! no_query_conflict_tests {
+    ($($name:ident => <$param:ty>)*) => {
+        $(
+            #[test]
+            fn $name() {
+                let mut world = World::new();
+                world.query::<$param>();
+            }
+        )*
+    };
+}
+
+no_query_conflict_tests!(
+    rel_and_rel => <(&Relation<u32>, &Relation<u32>)>
+    rel_and_diff_rel => <(&Relation<u32>, &Relation<u64>)>
+    rel_mut_and_diff_rel_mut => <(&mut Relation<u32>, &mut Relation<u64>)>
+    rel_and_diff_rel_mut => <(&Relation<u32>, &mut Relation<u64>)>
+    rel_mut_and_diff_rel => <(&mut Relation<u32>, &Relation<u64>)>
+    rel_and_ref => <(&Relation<u32>, &u32)>
+    ref_and_rel => <(&u32, &Relation<u32>)>
+    rel_mut_and_diff_ref => <(&mut Relation<u32>, &u64)>
+    rel_and_diff_mut => <(&Relation<u32>, &mut u64)>
+    ref_and_diff_rel_mut => <(&u64, &mut Relation<u32>)>
+    mut_and_diff_rel => <(&mut u64, &Relation<u32>)>
+    mut_and_diff_rel_mut => <(&mut u64, &mut Relation<u32>)>
+    rel_mut_and_diff_mut => <(&mut Relation<u32>, &mut u64)>
+);
+
 #[test]
 fn compiles() {
     let mut world = World::new();
