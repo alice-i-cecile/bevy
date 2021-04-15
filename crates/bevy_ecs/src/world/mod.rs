@@ -501,7 +501,6 @@ impl World {
         QueryState::new(self)
     }
 
-    // FIXME(Relationships) add a method for doing this for `T *`
     /// Returns an iterator of entities that had components of type `T` removed
     /// since the last call to [World::clear_trackers].
     pub fn removed<T: Component>(&self) -> std::iter::Cloned<std::slice::Iter<'_, Entity>> {
@@ -512,6 +511,7 @@ impl World {
         }
     }
 
+    // FIXME(Relationships) implement a way to set `*` for the target
     /// Returns an iterator of entities that had components with the given `component_id` removed
     /// since the last call to [World::clear_trackers].
     ///
@@ -851,9 +851,6 @@ impl World {
                 resource_archetype_components.insert(
                     component_id,
                     (
-                        // FIXME(Relationships) I'm not sure if we should really be overwriting the entry in
-                        // resource_archetype_components, this *is* for resources so we should never really
-                        // be inserting anything into the hashmap so this is probably fine /shrug
                         Some(ArchetypeComponentInfo {
                             archetype_component_id: ArchetypeComponentId::new(
                                 *archetype_component_count,

@@ -59,8 +59,12 @@ impl<Q: WorldQuery, F: WorldQuery> QueryRelationFilter<Q, F> {
         Self::default()
     }
 
-    // FIXME(Relationships) should the behaviour for this be target AND other_target AND other_other_target
-    // or should it be target OR other_target OR other_other_target
+    // FIXME(Relationships) currently we cant set a target filter of `None`- rather than allowing this
+    // we should stop storing `target` as an `Option<Entity>` and instead have a statically knowable
+    // ID represent the `None` case
+    // FIXME(Relationships) implement ability to say `target1` OR `target2`, currently it works like
+    // `target1` AND `target2`. This mirrors how queries normally work `Query<(&T, &U)>`- `T` AND `U`
+    // but we need to also be able to mirror `Or<(T, U)>`
     pub fn add_target_filter<T: Component, Path>(mut self, target: Entity) -> Self
     where
         Self: SpecifiesRelation<T, Path, RelationFilter = Self>,

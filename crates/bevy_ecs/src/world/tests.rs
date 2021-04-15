@@ -144,8 +144,6 @@ fn relation_access_raw(storage_type: StorageType) {
     assert_eq!(
         accessor.next().unwrap(),
         (
-            // FIXME(Relationships) honestly having Option<Entity> is really annoying
-            // i should just make a statically knowable entity to represent None...
             Some(parent1),
             &ChildOf {
                 despawn_recursive: true
@@ -165,8 +163,6 @@ fn relation_access_raw(storage_type: StorageType) {
     assert_eq!(
         accessor.next().unwrap(),
         (
-            // FIXME(Relationships) honestly having Option<Entity> is really annoying
-            // i should just make a statically knowable entity to represent None...
             Some(parent2),
             &ChildOf {
                 despawn_recursive: false

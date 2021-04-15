@@ -324,7 +324,7 @@ where
             .get_unchecked_manual(self.world, entity, self.last_change_tick, self.change_tick)
     }
 
-    // FIXME(Relationships) we likely want get_relation methods for both `T *` and `T some_entity`
+    // FIXME(Relationships) implement get_relation methods for both `T *` and `T some_entity`
 
     /// Gets a reference to the [`Entity`]'s [`Component`] of the given type. This will fail if the
     /// entity does not have the given component type or if the given component type does not match

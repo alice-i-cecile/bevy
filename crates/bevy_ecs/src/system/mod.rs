@@ -393,7 +393,6 @@ mod tests {
                     .get_id(std::any::TypeId::of::<(i32, bool)>())
                     .expect("Bundle used to spawn entity should exist");
                 let bundle_info = bundles.get(bundle_id).unwrap();
-                // FIXME(Relationships) make sure this is using `(RelationKindId, Option<Entity>)`
                 let mut bundle_components = bundle_info.components().to_vec();
                 bundle_components.sort();
                 assert_eq!(

@@ -744,9 +744,6 @@ impl<'w, 's, T: Component> Iterator for RelationAccess<'w, 's, T> {
                 },
                 Either::U(target_iter) => {
                     let target = target_iter.next()?;
-                    // FIXME(Relationships) do we want `T None` to be yielded from a `Relation<T>` query
-                    // honestly there are a lot of places we need to think about this, for example the
-                    // add_relation_filter method takes `Entity` not `Option<Entity>` lol
                     match columns.1.get(target) {
                         Some(col) => unsafe {
                             let ptr = col.get_unchecked(*current_idx) as *mut T;
@@ -762,9 +759,6 @@ impl<'w, 's, T: Component> Iterator for RelationAccess<'w, 's, T> {
                 iter,
                 ..
             } => {
-                // FIXME(Relationships) do we want `T None` to be yielded from a `Relation<T>` query
-                // honestly there are a lot of places we need to think about this, for example the
-                // add_relation_filter method takes `Entity` not `Option<Entity>` lol
                 let target = match iter {
                     Either::T(target_iter) => target_iter.next()?,
                     Either::U(target_iter) => Some(*target_iter.next()?),
@@ -1032,9 +1026,6 @@ impl<'w, 's, T: Component> Iterator for RelationAccessMut<'w, 's, T> {
                 },
                 Either::U(target_iter) => {
                     let target = target_iter.next()?;
-                    // FIXME(Relationships) do we want `T None` to be yielded from a `Relation<T>` query
-                    // honestly there are a lot of places we need to think about this, for example the
-                    // add_relation_filter method takes `Entity` not `Option<Entity>` lol
                     match columns.1.get(target) {
                         Some(col) => unsafe {
                             let ptr = col.get_unchecked(*current_idx) as *mut T;
@@ -1062,9 +1053,6 @@ impl<'w, 's, T: Component> Iterator for RelationAccessMut<'w, 's, T> {
                 change_tick,
                 ..
             } => {
-                // FIXME(Relationships) do we want `T None` to be yielded from a `Relation<T>` query
-                // honestly there are a lot of places we need to think about this, for example the
-                // add_relation_filter method takes `Entity` not `Option<Entity>` lol
                 let target = match iter {
                     Either::T(target_iter) => target_iter.next()?,
                     Either::U(target_iter) => Some(*target_iter.next()?),
