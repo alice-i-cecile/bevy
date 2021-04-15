@@ -112,7 +112,7 @@ where
         }
         let archetypes = world.archetypes();
 
-        for cache in self.relation_filter_accesses.values_mut() {
+        for (relation_filter, cache) in self.relation_filter_accesses.iter_mut() {
             let old_generation = cache.archetype_generation;
             let archetype_index_range = if old_generation == archetypes.generation() {
                 0..0
@@ -130,7 +130,7 @@ where
                     &self.fetch_state,
                     &self.filter_state,
                     &mut self.archetype_component_access,
-                    &self.current_relation_filter,
+                    &*relation_filter,
                     cache,
                     archetype,
                 );
@@ -149,7 +149,6 @@ where
         if fetch_state.matches_archetype(archetype, &relation_filter.0)
             && filter_state.matches_archetype(archetype, &relation_filter.1)
         {
-            // FIXME(Relationships) Use a new ArchetypeRelationKindId here instead
             fetch_state.update_archetype_component_access(archetype, access);
             filter_state.update_archetype_component_access(archetype, access);
 

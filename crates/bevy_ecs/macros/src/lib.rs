@@ -254,12 +254,12 @@ pub fn impl_query_set(_input: TokenStream) -> TokenStream {
                     let (#(#query,)*) = &mut self.0;
                     #(
                         // FIXME(Relationships) investigate this function
-                        for cache in #query.relation_filter_accesses.values_mut() {
+                        for (relation_filter, cache) in #query.relation_filter_accesses.iter_mut() {
                             QueryState::<#query, #filter>::new_archetype(
                                 &#query.fetch_state,
                                 &#query.filter_state,
                                 &mut #query.archetype_component_access,
-                                &#query.current_relation_filter,
+                                &*relation_filter,
                                 cache,
                                 archetype
                             );

@@ -113,12 +113,12 @@ where
 
     fn new_archetype(&mut self, archetype: &Archetype, system_state: &mut SystemState) {
         // FIXME(Relationships) investigate this function
-        for cache in self.relation_filter_accesses.values_mut() {
+        for (relation_filter, cache) in self.relation_filter_accesses.iter_mut() {
             Self::new_archetype(
                 &self.fetch_state,
                 &self.filter_state,
                 &mut self.archetype_component_access,
-                &self.current_relation_filter,
+                &*relation_filter,
                 cache,
                 archetype,
             );
