@@ -351,6 +351,34 @@ fn relation_query_mut_raw(storage_type: StorageType) {
     assert!(was_targeter1 && was_targeter2 && was_targeter3);
 }
 
+#[test]
+fn some_example_code() {
+    #[derive(PartialEq, Eq, Debug)]
+    struct MyRelation;
+
+    let mut world = World::new();
+
+    let target1 = world.spawn().id();
+    let target2 = world.spawn().id();
+    let my_entity = world
+        .spawn()
+        .insert_relation(MyRelation, target1)
+        .insert_relation(MyRelation, target2)
+        .id();
+
+    let mut iterated_entities = Vec::new();
+    let mut query = world.query::<(Entity, &Relation<MyRelation>)>();
+    for (entity, relations) in query.iter_mut(&mut world) {
+        iterated_entities.push(entity);
+        assert_eq!(
+            &relations.collect::<Vec<_>>(),
+            &[(Some(target1), &MyRelation), (Some(target2), &MyRelation)],
+        );
+    }
+
+    assert_eq!(&iterated_entities, &[my_entity]);
+}
+
 macro_rules! query_conflict_tests {
     ($($name:ident => <$param:ty>)*) => {
         $(

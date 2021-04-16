@@ -78,10 +78,21 @@ impl<'w> EntityRef<'w> {
 
     #[inline]
     pub fn get<T: Component>(&self) -> Option<&'w T> {
+        self.get_relation::<T>(None)
+    }
+
+    #[inline]
+    pub fn get_relation<T: Component>(&self, target: Option<Entity>) -> Option<&'w T> {
         // SAFE: entity location is valid and returned component is of type T
         unsafe {
-            get_component_with_type(self.world, TypeId::of::<T>(), self.entity, self.location)
-                .map(|value| &*value.cast::<T>())
+            get_component_with_type(
+                self.world,
+                TypeId::of::<T>(),
+                target,
+                self.entity,
+                self.location,
+            )
+            .map(|value| &*value.cast::<T>())
         }
     }
 
@@ -94,13 +105,33 @@ impl<'w> EntityRef<'w> {
         last_change_tick: u32,
         change_tick: u32,
     ) -> Option<Mut<'w, T>> {
-        get_component_and_ticks_with_type(self.world, TypeId::of::<T>(), self.entity, self.location)
-            .map(|(value, ticks)| Mut {
-                value: &mut *value.cast::<T>(),
-                component_ticks: &mut *ticks,
-                last_change_tick,
-                change_tick,
-            })
+        // SAFETY: Caller
+        self.get_relation_unchecked_mut(None, last_change_tick, change_tick)
+    }
+
+    /// # Safety
+    /// This allows aliased mutability. You must make sure this call does not result in multiple
+    /// mutable references to the same component
+    #[inline]
+    pub unsafe fn get_relation_unchecked_mut<T: Component>(
+        &self,
+        target: Option<Entity>,
+        last_change_tick: u32,
+        change_tick: u32,
+    ) -> Option<Mut<'w, T>> {
+        get_component_and_ticks_with_type(
+            self.world,
+            TypeId::of::<T>(),
+            target,
+            self.entity,
+            self.location,
+        )
+        .map(|(value, ticks)| Mut {
+            value: &mut *value.cast::<T>(),
+            component_ticks: &mut *ticks,
+            last_change_tick,
+            change_tick,
+        })
     }
 }
 
@@ -168,21 +199,38 @@ impl<'w> EntityMut<'w> {
 
     #[inline]
     pub fn get<T: Component>(&self) -> Option<&'w T> {
+        self.get_relation::<T>(None)
+    }
+
+    #[inline]
+    pub fn get_relation<T: Component>(&self, target: Option<Entity>) -> Option<&'w T> {
         // SAFE: entity location is valid and returned component is of type T
         unsafe {
-            get_component_with_type(self.world, TypeId::of::<T>(), self.entity, self.location)
-                .map(|value| &*value.cast::<T>())
+            get_component_with_type(
+                self.world,
+                TypeId::of::<T>(),
+                target,
+                self.entity,
+                self.location,
+            )
+            .map(|value| &*value.cast::<T>())
         }
     }
 
     #[inline]
     pub fn get_mut<T: Component>(&mut self) -> Option<Mut<'w, T>> {
+        self.get_relation_mut::<T>(None)
+    }
+
+    #[inline]
+    pub fn get_relation_mut<T: Component>(&mut self, target: Option<Entity>) -> Option<Mut<'w, T>> {
         // SAFE: world access is unique, entity location is valid, and returned component is of type
         // T
         unsafe {
             get_component_and_ticks_with_type(
                 self.world,
                 TypeId::of::<T>(),
+                target,
                 self.entity,
                 self.location,
             )
@@ -200,13 +248,30 @@ impl<'w> EntityMut<'w> {
     /// mutable references to the same component
     #[inline]
     pub unsafe fn get_unchecked_mut<T: Component>(&self) -> Option<Mut<'w, T>> {
-        get_component_and_ticks_with_type(self.world, TypeId::of::<T>(), self.entity, self.location)
-            .map(|(value, ticks)| Mut {
-                value: &mut *value.cast::<T>(),
-                component_ticks: &mut *ticks,
-                last_change_tick: self.world.last_change_tick(),
-                change_tick: self.world.read_change_tick(),
-            })
+        self.get_relation_unchecked_mut::<T>(None)
+    }
+
+    /// # Safety
+    /// This allows aliased mutability. You must make sure this call does not result in multiple
+    /// mutable references to the same component
+    #[inline]
+    pub unsafe fn get_relation_unchecked_mut<T: Component>(
+        &self,
+        target: Option<Entity>,
+    ) -> Option<Mut<'w, T>> {
+        get_component_and_ticks_with_type(
+            self.world,
+            TypeId::of::<T>(),
+            target,
+            self.entity,
+            self.location,
+        )
+        .map(|(value, ticks)| Mut {
+            value: &mut *value.cast::<T>(),
+            component_ticks: &mut *ticks,
+            last_change_tick: self.world.last_change_tick(),
+            change_tick: self.world.read_change_tick(),
+        })
     }
 
     // TODO: move relevant methods to World (add/remove bundle)
@@ -878,28 +943,32 @@ unsafe fn remove_component(
     }
 }
 
+/// Set `target` to None if you just want normal components
 /// # Safety
 /// `entity_location` must be within bounds of an archetype that exists.
 unsafe fn get_component_with_type(
     world: &World,
     type_id: TypeId,
+    target: Option<Entity>,
     entity: Entity,
     location: EntityLocation,
 ) -> Option<*mut u8> {
     let kind = world.components.get_component_kind(type_id)?;
-    get_component(world, kind.id(), None, entity, location)
+    get_component(world, kind.id(), target, entity, location)
 }
 
+/// Set `target` to None if you just want normal components
 /// # Safety
 /// `entity_location` must be within bounds of an archetype that exists.
 pub(crate) unsafe fn get_component_and_ticks_with_type(
     world: &World,
     type_id: TypeId,
+    target: Option<Entity>,
     entity: Entity,
     location: EntityLocation,
 ) -> Option<(*mut u8, *mut ComponentTicks)> {
     let kind_info = world.components.get_component_kind(type_id)?;
-    get_component_and_ticks(world, kind_info.id(), None, entity, location)
+    get_component_and_ticks(world, kind_info.id(), target, entity, location)
 }
 
 fn contains_component_with_type(world: &World, type_id: TypeId, location: EntityLocation) -> bool {
