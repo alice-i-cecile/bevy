@@ -165,11 +165,12 @@ impl RelationKindInfo {
 pub struct Components {
     kinds: Vec<RelationKindInfo>,
     // These are only used by bevy. Scripting/dynamic components should
-    // use their own hashmap to lookup CustomId -> RelationshipKindId
+    // use their own hashmap to lookup CustomId -> RelationKindId
     component_indices: HashMap<TypeId, RelationKindId, fxhash::FxBuildHasher>,
     resource_indices: HashMap<TypeId, RelationKindId, fxhash::FxBuildHasher>,
 }
 
+// FIXME(Relationships) actually return this from functions instead of panic'ing
 #[derive(Debug, Error)]
 pub enum RelationsError {
     #[error("A component of type {name:?} ({type_id:?}) already exists")]

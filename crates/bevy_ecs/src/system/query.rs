@@ -470,8 +470,9 @@ where
         }
     }
 
-    pub fn set_relation_filter(&mut self, relation_filter: QueryRelationFilter<Q, F>) {
+    pub fn set_relation_filter(&mut self, relation_filter: QueryRelationFilter<Q, F>) -> &mut Self {
         self.state.set_relation_filter(&self.world, relation_filter);
+        self
     }
 }
 

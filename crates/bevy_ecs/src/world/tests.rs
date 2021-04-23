@@ -1,3 +1,5 @@
+// FIXME(Relationships) add a .len() method to `RelationAccess` and `RelationAccessMut` maybe also implement ExactSizeIterator?
+
 use crate::component::{ComponentDescriptor, StorageType};
 use crate::prelude::*;
 
