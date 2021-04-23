@@ -41,8 +41,6 @@ pub mod prelude {
 mod tests {
     use crate::{
         bundle::Bundle,
-        component::{Component, ComponentDescriptor, ComponentId, StorageType, TypeInfo},
-        component::{Component, StorageType, TypeInfo},
         component::{Component, ComponentDescriptor, StorageType, TypeInfo},
         entity::Entity,
         query::{
@@ -1140,9 +1138,17 @@ mod tests {
         let mut world = World::new();
         let query = world.query_filtered::<&mut i32, Changed<f64>>();
 
-        let mut expected = FilteredAccess::<ComponentId>::default();
-        let i32_id = world.components.get_id(TypeId::of::<i32>()).unwrap();
-        let f64_id = world.components.get_id(TypeId::of::<f64>()).unwrap();
+        let mut expected = FilteredAccess::default();
+        let i32_id = world
+            .components
+            .get_component_kind(TypeId::of::<i32>())
+            .unwrap()
+            .id();
+        let f64_id = world
+            .components
+            .get_component_kind(TypeId::of::<f64>())
+            .unwrap()
+            .id();
         expected.add_write(i32_id);
         expected.add_read(f64_id);
         assert!(
