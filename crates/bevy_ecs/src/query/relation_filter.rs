@@ -82,9 +82,9 @@ pub trait SpecifiesRelation<Kind: Component, Path> {
 }
 
 pub struct Intrinsic;
-pub struct InData<EndItem, Inner>(PhantomData<(EndItem, Inner)>);
-pub struct InFilter<EndItem, Inner>(PhantomData<(EndItem, Inner)>);
-pub struct InTuple<EndItem, Inner, const I: usize>(PhantomData<(EndItem, Inner)>);
+pub struct InData<Inner>(PhantomData<Inner>);
+pub struct InFilter<Inner>(PhantomData<Inner>);
+pub struct InTuple<Inner, const I: usize>(PhantomData<Inner>);
 
 impl<Kind: Component> SpecifiesRelation<Kind, Intrinsic> for &Relation<Kind> {
     type RelationFilter = <<Self as WorldQuery>::State as FetchState>::RelationFilter;
@@ -99,8 +99,8 @@ impl<Kind: Component> SpecifiesRelation<Kind, Intrinsic> for &mut Relation<Kind>
     }
 }
 
-impl<Kind: Component, Path, Q: WorldQuery, F: WorldQuery>
-    SpecifiesRelation<Kind, InData<Kind, Path>> for QueryRelationFilter<Q, F>
+impl<Kind: Component, Path, Q: WorldQuery, F: WorldQuery> SpecifiesRelation<Kind, InData<Path>>
+    for QueryRelationFilter<Q, F>
 where
     Q: SpecifiesRelation<
         Kind,
@@ -113,8 +113,8 @@ where
         Q::__add_target_filter(entity, &mut relation_filter.0);
     }
 }
-impl<Kind: Component, Path, Q: WorldQuery, F: WorldQuery>
-    SpecifiesRelation<Kind, InFilter<Kind, Path>> for QueryRelationFilter<Q, F>
+impl<Kind: Component, Path, Q: WorldQuery, F: WorldQuery> SpecifiesRelation<Kind, InFilter<Path>>
+    for QueryRelationFilter<Q, F>
 where
     F: SpecifiesRelation<
         Kind,
@@ -140,11 +140,13 @@ macro_rules! count_tts {
 
 macro_rules! impl_tuple_inner {
     ([$($head: ident),*], [$($tail: ident),*]) => {
-        impl<Kind: Component, Inner, Selected, $($head: WorldQuery,)* $($tail: WorldQuery,)*>
-            SpecifiesRelation<Kind, InTuple<Kind, Inner, { count_tts!($($head)*) }>>
+        impl<Kind: Component, Inner, Selected, $($head,)* $($tail,)*>
+            SpecifiesRelation<Kind, InTuple<Inner, { count_tts!($($head)*) }>>
             for
             ($($head,)* Selected, $($tail,)*)
         where
+            $($head: WorldQuery,)*
+            $($tail: WorldQuery,)*
             Selected: WorldQuery +
                 SpecifiesRelation<
                     Kind,
