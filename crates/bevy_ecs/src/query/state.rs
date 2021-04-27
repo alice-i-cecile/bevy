@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     archetype::{Archetype, ArchetypeComponentId, ArchetypeGeneration, ArchetypeId},
-    component::RelationKindId,
+    component::{Component, RelationKindId},
     entity::Entity,
     query::{
         Access, Fetch, FetchState, FilterFetch, FilteredAccess, QueryIter, ReadOnlyFetch,
@@ -15,7 +15,42 @@ use bevy_tasks::TaskPool;
 use fixedbitset::FixedBitSet;
 use thiserror::Error;
 
-use super::QueryRelationFilter;
+use super::{QueryRelationFilter, RelationFilter, SpecifiesRelation};
+
+pub struct QueryStateRelationFilterBuilder<'a, 'b, Q: WorldQuery, F: WorldQuery>
+where
+    F::Fetch: FilterFetch,
+{
+    state: &'a mut QueryState<Q, F>,
+    world: &'b World,
+    filters: QueryRelationFilter<Q, F>,
+}
+
+impl<'a, 'b, Q: WorldQuery, F: WorldQuery> QueryStateRelationFilterBuilder<'a, 'b, Q, F>
+where
+    F::Fetch: FilterFetch,
+{
+    /// If filters have already been added for the relation kind they will be merged with
+    /// the provided filters.
+    pub fn add_filter_relation<K: Component, Path>(mut self, filter: RelationFilter<K>) -> Self
+    where
+        QueryRelationFilter<Q, F>:
+            SpecifiesRelation<K, Path, RelationFilter = QueryRelationFilter<Q, F>>,
+    {
+        self.filters.add_filter_relation(filter);
+        self
+    }
+
+    pub fn apply_filters(self) -> &'a mut QueryState<Q, F> {
+        let Self {
+            state,
+            world,
+            filters,
+        } = self;
+        state.set_relation_filter(world, filters);
+        state
+    }
+}
 
 pub struct QueryAccessCache {
     pub(crate) archetype_generation: ArchetypeGeneration,
@@ -85,6 +120,36 @@ where
             .unwrap()
     }
 
+    pub fn clear_relation_filters(&mut self, world: &World) -> &mut Self {
+        self.set_relation_filter(world, Default::default());
+        self
+    }
+
+    /// Starts building a new set of relation filters for the query, changes will not take
+    /// place if `apply_filters` is not called on the returned builder struct.
+    ///
+    /// You should call `clear_filter_relations` if you want to reset filters.
+    #[must_use = "relation filters will be unchanged if you do not call `apply_filters`"]
+    pub fn new_filter_relation<'a, K: Component, Path>(
+        &mut self,
+        world: &'a World,
+        relation_filter: RelationFilter<K>,
+    ) -> QueryStateRelationFilterBuilder<'_, 'a, Q, F>
+    where
+        QueryRelationFilter<Q, F>:
+            SpecifiesRelation<K, Path, RelationFilter = QueryRelationFilter<Q, F>>,
+    {
+        QueryStateRelationFilterBuilder {
+            state: self,
+            world,
+            filters: QueryRelationFilter::new(),
+        }
+        .add_filter_relation(relation_filter)
+    }
+
+    /// Overwrites the existing relation filters
+    ///
+    /// You should prefer `new_filter_relation` over this method
     pub fn set_relation_filter(
         &mut self,
         world: &World,

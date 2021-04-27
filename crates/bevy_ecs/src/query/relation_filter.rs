@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 use crate::{component::Component, prelude::Entity};
 
 use super::{FetchState, Relation, WorldQuery};
@@ -5,6 +7,8 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
+
+// NOTE: This whole file is ~~hilarious~~ elegant type system hacking- thanks to @TheRawMeatball for coming up with this :)
 
 pub struct QueryRelationFilter<Q: WorldQuery, F: WorldQuery>(
     pub <Q::State as FetchState>::RelationFilter,
@@ -54,31 +58,38 @@ impl_trait!(
     }
 );
 
+pub struct RelationFilter<K: Component>(SmallVec<[Entity; 4]>, PhantomData<K>);
+
+impl<K: Component> RelationFilter<K> {
+    pub fn new() -> Self {
+        Self(SmallVec::new(), PhantomData)
+    }
+
+    pub fn target(mut self, target: Entity) -> Self {
+        self.0.push(target);
+        self
+    }
+}
+
 impl<Q: WorldQuery, F: WorldQuery> QueryRelationFilter<Q, F> {
     pub fn new() -> Self {
         Self::default()
     }
 
-    // FIXME(Relationships) currently we cant set a target filter of `None`- rather than allowing this
-    // we should stop storing `target` as an `Option<Entity>` and instead have a statically knowable
-    // ID represent the `None` case
-    // FIXME(Relationships) implement ability to say `target1` OR `target2`, currently it works like
-    // `target1` AND `target2`. This mirrors how queries normally work `Query<(&T, &U)>`- `T` AND `U`
-    // but we need to also be able to mirror `Or<(T, U)>`
-    pub fn add_target_filter<T: Component, Path>(mut self, target: Entity) -> Self
+    pub fn add_filter_relation<K: Component, Path>(&mut self, filter: RelationFilter<K>)
     where
-        Self: SpecifiesRelation<T, Path, RelationFilter = Self>,
+        Self: SpecifiesRelation<K, Path, RelationFilter = Self>,
     {
-        Self::__add_target_filter(target, &mut self);
-        self
+        Self::__add_target_filter(filter, self);
     }
 }
 
-// NOTE: This is ~~hilarious~~ elegant type system hacking- thanks to @TheRawMeatball for coming up with this :)
-
 pub trait SpecifiesRelation<Kind: Component, Path> {
     type RelationFilter;
-    fn __add_target_filter(entity: Entity, relation_filter: &mut Self::RelationFilter);
+    fn __add_target_filter(
+        entity: RelationFilter<Kind>,
+        relation_filter: &mut Self::RelationFilter,
+    );
 }
 
 pub struct Intrinsic;
@@ -88,14 +99,20 @@ pub struct InTuple<Inner, const I: usize>(PhantomData<Inner>);
 
 impl<Kind: Component> SpecifiesRelation<Kind, Intrinsic> for &Relation<Kind> {
     type RelationFilter = <<Self as WorldQuery>::State as FetchState>::RelationFilter;
-    fn __add_target_filter(entity: Entity, relation_filter: &mut smallvec::SmallVec<[Entity; 4]>) {
-        relation_filter.push(entity);
+    fn __add_target_filter(
+        filter: RelationFilter<Kind>,
+        relation_filter: &mut smallvec::SmallVec<[Entity; 4]>,
+    ) {
+        relation_filter.extend(filter.0.into_iter());
     }
 }
 impl<Kind: Component> SpecifiesRelation<Kind, Intrinsic> for &mut Relation<Kind> {
     type RelationFilter = <<Self as WorldQuery>::State as FetchState>::RelationFilter;
-    fn __add_target_filter(entity: Entity, relation_filter: &mut smallvec::SmallVec<[Entity; 4]>) {
-        relation_filter.push(entity);
+    fn __add_target_filter(
+        filter: RelationFilter<Kind>,
+        relation_filter: &mut smallvec::SmallVec<[Entity; 4]>,
+    ) {
+        relation_filter.extend(filter.0.into_iter());
     }
 }
 
@@ -109,7 +126,10 @@ where
     >,
 {
     type RelationFilter = Self;
-    fn __add_target_filter(entity: Entity, relation_filter: &mut Self::RelationFilter) {
+    fn __add_target_filter(
+        entity: RelationFilter<Kind>,
+        relation_filter: &mut Self::RelationFilter,
+    ) {
         Q::__add_target_filter(entity, &mut relation_filter.0);
     }
 }
@@ -123,7 +143,10 @@ where
     >,
 {
     type RelationFilter = Self;
-    fn __add_target_filter(entity: Entity, relation_filter: &mut Self::RelationFilter) {
+    fn __add_target_filter(
+        entity: RelationFilter<Kind>,
+        relation_filter: &mut Self::RelationFilter,
+    ) {
         F::__add_target_filter(entity, &mut relation_filter.1);
     }
 }
@@ -161,7 +184,7 @@ macro_rules! impl_tuple_inner {
             );
 
             #[allow(non_snake_case, unused)]
-            fn __add_target_filter(entity: Entity, relation_filter: &mut Self::RelationFilter) {
+            fn __add_target_filter(entity: RelationFilter<Kind>, relation_filter: &mut Self::RelationFilter) {
                 let (
                     $($head,)*
                     my_thing,
@@ -210,13 +233,12 @@ fn target_filter_tests() {
     assert_impl::<u64, _, QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()>>();
     assert_impl::<u32, _, QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()>>();
 
-    let foo: QueryRelationFilter<&Relation<u32>, ()> = Default::default();
-    let foo = foo.add_target_filter::<u32, _>(Entity::new(1));
+    let mut foo: QueryRelationFilter<&Relation<u32>, ()> = Default::default();
+    foo.add_filter_relation(RelationFilter::<u32>::new().target(Entity::new(1)));
     dbg!(&foo.0);
 
-    let foo: QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()> = Default::default();
-    let foo = foo
-        .add_target_filter::<u32, _>(Entity::new(1))
-        .add_target_filter::<u64, _>(Entity::new(12));
+    let mut foo: QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()> = Default::default();
+    foo.add_filter_relation(RelationFilter::<u32>::new().target(Entity::new(1)));
+    foo.add_filter_relation(RelationFilter::<u64>::new().target(Entity::new(12)));
     dbg!(&foo.0);
 }

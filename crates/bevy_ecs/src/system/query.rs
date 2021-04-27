@@ -3,7 +3,8 @@ use crate::{
     entity::Entity,
     prelude::QueryRelationFilter,
     query::{
-        Fetch, FilterFetch, QueryEntityError, QueryIter, QueryState, ReadOnlyFetch, WorldQuery,
+        Fetch, FilterFetch, QueryEntityError, QueryIter, QueryState, ReadOnlyFetch, RelationFilter,
+        SpecifiesRelation, WorldQuery,
     },
     world::{Mut, World},
 };
@@ -470,6 +471,29 @@ where
         }
     }
 
+    /// Starts building a new set of relation filters for the query, changes will not take
+    /// place if `apply_filters` is not called on the returned builder struct.
+    ///
+    /// You should call `clear_filter_relations` if you want to reset filters.
+    #[must_use = "relation filters will be unchanged if you do not call `apply_filters`"]
+    pub fn new_relation_filter<K: Component, Path>(
+        &mut self,
+        filter: RelationFilter<K>,
+    ) -> QueryRelationFilterBuilder<'_, 'w, Q, F>
+    where
+        QueryRelationFilter<Q, F>:
+            SpecifiesRelation<K, Path, RelationFilter = QueryRelationFilter<Q, F>>,
+    {
+        QueryRelationFilterBuilder {
+            query: self,
+            filters: QueryRelationFilter::new(),
+        }
+        .add_filter_relation(filter)
+    }
+
+    /// Overwrites current relation filters with the provided relation filters
+    ///
+    /// You should prefer `new_filter_relation` over this method
     pub fn set_relation_filter(&mut self, relation_filter: QueryRelationFilter<Q, F>) -> &mut Self {
         self.state.set_relation_filter(&self.world, relation_filter);
         self
@@ -482,6 +506,36 @@ where
 {
     fn drop(&mut self) {
         self.set_relation_filter(QueryRelationFilter::new());
+    }
+}
+
+pub struct QueryRelationFilterBuilder<'a, 'b: 'a, Q: WorldQuery + 'static, F: WorldQuery + 'static>
+where
+    F::Fetch: FilterFetch,
+{
+    query: &'a mut Query<'b, Q, F>,
+    filters: QueryRelationFilter<Q, F>,
+}
+
+impl<'a, 'b: 'a, Q: WorldQuery, F: WorldQuery> QueryRelationFilterBuilder<'a, 'b, Q, F>
+where
+    F::Fetch: FilterFetch,
+{
+    /// If filters have already been added for the relation kind they will be merged with
+    /// the provided filters.
+    pub fn add_filter_relation<K: Component, Path>(mut self, filter: RelationFilter<K>) -> Self
+    where
+        QueryRelationFilter<Q, F>:
+            SpecifiesRelation<K, Path, RelationFilter = QueryRelationFilter<Q, F>>,
+    {
+        self.filters.add_filter_relation(filter);
+        self
+    }
+
+    pub fn apply_filters(self) -> &'a mut Query<'b, Q, F> {
+        let Self { query, filters } = self;
+        query.state.set_relation_filter(query.world, filters);
+        query
     }
 }
 

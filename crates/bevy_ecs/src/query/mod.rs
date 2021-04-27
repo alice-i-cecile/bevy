@@ -9,7 +9,7 @@ pub use access::*;
 pub use fetch::*;
 pub use filter::*;
 pub use iter::*;
-pub use relation_filter::QueryRelationFilter;
+pub use relation_filter::*;
 pub use state::*;
 
 #[cfg(test)]

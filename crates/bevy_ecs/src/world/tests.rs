@@ -1,7 +1,10 @@
 // FIXME(Relationships) add a .len() method to `RelationAccess` and `RelationAccessMut` maybe also implement ExactSizeIterator?
 
-use crate::component::{ComponentDescriptor, StorageType};
 use crate::prelude::*;
+use crate::{
+    component::{ComponentDescriptor, StorageType},
+    query::RelationFilter,
+};
 
 #[test]
 fn relation_spawn() {
@@ -58,28 +61,28 @@ fn relation_query_raw(storage_type: StorageType) {
     assert!(iter.next().unwrap().0 == child2);
     assert!(matches!(iter.next(), None));
 
-    query.set_relation_filter(
-        &world,
-        QueryRelationFilter::new().add_target_filter::<ChildOf, _>(parent1),
-    );
+    query
+        .new_filter_relation(&world, RelationFilter::<ChildOf>::new().target(parent1))
+        .apply_filters();
     let mut iter = query.iter_mut(&mut world);
     assert!(iter.next().unwrap().0 == child1);
     assert!(matches!(iter.next(), None));
 
-    query.set_relation_filter(
-        &world,
-        QueryRelationFilter::new().add_target_filter::<ChildOf, _>(parent2),
-    );
+    query
+        .new_filter_relation(&world, RelationFilter::<ChildOf>::new().target(parent2))
+        .apply_filters();
     let mut iter = query.iter_mut(&mut world);
     assert!(iter.next().unwrap().0 == child2);
     assert!(matches!(iter.next(), None));
 
-    query.set_relation_filter(
-        &world,
-        QueryRelationFilter::new()
-            .add_target_filter::<ChildOf, _>(parent1)
-            .add_target_filter::<ChildOf, _>(parent2),
-    );
+    query
+        .new_filter_relation(
+            &world,
+            RelationFilter::<ChildOf>::new()
+                .target(parent1)
+                .target(parent2),
+        )
+        .apply_filters();
     let mut iter = query.iter_mut(&mut world);
     assert!(matches!(iter.next(), None));
 }
@@ -136,10 +139,9 @@ fn relation_access_raw(storage_type: StorageType) {
 
     let mut query = world.query::<(Entity, &Relation<ChildOf>)>();
 
-    query.set_relation_filter(
-        &world,
-        QueryRelationFilter::new().add_target_filter::<ChildOf, _>(parent1),
-    );
+    query
+        .new_filter_relation(&world, RelationFilter::<ChildOf>::new().target(parent1))
+        .apply_filters();
     let mut iter = query.iter(&world);
     let (child, mut accessor) = iter.next().unwrap();
     assert!(child == child1);
@@ -155,10 +157,9 @@ fn relation_access_raw(storage_type: StorageType) {
     assert!(matches!(accessor.next(), None));
     assert!(matches!(iter.next(), None));
 
-    query.set_relation_filter(
-        &world,
-        QueryRelationFilter::new().add_target_filter::<ChildOf, _>(parent2),
-    );
+    query
+        .new_filter_relation(&world, RelationFilter::<ChildOf>::new().target(parent2))
+        .apply_filters();
     let mut iter = query.iter(&world);
     let (child, mut accessor) = iter.next().unwrap();
     assert!(child == child2);
@@ -268,22 +269,23 @@ fn relation_query_mut_raw(storage_type: StorageType) {
 
     let mut query = world.query::<(Entity, &mut Relation<MyRelation>, &&str)>();
 
-    query.set_relation_filter(
-        &world,
-        QueryRelationFilter::new().add_target_filter::<MyRelation, _>(target2),
-    );
+    query
+        .new_filter_relation(&world, RelationFilter::<MyRelation>::new().target(target2))
+        .apply_filters();
     for (_, mut accessor, _) in query.iter_mut(&mut world) {
         let (_, mut rel) = accessor.single();
         rel.0 = !rel.0;
         rel.1 += 10;
     }
 
-    query.set_relation_filter(
-        &world,
-        QueryRelationFilter::new()
-            .add_target_filter::<MyRelation, _>(target1)
-            .add_target_filter::<MyRelation, _>(target2),
-    );
+    query
+        .new_filter_relation(
+            &world,
+            RelationFilter::<MyRelation>::new()
+                .target(target1)
+                .target(target2),
+        )
+        .apply_filters();
     let mut was_targeter1 = false;
     let mut was_targeter2 = false;
     for (targeter, accessor, name) in query.iter_mut(&mut world) {
@@ -309,7 +311,7 @@ fn relation_query_mut_raw(storage_type: StorageType) {
     }
     assert!(was_targeter1 && was_targeter2);
 
-    query.set_relation_filter(&world, QueryRelationFilter::new());
+    query.clear_relation_filters(&world);
     for (_, accessor, _) in query.iter_mut(&mut world) {
         for (_, mut rel) in accessor {
             rel.0 = !rel.0;
@@ -438,7 +440,7 @@ fn compiles() {
     let mut query = world.query::<&u32>();
 
     let borrows = query.iter(&world).collect::<Vec<_>>();
-    query.set_relation_filter(&world, QueryRelationFilter::new());
+    query.clear_relation_filters(&world);
     let _borrows2 = query.iter(&world).collect::<Vec<_>>();
     dbg!(borrows);
 }
@@ -450,8 +452,34 @@ fn compile_fail() {
     let mut query = world.query::<&Relation<u32>>();
 
     let _borrows = query.iter(&world).collect::<Vec<_>>();
-    query.set_relation_filter(&world, QueryRelationFilter::new());
+    query.clear_relation_filters(&world);
     let _borrows2 = query.iter(&world).collect::<Vec<_>>();
     // FIXME(Relationships) sort out a proper compile_fail test here
     // drop(_borrows);
+}
+
+#[test]
+fn explicit_path() {
+    let mut world = World::new();
+    let mut query = world.query::<(&Relation<u32>, &Relation<u32>)>();
+    let target = world.spawn().id();
+
+    query
+        .new_filter_relation::<u32, InData<InTuple<_, 0>>>(
+            &world,
+            RelationFilter::new().target(target),
+        )
+        .apply_filters();
+}
+
+#[test]
+fn foo() {
+    let mut world = World::new();
+    let mut query = world.query::<&Relation<u32>>();
+    let target = world.spawn().id();
+
+    query
+        .new_filter_relation(&world, RelationFilter::<u32>::new().target(target))
+        .apply_filters()
+        .for_each(&world, |_| ())
 }
