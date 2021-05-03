@@ -3,7 +3,7 @@ mod pointer;
 mod spawn_batch;
 mod world_cell;
 
-#[cfg(test)]
+#[cfg(any(doc, test))]
 mod tests;
 
 use bevy_utils::{HashMap, StableHashMap};

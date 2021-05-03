@@ -383,7 +383,7 @@ fn some_example_code() {
     assert_eq!(&iterated_entities, &[my_entity]);
 }
 
-macro_rules! query_conflict_tests {
+macro_rules! self_query_conflict_tests {
     ($($name:ident => <$param:ty>)*) => {
         $(
             #[test]
@@ -396,7 +396,8 @@ macro_rules! query_conflict_tests {
     };
 }
 
-query_conflict_tests!(
+self_query_conflict_tests!(
+    mut_and_mut => <(&mut Relation<u32>, &mut Relation<u32>)>
     mut_and_rel_mut => <(&mut u32, &mut Relation<u32>)>
     rel_mut_and_mut => <(&mut Relation<u32>, &mut u32)>
     rel_and_mut => <(&Relation<u32>, &mut u32)>
@@ -405,7 +406,7 @@ query_conflict_tests!(
     ref_and_rel_mut => <(&u32, &mut Relation<u32>)>
 );
 
-macro_rules! no_query_conflict_tests {
+macro_rules! no_self_query_conflict_tests {
     ($($name:ident => <$param:ty>)*) => {
         $(
             #[test]
@@ -417,7 +418,7 @@ macro_rules! no_query_conflict_tests {
     };
 }
 
-no_query_conflict_tests!(
+no_self_query_conflict_tests!(
     rel_and_rel => <(&Relation<u32>, &Relation<u32>)>
     rel_and_diff_rel => <(&Relation<u32>, &Relation<u64>)>
     rel_mut_and_diff_rel_mut => <(&mut Relation<u32>, &mut Relation<u64>)>
@@ -445,18 +446,19 @@ fn compiles() {
     dbg!(borrows);
 }
 
-#[test]
-fn compile_fail() {
-    let mut world = World::new();
+/**
+```compile_fail
+use bevy_ecs::prelude::*;
 
-    let mut query = world.query::<&Relation<u32>>();
-
-    let _borrows = query.iter(&world).collect::<Vec<_>>();
-    query.clear_relation_filters(&world);
-    let _borrows2 = query.iter(&world).collect::<Vec<_>>();
-    // FIXME(Relationships) sort out a proper compile_fail test here
-    // drop(_borrows);
-}
+let mut world = World::new();
+let mut query = world.query::<&Relation<u32>>();
+let _borrows = query.iter(&world).collect::<Vec<_>>();
+query.clear_relation_filters(&world);
+let _borrows2 = query.iter(&world).collect::<Vec<_>>();
+drop(_borrows); // If this doesn't fail to compile we have unsoundness - Boxy
+```
+*/
+pub fn _compile_fail() {}
 
 #[test]
 fn explicit_path() {
@@ -482,4 +484,62 @@ fn foo() {
         .new_filter_relation(&world, RelationFilter::<u32>::new().target(target))
         .apply_filters()
         .for_each(&world, |_| ())
+}
+
+#[test]
+fn conflict_without_relation() {
+    let mut world = World::new();
+    let q1 = world.query::<(&mut u32, &Relation<u64>)>();
+    let q2 = world.query_filtered::<&mut u32, Without<Relation<u64>>>();
+    assert!(q1.component_access.is_compatible(&q2.component_access) == false);
+}
+
+#[test]
+fn without_filter() {
+    without_filter_raw(StorageType::Table);
+    without_filter_raw(StorageType::SparseSet);
+}
+
+fn without_filter_raw(storage_type: StorageType) {
+    let mut world = World::new();
+    world
+        .register_component(ComponentDescriptor::new::<u32>(storage_type))
+        .unwrap();
+
+    struct MyRelation;
+
+    let target1 = world.spawn().id();
+    let target2 = world.spawn().id();
+    world
+        .spawn()
+        .insert(String::from("blah"))
+        .insert_relation(MyRelation, target1)
+        .id();
+    let source2 = world
+        .spawn()
+        .insert(String::from("OwO"))
+        .insert_relation(MyRelation, target2)
+        .id();
+
+    let no_relation1 = world.spawn().insert(String::from("hiiii")).id();
+
+    let data = world
+        .query_filtered::<(Entity, &String), Without<Relation<MyRelation>>>()
+        .iter(&world)
+        .collect::<Vec<(Entity, &String)>>();
+    assert_eq!(&data, &[(no_relation1, &String::from("hiiii"))]);
+
+    let data = world
+        .query_filtered::<(Entity, &String), Without<Relation<MyRelation>>>()
+        .new_filter_relation(&world, RelationFilter::<MyRelation>::new().target(target1))
+        .apply_filters()
+        .iter(&world)
+        .collect::<Vec<(Entity, &String)>>();
+    assert_eq!(
+        &data,
+        &[
+            (no_relation1, &String::from("hiiii")),
+            (source2, &String::from("OwO"))
+        ]
+    );
 }
