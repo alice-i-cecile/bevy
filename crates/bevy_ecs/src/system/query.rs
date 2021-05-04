@@ -108,7 +108,7 @@ use thiserror::Error;
 ///
 /// This touches all the basics of queries, make sure to check out all the [`WorldQueries`](WorldQuery)
 /// bevy has to offer.
-pub struct Query<'w, Q: WorldQuery, F: WorldQuery = ()>
+pub struct Query<'w, Q: WorldQuery + 'static, F: WorldQuery + 'static = ()>
 where
     F::Fetch: FilterFetch,
 {
@@ -476,7 +476,7 @@ where
     ///
     /// You should call `clear_filter_relations` if you want to reset filters.
     #[must_use = "relation filters will be unchanged if you do not call `apply_filters`"]
-    pub fn new_relation_filter<K: Component, Path>(
+    pub fn add_filter_relation<K: Component, Path>(
         &mut self,
         filter: RelationFilter<K>,
     ) -> QueryRelationFilterBuilder<'_, 'w, Q, F>

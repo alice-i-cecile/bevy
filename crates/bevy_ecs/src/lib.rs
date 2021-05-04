@@ -22,7 +22,7 @@ pub mod prelude {
         event::{EventReader, EventWriter},
         query::{
             Added, ChangeTrackers, Changed, InData, InFilter, InTuple, Or, QueryRelationFilter,
-            QueryState, Relation, With, WithBundle, Without,
+            QueryState, Relation, RelationFilter, With, WithBundle, Without,
         },
         schedule::{
             AmbiguitySetLabel, ExclusiveSystemDescriptorCoercion, ParallelSystemDescriptorCoercion,

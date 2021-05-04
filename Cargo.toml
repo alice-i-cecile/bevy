@@ -252,6 +252,10 @@ name = "ecs_guide"
 path = "examples/ecs/ecs_guide.rs"
 
 [[example]]
+name = "relations_grouping"
+path = "examples/ecs/relations_grouping.rs"
+
+[[example]]
 name = "change_detection"
 path = "examples/ecs/change_detection.rs"
 
