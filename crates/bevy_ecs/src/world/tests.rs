@@ -29,8 +29,8 @@ fn relation_spawn_raw(storage_type: StorageType) {
     let child = child.insert_relation(ChildOf, parent);
 
     assert!(child.contains_relation::<ChildOf>(parent));
-    assert!(child.contains_relation::<ChildOf>(not_parent) == false);
-    assert!(child.contains_relation::<u32>(parent) == false);
+    assert_eq!(child.contains_relation::<ChildOf>(not_parent), false);
+    assert_eq!(child.contains_relation::<u32>(parent), false);
 
     assert!(child.remove_relation::<ChildOf>(parent).is_some());
     assert!(child.remove_relation::<ChildOf>(parent).is_none());
@@ -493,7 +493,10 @@ fn conflict_without_relation() {
     let mut world = World::new();
     let q1 = world.query::<(&mut u32, &Relation<u64>)>();
     let q2 = world.query_filtered::<&mut u32, Without<Relation<u64>>>();
-    assert!(q1.component_access.is_compatible(&q2.component_access) == false);
+    assert_eq!(
+        q1.component_access.is_compatible(&q2.component_access),
+        false
+    );
 }
 
 #[test]

@@ -48,6 +48,8 @@ pub struct ComponentDescriptor {
 }
 
 impl ComponentDescriptor {
+    /// # Safety
+    /// I dont know
     pub unsafe fn new_dynamic(
         name: Option<String>,
         storage_type: StorageType,
@@ -56,7 +58,7 @@ impl ComponentDescriptor {
         drop: unsafe fn(*mut u8),
     ) -> Self {
         Self {
-            name: name.unwrap_or(String::new()),
+            name: name.unwrap_or_default(),
             storage_type,
             is_send_and_sync,
             type_id: None,

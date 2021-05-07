@@ -58,6 +58,7 @@ impl_trait!(
     }
 );
 
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct RelationFilter<K: Component>(SmallVec<[Entity; 4]>, PhantomData<K>);
 
 impl<K: Component> RelationFilter<K> {
@@ -244,12 +245,12 @@ fn target_filter_tests() {
     assert_impl::<u64, _, QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()>>();
     assert_impl::<u32, _, QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()>>();
 
-    let mut foo: QueryRelationFilter<&Relation<u32>, ()> = Default::default();
-    foo.add_filter_relation(RelationFilter::<u32>::new().target(Entity::new(1)));
-    dbg!(&foo.0);
+    let mut filter: QueryRelationFilter<&Relation<u32>, ()> = Default::default();
+    filter.add_filter_relation(RelationFilter::<u32>::new().target(Entity::new(1)));
+    dbg!(&filter.0);
 
-    let mut foo: QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()> = Default::default();
-    foo.add_filter_relation(RelationFilter::<u32>::new().target(Entity::new(1)));
-    foo.add_filter_relation(RelationFilter::<u64>::new().target(Entity::new(12)));
-    dbg!(&foo.0);
+    let mut filter: QueryRelationFilter<(&Relation<u32>, &Relation<u64>), ()> = Default::default();
+    filter.add_filter_relation(RelationFilter::<u32>::new().target(Entity::new(1)));
+    filter.add_filter_relation(RelationFilter::<u64>::new().target(Entity::new(12)));
+    dbg!(&filter.0);
 }

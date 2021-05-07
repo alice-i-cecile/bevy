@@ -701,14 +701,14 @@ impl<'w> EntityMut<'w> {
             for (kind_id, target) in archetype.components() {
                 let removed_components = world
                     .removed_components
-                    .get_or_insert_with(kind_id, || Default::default());
+                    .get_or_insert_with(kind_id, Default::default);
 
                 match target {
                     None => removed_components.0.push(self.entity),
                     Some(target) => removed_components
                         .1
                         .entry(target)
-                        .or_insert(Vec::new())
+                        .or_insert_with(Vec::new)
                         .push(self.entity),
                 }
             }
@@ -823,6 +823,7 @@ unsafe fn get_component_and_ticks(
 /// The relevant table row must be removed separately
 /// `component_id` must be valid
 #[inline]
+#[allow(clippy::clippy::too_many_arguments)]
 unsafe fn remove_component(
     relationships: &Components,
     storages: &mut Storages,
@@ -838,10 +839,14 @@ unsafe fn remove_component(
 ) -> *mut u8 {
     let kind_info = relationships.get_relation_kind(relation_kind);
 
-    let targets = removed_relationships.get_or_insert_with(relation_kind, || Default::default());
+    let targets = removed_relationships.get_or_insert_with(relation_kind, Default::default);
     match relation_target {
         None => targets.0.push(entity),
-        Some(target) => targets.1.entry(target).or_insert(Vec::new()).push(entity),
+        Some(target) => targets
+            .1
+            .entry(target)
+            .or_insert_with(Vec::new)
+            .push(entity),
     }
 
     match kind_info.data_layout().storage_type() {

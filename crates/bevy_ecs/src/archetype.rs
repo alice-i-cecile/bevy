@@ -159,7 +159,7 @@ impl Archetype {
                     components.insert(*kind_id, arch_comp_info);
                 }
                 Some(target) => {
-                    let set = relations.get_or_insert_with(*kind_id, || StableHashMap::default());
+                    let set = relations.get_or_insert_with(*kind_id, StableHashMap::default);
                     set.insert(*target, arch_comp_info);
                 }
             };
@@ -179,7 +179,7 @@ impl Archetype {
                     components.insert(*kind_id, arch_comp_info);
                 }
                 Some(target) => {
-                    let set = relations.get_or_insert_with(*kind_id, || StableHashMap::default());
+                    let set = relations.get_or_insert_with(*kind_id, StableHashMap::default);
                     set.insert(*target, arch_comp_info);
                 }
             };

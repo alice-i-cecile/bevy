@@ -587,15 +587,15 @@ mod tests {
         queue.apply(&mut world);
 
         let e1 = world.entity(e1);
-        assert!(e1.get_relation::<MyRelation>(Some(t1)).unwrap().0 == true);
-        assert!(e1.get_relation::<MyRelation>(Some(t2)).unwrap().0 == false);
-        assert!(e1.get_relation::<MyRelationTwo>(Some(t3)).unwrap().0 == 18);
+        assert_eq!(e1.get_relation::<MyRelation>(Some(t1)).unwrap().0, true);
+        assert_eq!(e1.get_relation::<MyRelation>(Some(t2)).unwrap().0, false);
+        assert_eq!(e1.get_relation::<MyRelationTwo>(Some(t3)).unwrap().0, 18);
         let e1 = e1.id();
 
         let e2 = world.entity(e2);
-        assert!(e2.get_relation::<MyRelation>(Some(t3)).unwrap().0 == false);
-        assert!(e2.get_relation::<MyRelationTwo>(Some(t1)).unwrap().0 == 10);
-        assert!(e2.get_relation::<MyRelation>(Some(t1)).unwrap().0 == false);
+        assert_eq!(e2.get_relation::<MyRelation>(Some(t3)).unwrap().0, false);
+        assert_eq!(e2.get_relation::<MyRelationTwo>(Some(t1)).unwrap().0, 10);
+        assert_eq!(e2.get_relation::<MyRelation>(Some(t1)).unwrap().0, false);
         let e2 = e2.id();
 
         let mut commands = Commands::new(&mut queue, &world);

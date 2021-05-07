@@ -157,6 +157,7 @@ impl BundleInfo {
         });
     }
 
+    #[allow(clippy::clippy::too_many_arguments)]
     pub(crate) unsafe fn write_relationship(
         &self,
         sparse_sets: &mut SparseSets,

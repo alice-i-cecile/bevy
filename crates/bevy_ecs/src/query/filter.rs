@@ -381,7 +381,7 @@ unsafe impl<T: Component> FetchState for WithoutRelationState<T> {
         }
         // No relation filters means there shouldn't be *any* relations of the kind but we
         // already returned true if that is the case which means this archetype doesn't fit
-        if relation_filter.len() == 0 {
+        if relation_filter.is_empty() {
             return false;
         }
         relation_filter
@@ -397,7 +397,7 @@ unsafe impl<T: Component> FetchState for WithoutRelationState<T> {
         }
         // No relation filters means there shouldn't be *any* relations of the kind but we
         // already returned true if that is the case which means this table doesn't fit
-        if relation_filter.len() == 0 {
+        if relation_filter.is_empty() {
             return false;
         }
         relation_filter
