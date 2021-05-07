@@ -1,10 +1,12 @@
 // FIXME(Relationships) add a .len() method to `RelationAccess` and `RelationAccessMut` maybe also implement ExactSizeIterator?
 
-use crate::prelude::*;
+use std::convert::TryInto;
+
 use crate::{
     component::{ComponentDescriptor, StorageType},
     query::RelationFilter,
 };
+use crate::{prelude::*, query::RelationAccess};
 
 #[test]
 fn relation_spawn() {
@@ -148,7 +150,7 @@ fn relation_access_raw(storage_type: StorageType) {
     assert_eq!(
         accessor.next().unwrap(),
         (
-            Some(parent1),
+            parent1,
             &ChildOf {
                 despawn_recursive: true
             }
@@ -166,7 +168,7 @@ fn relation_access_raw(storage_type: StorageType) {
     assert_eq!(
         accessor.next().unwrap(),
         (
-            Some(parent2),
+            parent2,
             &ChildOf {
                 despawn_recursive: false
             }
@@ -183,7 +185,7 @@ fn relation_access_raw(storage_type: StorageType) {
     assert_eq!(
         accessor.next().unwrap(),
         (
-            Some(random_parent),
+            random_parent,
             &ChildOf {
                 despawn_recursive: false
             }
@@ -192,7 +194,7 @@ fn relation_access_raw(storage_type: StorageType) {
     assert_eq!(
         accessor.next().unwrap(),
         (
-            Some(parent1),
+            parent1,
             &ChildOf {
                 despawn_recursive: true
             }
@@ -205,7 +207,7 @@ fn relation_access_raw(storage_type: StorageType) {
     assert_eq!(
         accessor.next().unwrap(),
         (
-            Some(random_parent),
+            random_parent,
             &ChildOf {
                 despawn_recursive: true
             }
@@ -214,7 +216,7 @@ fn relation_access_raw(storage_type: StorageType) {
     assert_eq!(
         accessor.next().unwrap(),
         (
-            Some(parent2),
+            parent2,
             &ChildOf {
                 despawn_recursive: false
             }
@@ -294,16 +296,16 @@ fn relation_query_mut_raw(storage_type: StorageType) {
                 was_targeter1 = true;
                 assert_eq!(*name, "targeter1");
                 let targets = accessor.map(|(t, rel)| (t, *rel)).collect::<Vec<_>>();
-                assert_eq!(&targets[0], &(Some(target1), MyRelation(true, 10)));
-                assert_eq!(&targets[1], &(Some(target2), MyRelation(true, 58)));
+                assert_eq!(&targets[0], &(target1, MyRelation(true, 10)));
+                assert_eq!(&targets[1], &(target2, MyRelation(true, 58)));
                 assert_eq!(targets.len(), 2);
             }
             _ if targeter == targeter2 => {
                 was_targeter2 = true;
                 assert_eq!(*name, "targeter2");
                 let targets = accessor.map(|(t, rel)| (t, *rel)).collect::<Vec<_>>();
-                assert_eq!(&targets[0], &(Some(target1), MyRelation(false, 75)));
-                assert_eq!(&targets[1], &(Some(target2), MyRelation(false, 32)));
+                assert_eq!(&targets[0], &(target1, MyRelation(false, 75)));
+                assert_eq!(&targets[1], &(target2, MyRelation(false, 32)));
                 assert_eq!(targets.len(), 2);
             }
             _ => panic!(),
@@ -328,25 +330,25 @@ fn relation_query_mut_raw(storage_type: StorageType) {
                 was_targeter1 = true;
                 assert_eq!(*name, "targeter1");
                 let targets = accessor.map(|(t, rel)| (t, *rel)).collect::<Vec<_>>();
-                assert_eq!(&targets[0], &(Some(target1), MyRelation(false, 20)));
-                assert_eq!(&targets[1], &(Some(target2), MyRelation(false, 116)));
-                assert_eq!(&targets[2], &(Some(target3), MyRelation(true, 28)));
+                assert_eq!(&targets[0], &(target1, MyRelation(false, 20)));
+                assert_eq!(&targets[1], &(target2, MyRelation(false, 116)));
+                assert_eq!(&targets[2], &(target3, MyRelation(true, 28)));
                 assert_eq!(targets.len(), 3);
             }
             _ if targeter == targeter2 => {
                 was_targeter2 = true;
                 assert_eq!(*name, "targeter2");
                 let targets = accessor.map(|(t, rel)| (t, *rel)).collect::<Vec<_>>();
-                assert_eq!(&targets[0], &(Some(target1), MyRelation(true, 150)));
-                assert_eq!(&targets[1], &(Some(target2), MyRelation(true, 64)));
+                assert_eq!(&targets[0], &(target1, MyRelation(true, 150)));
+                assert_eq!(&targets[1], &(target2, MyRelation(true, 64)));
                 assert_eq!(targets.len(), 2);
             }
             _ if targeter == targeter3 => {
                 was_targeter3 = true;
                 assert_eq!(*name, "targeter3");
                 let targets = accessor.map(|(t, rel)| (t, *rel)).collect::<Vec<_>>();
-                assert_eq!(&targets[0], &(Some(target2), MyRelation(true, 849 * 2)));
-                assert_eq!(&targets[1], &(Some(target3), MyRelation(false, 6)));
+                assert_eq!(&targets[0], &(target2, MyRelation(true, 849 * 2)));
+                assert_eq!(&targets[1], &(target3, MyRelation(false, 6)));
                 assert_eq!(targets.len(), 2);
             }
             _ => panic!(),
@@ -376,7 +378,7 @@ fn some_example_code() {
         iterated_entities.push(entity);
         assert_eq!(
             &relations.collect::<Vec<_>>(),
-            &[(Some(target1), &MyRelation), (Some(target2), &MyRelation)],
+            &[(target1, &MyRelation), (target2, &MyRelation)],
         );
     }
 
@@ -542,4 +544,44 @@ fn without_filter_raw(storage_type: StorageType) {
             (source2, &String::from("OwO"))
         ]
     );
+}
+
+#[test]
+fn relations_dont_yield_components() {
+    relations_dont_yield_components_raw(StorageType::SparseSet);
+    relations_dont_yield_components_raw(StorageType::Table);
+}
+
+fn relations_dont_yield_components_raw(storage_type: StorageType) {
+    let mut world = World::new();
+
+    world
+        .register_component(ComponentDescriptor::new::<u32>(storage_type))
+        .unwrap();
+
+    let _has_component = world.spawn().insert(10_u32).id();
+    let target1 = world.spawn().id();
+    let _has_both = world
+        .spawn()
+        .insert_relation(12_u32, target1)
+        .insert(14_u32)
+        .id();
+    let target2 = world.spawn().id();
+    let _has_relation = world.spawn().insert_relation(16_u32, target2).id();
+
+    let mut q = world.query::<&Relation<u32>>();
+    let [first, second]: [RelationAccess<_>; 2] =
+        q.iter(&world).collect::<Vec<_>>().try_into().unwrap();
+
+    assert_eq!(&first.collect::<Vec<_>>(), &[(target1, &12_u32)]);
+    assert_eq!(&second.collect::<Vec<_>>(), &[(target2, &16_u32)]);
+
+    let [first, second]: [&u32; 2] = world
+        .query::<&u32>()
+        .iter(&world)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    assert_eq!(first, &10_u32);
+    assert_eq!(second, &14_u32);
 }

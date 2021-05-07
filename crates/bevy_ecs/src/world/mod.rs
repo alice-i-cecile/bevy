@@ -6,7 +6,7 @@ mod world_cell;
 #[cfg(any(doc, test))]
 mod tests;
 
-use bevy_utils::{HashMap, StableHashMap};
+use bevy_utils::HashMap;
 pub use entity_ref::*;
 pub use pointer::*;
 pub use spawn_batch::*;
@@ -850,15 +850,12 @@ impl World {
             .get_or_insert_with(component_id, || {
                 resource_archetype_components.insert(
                     component_id,
-                    (
-                        Some(ArchetypeComponentInfo {
-                            archetype_component_id: ArchetypeComponentId::new(
-                                *archetype_component_count,
-                            ),
-                            storage_type: StorageType::Table,
-                        }),
-                        StableHashMap::default(),
-                    ),
+                    ArchetypeComponentInfo {
+                        archetype_component_id: ArchetypeComponentId::new(
+                            *archetype_component_count,
+                        ),
+                        storage_type: StorageType::Table,
+                    },
                 );
                 *archetype_component_count += 1;
                 let component_info = components.get_relation_kind(component_id);

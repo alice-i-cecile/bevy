@@ -32,6 +32,7 @@ impl TableId {
     }
 }
 
+#[derive(Debug)]
 pub struct Column {
     pub(crate) relationship: (RelationKindId, Option<Entity>),
     pub(crate) data: BlobVec,
@@ -159,24 +160,9 @@ impl Column {
     }
 }
 
-pub struct ColIter<'a> {
-    no_target_col: Option<&'a Column>,
-    target_cols: std::collections::hash_map::Iter<'a, Entity, Column>,
-}
-
-impl<'a> Iterator for ColIter<'a> {
-    type Item = (Option<Entity>, &'a Column);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.target_cols.next() {
-            Some((e, col)) => Some((Some(*e), col)),
-            None => self.no_target_col.take().map(|col| (None, col)),
-        }
-    }
-}
-
 pub struct Table {
-    pub(crate) columns: SparseSet<RelationKindId, (Option<Column>, StableHashMap<Entity, Column>)>,
+    pub(crate) component_columns: SparseSet<RelationKindId, Column>,
+    pub(crate) relation_columns: SparseSet<RelationKindId, StableHashMap<Entity, Column>>,
     entities: Vec<Entity>,
     archetypes: Vec<ArchetypeId>,
     grow_amount: usize,
@@ -186,7 +172,8 @@ pub struct Table {
 impl Table {
     pub const fn new(grow_amount: usize) -> Table {
         Self {
-            columns: SparseSet::new(),
+            component_columns: SparseSet::new(),
+            relation_columns: SparseSet::new(),
             entities: Vec::new(),
             archetypes: Vec::new(),
             grow_amount,
@@ -196,34 +183,13 @@ impl Table {
 
     pub fn with_capacity(capacity: usize, column_capacity: usize, grow_amount: usize) -> Table {
         Self {
-            columns: SparseSet::with_capacity(column_capacity),
+            component_columns: SparseSet::with_capacity(column_capacity),
+            relation_columns: SparseSet::with_capacity(column_capacity),
             entities: Vec::with_capacity(capacity),
             archetypes: Vec::new(),
             grow_amount,
             capacity,
         }
-    }
-
-    pub fn columns_of_kind(&self, kind: RelationKindId) -> Option<ColIter> {
-        let columns = self.columns.get(kind)?;
-        Some(ColIter {
-            no_target_col: columns.0.as_ref(),
-            target_cols: columns.1.iter(),
-        })
-    }
-
-    pub fn columns(&self) -> impl Iterator<Item = &Column> {
-        self.columns
-            .values()
-            .map(|columns| columns.1.values().chain(columns.0.as_ref()))
-            .flatten()
-    }
-
-    fn columns_mut(&mut self) -> impl Iterator<Item = &mut Column> {
-        self.columns
-            .values_mut()
-            .map(|columns| columns.1.values_mut().chain(columns.0.as_mut()))
-            .flatten()
     }
 
     #[inline]
@@ -235,20 +201,27 @@ impl Table {
         self.archetypes.push(archetype_id);
     }
 
-    pub fn add_column(&mut self, component_kind: &RelationKindInfo, target: Option<Entity>) {
-        let column = self
-            .columns
-            .get_or_insert_with(component_kind.id(), || (None, StableHashMap::default()));
+    fn columns_mut(&mut self) -> impl Iterator<Item = &mut Column> {
+        self.component_columns.values_mut().chain(
+            self.relation_columns
+                .values_mut()
+                .flat_map(|map| map.values_mut()),
+        )
+    }
 
+    pub fn add_column(&mut self, relation_info: &RelationKindInfo, target: Option<Entity>) {
         match target {
+            None => self.component_columns.insert(
+                relation_info.id(),
+                Column::with_capacity(relation_info, None, self.capacity),
+            ),
             Some(target) => {
-                column.1.insert(
-                    target,
-                    Column::with_capacity(component_kind, Some(target), self.capacity),
-                );
-            }
-            None => {
-                column.0 = Some(Column::with_capacity(component_kind, None, self.capacity));
+                self.relation_columns
+                    .get_or_insert_with(relation_info.id(), StableHashMap::default)
+                    .insert(
+                        target,
+                        Column::with_capacity(relation_info, Some(target), self.capacity),
+                    );
             }
         }
     }
@@ -378,10 +351,12 @@ impl Table {
         component_id: RelationKindId,
         target: Option<Entity>,
     ) -> Option<&Column> {
-        let col = self.columns.get(component_id)?;
         match target {
-            Some(target) => col.1.get(&target),
-            None => col.0.as_ref(),
+            Some(target) => self
+                .relation_columns
+                .get(component_id)
+                .and_then(|map| map.get(&target)),
+            None => self.component_columns.get(component_id),
         }
     }
 
@@ -391,22 +366,25 @@ impl Table {
         component_id: RelationKindId,
         target: Option<Entity>,
     ) -> Option<&mut Column> {
-        let col = self.columns.get_mut(component_id)?;
         match target {
-            Some(target) => col.1.get_mut(&target),
-            None => col.0.as_mut(),
+            Some(target) => self
+                .relation_columns
+                .get_mut(component_id)
+                .and_then(|map| map.get_mut(&target)),
+            None => self.component_columns.get_mut(component_id),
         }
     }
 
     #[inline]
     pub fn has_column(&self, component_id: RelationKindId, target: Option<Entity>) -> bool {
-        self.columns
-            .get(component_id)
-            .and_then(|col| match target {
-                None => col.0.as_ref(),
-                Some(target) => col.1.get(&target),
-            })
-            .is_some()
+        match target {
+            Some(target) => self
+                .relation_columns
+                .get(component_id)
+                .and_then(|map| map.get(&target))
+                .is_some(),
+            None => self.component_columns.contains(component_id),
+        }
     }
 
     pub fn reserve(&mut self, amount: usize) {

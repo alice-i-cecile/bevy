@@ -356,7 +356,7 @@ unsafe impl<T: Component> FetchState for WithoutRelationState<T> {
         }
     }
 
-    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
+    fn update_component_access(&self, _access: &mut FilteredAccess<RelationKindId>) {
         // Note: relations dont add a without access as `Query<&mut T, Without<Relation<U>>>`
         // and `Query<&mut T, With<Relation<U>>>` can access the same entities if the targets
         // specified for the relations are different - Boxy
@@ -374,27 +374,35 @@ unsafe impl<T: Component> FetchState for WithoutRelationState<T> {
         archetype: &Archetype,
         relation_filter: &SmallVec<[Entity; 4]>,
     ) -> bool {
-        if archetype.components.get(self.relation_kind).is_none() {
+        // If there are no relations of this kind then the archetype matches regardless of
+        // what relation filters we have
+        if archetype.relations.get(self.relation_kind).is_none() {
             return true;
         }
+        // No relation filters means there shouldn't be *any* relations of the kind but we
+        // already returned true if that is the case which means this archetype doesn't fit
         if relation_filter.len() == 0 {
             return false;
         }
         relation_filter
             .iter()
-            .all(|target| !archetype.contains(self.relation_kind, Some(*target)))
+            .all(|&target| !archetype.contains(self.relation_kind, Some(target)))
     }
 
     fn matches_table(&self, table: &Table, relation_filter: &SmallVec<[Entity; 4]>) -> bool {
-        if table.columns.get(self.relation_kind).is_none() {
+        // If there are no relations of this kind then the table matches regardless of
+        // what relation filters we have
+        if table.relation_columns.get(self.relation_kind).is_none() {
             return true;
         }
+        // No relation filters means there shouldn't be *any* relations of the kind but we
+        // already returned true if that is the case which means this table doesn't fit
         if relation_filter.len() == 0 {
             return false;
         }
         relation_filter
             .iter()
-            .all(|target| !table.has_column(self.relation_kind, Some(*target)))
+            .all(|&target| !table.has_column(self.relation_kind, Some(target)))
     }
 }
 

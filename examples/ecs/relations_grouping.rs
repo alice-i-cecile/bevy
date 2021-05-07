@@ -150,8 +150,7 @@ fn remove_group_targets(
 ) {
     for &group_entity in group_set.0.iter() {
         let (group_pos, move_to) = match groups.get_mut(group_entity) {
-            // FIXME(Relationships) `.0.unwarp()` is unnecessary pls fix boxy :(
-            Ok(mut components) => ((*components.0).0, components.1.single().0.unwrap()),
+            Ok(mut components) => ((*components.0).0, components.1.single().0),
             Err(_) => continue,
         };
         let target_pos = match groups.get_mut(move_to) {
@@ -197,8 +196,7 @@ fn move_bevys(
             Ok(mut x) => x.1.single(),
             Err(_) => continue,
         };
-        // FIXME(Relationships) this `move_to.unwrap()` should be unnecessary pls fix boxy :(
-        let GroupPosition(target_pos) = *groups.get_mut(move_to.unwrap()).unwrap().0;
+        let GroupPosition(target_pos) = *groups.get_mut(move_to).unwrap().0;
 
         bevys
             .add_filter_relation(RelationFilter::<InGroup>::new().target(group_entity))
