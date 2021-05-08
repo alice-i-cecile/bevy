@@ -139,6 +139,8 @@ unsafe impl<T: Component> FetchState for WithState<T> {
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
         table.has_column(self.component_id, None)
     }
+
+    fn deduplicate_targets(_relation_filter: &mut Self::RelationFilter) {}
 }
 
 impl<'w, 's, T: Component> Fetch<'w, 's> for WithFetch<T> {
@@ -275,6 +277,8 @@ unsafe impl<T: Component> FetchState for WithoutState<T> {
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
         !table.has_column(self.component_id, None)
     }
+
+    fn deduplicate_targets(_relation_filter: &mut Self::RelationFilter) {}
 }
 
 impl<'w, 's, T: Component> Fetch<'w, 's> for WithoutFetch<T> {
@@ -403,6 +407,11 @@ unsafe impl<T: Component> FetchState for WithoutRelationState<T> {
         relation_filter
             .iter()
             .all(|&target| !table.has_column(self.relation_kind, Some(target)))
+    }
+
+    fn deduplicate_targets(relation_filter: &mut Self::RelationFilter) {
+        relation_filter.sort();
+        relation_filter.dedup();
     }
 }
 
@@ -534,6 +543,8 @@ unsafe impl<T: Bundle> FetchState for WithBundleState<T> {
             .iter()
             .all(|&(kind_id, target)| table.has_column(kind_id, target))
     }
+
+    fn deduplicate_targets(_relation_filter: &mut Self::RelationFilter) {}
 }
 
 impl<'w, 's, T: Bundle> Fetch<'w, 's> for WithBundleFetch<T> {
@@ -743,6 +754,11 @@ macro_rules! impl_query_filter_tuple {
                 let ($($relation_filter,)*) = relation_filter;
                 false $(|| $filter.matches_table(table, $relation_filter))*
             }
+
+            fn deduplicate_targets(relation_filter: &mut Self::RelationFilter) {
+                let ($($filter,)*) = relation_filter;
+                $($filter::deduplicate_targets($filter);)*
+            }
         }
     };
 }
@@ -832,6 +848,8 @@ macro_rules! impl_tick_filter {
             fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
                 table.has_column(self.component_id, None)
             }
+
+            fn deduplicate_targets(_relation_filter: &mut Self::RelationFilter) {}
         }
 
         impl<'w, 's, T: Component> Fetch<'w, 's> for $fetch_name<T> {

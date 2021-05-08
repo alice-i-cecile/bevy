@@ -153,8 +153,11 @@ where
     pub fn set_relation_filter(
         &mut self,
         world: &World,
-        relation_filter: QueryRelationFilter<Q, F>,
+        mut relation_filter: QueryRelationFilter<Q, F>,
     ) {
+        // We deduplicate targets so that `RelationAccess` and `RelationAccessMut`
+        // dont yield aliasing borrows when we have two identical target filters
+        relation_filter.deduplicate_targets();
         self.current_relation_filter = relation_filter.clone();
         self.relation_filter_accesses
             .entry(relation_filter)

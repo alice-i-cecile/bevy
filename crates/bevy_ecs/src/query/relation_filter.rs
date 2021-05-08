@@ -83,6 +83,11 @@ impl<Q: WorldQuery, F: WorldQuery> QueryRelationFilter<Q, F> {
     {
         Self::__add_target_filter(filter, self);
     }
+
+    pub fn deduplicate_targets(&mut self) {
+        <Q::State as FetchState>::deduplicate_targets(&mut self.0);
+        <F::State as FetchState>::deduplicate_targets(&mut self.1);
+    }
 }
 
 pub trait SpecifiesRelation<Kind: Component, Path> {

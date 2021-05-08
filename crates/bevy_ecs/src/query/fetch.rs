@@ -150,6 +150,7 @@ pub unsafe trait FetchState: Send + Sync + Sized {
         relation_filter: &Self::RelationFilter,
     ) -> bool;
     fn matches_table(&self, table: &Table, relation_filter: &Self::RelationFilter) -> bool;
+    fn deduplicate_targets(relation_filter: &mut Self::RelationFilter);
 }
 
 /// A fetch that is read only. This must only be implemented for read-only fetches.
@@ -201,6 +202,8 @@ unsafe impl FetchState for EntityState {
     fn matches_table(&self, _table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
         true
     }
+
+    fn deduplicate_targets(_relation_filter: &mut Self::RelationFilter) {}
 }
 
 impl<'w, 's> Fetch<'w, 's> for EntityFetch {
@@ -316,6 +319,8 @@ unsafe impl<T: Component> FetchState for ReadState<T> {
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
         table.has_column(self.component_id, None)
     }
+
+    fn deduplicate_targets(_relation_filter: &mut Self::RelationFilter) {}
 }
 
 /// The [`Fetch`] of `&T`.
@@ -492,6 +497,8 @@ unsafe impl<T: Component> FetchState for WriteState<T> {
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
         table.has_column(self.component_id, None)
     }
+
+    fn deduplicate_targets(_relation_filter: &mut Self::RelationFilter) {}
 }
 
 impl<'w, 's, T: Component> Fetch<'w, 's> for WriteFetch<T> {
@@ -680,6 +687,11 @@ unsafe impl<T: Component> FetchState for ReadRelationState<T> {
             .iter()
             .all(|target| table.has_column(self.relation_kind, Some(*target)))
     }
+
+    fn deduplicate_targets(relation_filter: &mut Self::RelationFilter) {
+        relation_filter.sort();
+        relation_filter.dedup();
+    }
 }
 
 pub struct ReadRelationFetch<T> {
@@ -750,8 +762,9 @@ impl<'w, 's, T: Component> Iterator for RelationAccess<'w, 's, T> {
                     Some((*target, &*ptr))
                 },
                 Either::U(target_iter) => unsafe {
+                    // SAFETY: we remove duplicate target filters in `ReadRelationState::deduplicate_targets`
+                    // so this will not lead to aliasing borrows if users insert two identical target filters
                     let target = target_iter.next()?;
-                    // FIXME(Relationships) we will ahnd out aliasing ptrs if the same entity is in filters twice
                     let col = columns.get(target).unwrap();
                     let ptr = col.get_unchecked(*current_idx) as *mut T;
                     Some((*target, &*ptr))
@@ -768,7 +781,8 @@ impl<'w, 's, T: Component> Iterator for RelationAccess<'w, 's, T> {
                     Either::U(target_iter) => target_iter.next()?,
                 };
 
-                // FIXME(Relationships) we will hand out aliasing ptrs if the same entity is in filters twice
+                // SAFETY: we remove duplicate target filters in `ReadRelationState::deduplicate_targets`
+                // so this will not lead to aliasing borrows if users insert two identical target filters
                 let set = sparse_sets.get(target).unwrap();
                 let ptr = set.get(*current_entity).unwrap() as *mut T;
                 Some((*target, unsafe { &*ptr }))
@@ -954,6 +968,11 @@ unsafe impl<T: Component> FetchState for WriteRelationState<T> {
             .iter()
             .all(|target| table.has_column(self.relation_kind, Some(*target)))
     }
+
+    fn deduplicate_targets(relation_filter: &mut Self::RelationFilter) {
+        relation_filter.sort();
+        relation_filter.dedup();
+    }
 }
 
 pub struct WriteRelationFetch<T> {
@@ -1033,8 +1052,9 @@ impl<'w, 's, T: Component> Iterator for RelationAccessMut<'w, 's, T> {
                     ))
                 },
                 Either::U(target_iter) => unsafe {
+                    // SAFETY: we remove duplicate target filters in `WriteRelationState::deduplicate_targets`
+                    // so this will not lead to aliasing borrows if users insert two identical target filters
                     let target = target_iter.next()?;
-                    // FIXME(Relationships) we will hand out aliasing ptrs if the same entity is in filters twice
                     let col = columns.get(target).unwrap();
                     let ptr = col.get_unchecked(*current_idx) as *mut T;
                     Some((
@@ -1064,7 +1084,8 @@ impl<'w, 's, T: Component> Iterator for RelationAccessMut<'w, 's, T> {
                     Either::U(target_iter) => target_iter.next()?,
                 };
 
-                // FIXME(Relationships) we will hand out aliasing ptrs if the same entity is in filters twice
+                // SAFETY: we remove duplicate target filters in `WriteRelationState::deduplicate_targets`
+                // so this will not lead to aliasing borrows if users insert two identical target filters
                 let set = sparse_sets.get(&target).unwrap();
                 let (ptr, ticks) = set.get_with_ticks(*current_entity).unwrap();
                 let ptr = ptr as *mut T;
@@ -1256,6 +1277,10 @@ unsafe impl<T: FetchState> FetchState for OptionState<T> {
 
     fn matches_table(&self, _table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
         true
+    }
+
+    fn deduplicate_targets(relation_filter: &mut Self::RelationFilter) {
+        T::deduplicate_targets(relation_filter);
     }
 }
 
@@ -1457,6 +1482,8 @@ unsafe impl<T: Component> FetchState for ChangeTrackersState<T> {
     fn matches_table(&self, table: &Table, _relation_filter: &Self::RelationFilter) -> bool {
         table.has_column(self.component_id, None)
     }
+
+    fn deduplicate_targets(_relation_filter: &mut Self::RelationFilter) {}
 }
 
 /// The [`Fetch`] of [`ChangeTrackers`].
@@ -1662,6 +1689,11 @@ macro_rules! impl_tuple_fetch {
                 let ($($name,)*) = self;
                 let ($($relation_filter,)*) = _relation_filter;
                 true $(&& $name.matches_table(_table, $relation_filter))*
+            }
+
+            fn deduplicate_targets(relation_filter: &mut Self::RelationFilter) {
+                let ($($name,)*) = relation_filter;
+                $($name::deduplicate_targets($name);)*
             }
         }
 

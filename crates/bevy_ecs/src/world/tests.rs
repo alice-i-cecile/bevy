@@ -588,3 +588,36 @@ fn relations_dont_yield_components_raw(storage_type: StorageType) {
     assert_eq!(first, &10_u32);
     assert_eq!(second, &14_u32);
 }
+
+#[test]
+fn duplicated_target_filters() {
+    duplicated_target_filters_raw(StorageType::SparseSet);
+    duplicated_target_filters_raw(StorageType::Table);
+}
+
+fn duplicated_target_filters_raw(storage_type: StorageType) {
+    let mut world = World::new();
+
+    world
+        .register_component(ComponentDescriptor::new::<u32>(storage_type))
+        .unwrap();
+
+    let target = world.spawn().id();
+    let _source = world.spawn().insert_relation(10_u32, target).id();
+
+    let mut q = world.query::<&Relation<u32>>();
+    let [relations]: [RelationAccess<_>; 1] = q
+        .new_filter_relation(
+            &world,
+            RelationFilter::<u32>::new().target(target).target(target),
+        )
+        .apply_filters()
+        .iter(&world)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let [(rel_target, rel_data)]: [(Entity, &u32); 1] =
+        relations.collect::<Vec<_>>().try_into().unwrap();
+    assert_eq!(rel_target, target);
+    assert_eq!(rel_data, &10);
+}
