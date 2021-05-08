@@ -48,7 +48,7 @@ pub struct ComponentDescriptor {
 }
 
 impl ComponentDescriptor {
-    /// # Safety:
+    /// # Safety
     /// Must be a valid drop pointer
     pub unsafe fn new_dynamic(
         name: Option<String>,
