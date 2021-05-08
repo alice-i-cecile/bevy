@@ -80,7 +80,7 @@ where
 /// }
 /// # compliment_entity_system.system();
 /// ```
-pub struct With<T>(PhantomData<T>);
+pub struct With<T: ?Sized>(PhantomData<T>);
 
 impl<T: Component> WorldQuery for With<T> {
     type Fetch = WithFetch<T>;
@@ -466,6 +466,129 @@ impl<'w, 's, T: Component> Fetch<'w, 's> for WithoutRelationFetch<T> {
 
     #[inline]
     unsafe fn archetype_fetch(&mut self, _archetype_index: usize) -> bool {
+        true
+    }
+
+    #[inline]
+    unsafe fn table_fetch(&mut self, _table_row: usize) -> bool {
+        true
+    }
+}
+
+impl<T: Component> WorldQuery for With<Relation<T>> {
+    type Fetch = WithRelationFetch<T>;
+    type State = WithRelationState<T>;
+}
+
+pub struct WithRelationState<T> {
+    storage_type: StorageType,
+    relation_kind: RelationKindId,
+    marker: PhantomData<T>,
+}
+
+unsafe impl<T: Component> FetchState for WithRelationState<T> {
+    type RelationFilter = SmallVec<[Entity; 4]>;
+
+    fn init(world: &mut World) -> Self {
+        let kind_info = world
+            .components
+            .get_component_kind_or_insert(ComponentDescriptor::new::<T>(StorageType::Table));
+
+        Self {
+            marker: PhantomData,
+            relation_kind: kind_info.id(),
+            storage_type: kind_info.data_layout().storage_type(),
+        }
+    }
+
+    fn update_component_access(&self, access: &mut FilteredAccess<RelationKindId>) {
+        access.add_with(self.relation_kind);
+    }
+
+    fn update_archetype_component_access(
+        &self,
+        _archetype: &Archetype,
+        _access: &mut Access<ArchetypeComponentId>,
+    ) {
+    }
+
+    fn matches_archetype(
+        &self,
+        archetype: &Archetype,
+        relation_filter: &SmallVec<[Entity; 4]>,
+    ) -> bool {
+        if archetype.relations.get(self.relation_kind).is_none() {
+            return false;
+        }
+        relation_filter
+            .iter()
+            .all(|&target| archetype.contains(self.relation_kind, Some(target)))
+    }
+
+    fn matches_table(&self, table: &Table, relation_filter: &SmallVec<[Entity; 4]>) -> bool {
+        if table.relation_columns.get(self.relation_kind).is_none() {
+            return false;
+        }
+        relation_filter
+            .iter()
+            .all(|&target| table.has_column(self.relation_kind, Some(target)))
+    }
+
+    fn deduplicate_targets(relation_filter: &mut Self::RelationFilter) {
+        relation_filter.sort();
+        relation_filter.dedup();
+    }
+}
+
+pub struct WithRelationFetch<T> {
+    storage_type: StorageType,
+    marker: PhantomData<T>,
+}
+
+impl<'w, 's, T: Component> Fetch<'w, 's> for WithRelationFetch<T> {
+    type Item = bool;
+    type State = WithRelationState<T>;
+    type RelationFilter = SmallVec<[Entity; 4]>;
+
+    unsafe fn init(
+        _world: &World,
+        state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
+        _last_change_tick: u32,
+        _change_tick: u32,
+    ) -> Self {
+        Self {
+            storage_type: state.storage_type,
+            marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    fn is_dense(&self) -> bool {
+        self.storage_type == StorageType::Table
+    }
+
+    #[inline]
+    unsafe fn set_table(
+        &mut self,
+        _state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
+        _table: &Table,
+    ) {
+    }
+
+    #[inline]
+    unsafe fn set_archetype(
+        &mut self,
+        _state: &Self::State,
+        _relation_filter: &Self::RelationFilter,
+        _archetype: &Archetype,
+        _tables: &Tables,
+    ) {
+    }
+
+    #[inline]
+    unsafe fn archetype_fetch(&mut self, _archetype_index: usize) -> Self::Item {
         true
     }
 

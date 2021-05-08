@@ -118,9 +118,8 @@ fn move_camera(keys: Res<Input<KeyCode>>, mut query: Query<&mut Transform, With<
     transform.translation.y = transform.translation.y.clamp(-MAP_BOUNDS.1, MAP_BOUNDS.1);
 }
 
-// FIXME(Relationships) add `With<Relation<T>>`
 fn set_group_position(
-    mut bevys: Query<(&Transform, &Relation<InGroup>)>,
+    mut bevys: Query<&Transform, With<Relation<InGroup>>>,
     mut groups: Query<&mut GroupPosition>,
     group_set: Res<GroupSet>,
 ) {
@@ -131,9 +130,9 @@ fn set_group_position(
             .iter();
 
         let mut average_pos =
-            (iter.next().unwrap().0.translation + iter.next().unwrap().0.translation) / 2.0;
+            (iter.next().unwrap().translation + iter.next().unwrap().translation) / 2.0;
 
-        for (pos, _) in iter {
+        for pos in iter {
             average_pos += pos.translation;
             average_pos /= 2.0;
         }

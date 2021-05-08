@@ -132,6 +132,15 @@ impl<Kind: Component> SpecifiesRelation<Kind, Intrinsic>
         relation_filter.extend(filter.0.into_iter());
     }
 }
+impl<Kind: Component> SpecifiesRelation<Kind, Intrinsic> for crate::prelude::With<Relation<Kind>> {
+    type RelationFilter = <<Self as WorldQuery>::State as FetchState>::RelationFilter;
+    fn __add_target_filter(
+        filter: RelationFilter<Kind>,
+        relation_filter: &mut smallvec::SmallVec<[Entity; 4]>,
+    ) {
+        relation_filter.extend(filter.0.into_iter());
+    }
+}
 
 impl<Kind: Component, Path, Q: WorldQuery, F: WorldQuery> SpecifiesRelation<Kind, InData<Path>>
     for QueryRelationFilter<Q, F>

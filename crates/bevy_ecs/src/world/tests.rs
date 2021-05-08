@@ -398,6 +398,7 @@ macro_rules! self_query_conflict_tests {
     };
 }
 
+// FIXME(Relationships) components and relations should no longer conflict
 self_query_conflict_tests!(
     mut_and_mut => <(&mut Relation<u32>, &mut Relation<u32>)>
     mut_and_rel_mut => <(&mut u32, &mut Relation<u32>)>
@@ -620,4 +621,63 @@ fn duplicated_target_filters_raw(storage_type: StorageType) {
         relations.collect::<Vec<_>>().try_into().unwrap();
     assert_eq!(rel_target, target);
     assert_eq!(rel_data, &10);
+}
+
+#[test]
+fn with_filter() {
+    with_filter_raw(StorageType::Table);
+    with_filter_raw(StorageType::SparseSet);
+}
+
+fn with_filter_raw(storage_type: StorageType) {
+    let mut world = World::new();
+    world
+        .register_component(ComponentDescriptor::new::<u32>(storage_type))
+        .unwrap();
+
+    let no_relation = world.spawn().insert(10_u32).id();
+    let target1 = world.spawn().id();
+    let has_relation = world.spawn().insert_relation(12_u32, target1).id();
+    let target2 = world.spawn().id();
+    let has_both = world
+        .spawn()
+        .insert_relation(14_u32, target2)
+        .insert(16_u32)
+        .id();
+    let many_relations = world
+        .spawn()
+        .insert_relation(18_u32, target1)
+        .insert_relation(20_u32, target2)
+        .id();
+
+    let mut q = world.query_filtered::<Entity, With<Relation<u32>>>();
+    let [e1, e2, e3]: [Entity; 3] = q.iter(&world).collect::<Vec<_>>().try_into().unwrap();
+    assert_eq!(e1, has_relation);
+    assert_eq!(e2, has_both);
+    assert_eq!(e3, many_relations);
+    let [e1, e2]: [Entity; 2] = q
+        .new_filter_relation(&world, RelationFilter::<u32>::new().target(target1))
+        .apply_filters()
+        .iter(&world)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    assert_eq!(e1, has_relation);
+    assert_eq!(e2, many_relations);
+    let [e1, e2]: [Entity; 2] = q
+        .new_filter_relation(&world, RelationFilter::<u32>::new().target(target2))
+        .apply_filters()
+        .iter(&world)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    assert_eq!(e1, has_both);
+    assert_eq!(e2, many_relations);
+    let []: [Entity; 0] = q
+        .new_filter_relation(&world, RelationFilter::<u32>::new().target(no_relation))
+        .apply_filters()
+        .iter(&world)
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
 }
