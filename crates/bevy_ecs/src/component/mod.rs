@@ -48,8 +48,8 @@ pub struct ComponentDescriptor {
 }
 
 impl ComponentDescriptor {
-    /// # Safety
-    /// I dont know
+    /// # Safety:
+    /// Must be a valid drop pointer
     pub unsafe fn new_dynamic(
         name: Option<String>,
         storage_type: StorageType,
@@ -172,7 +172,6 @@ pub struct Components {
     resource_indices: HashMap<TypeId, RelationKindId, fxhash::FxBuildHasher>,
 }
 
-// FIXME(Relationships) actually return this from functions instead of panic'ing
 #[derive(Debug, Error)]
 pub enum RelationsError {
     #[error("A component of type {name:?} ({type_id:?}) already exists")]
@@ -183,25 +182,48 @@ pub enum RelationsError {
 
 impl Components {
     pub fn new_relation_kind(&mut self, layout: ComponentDescriptor) -> &RelationKindInfo {
+        assert!(layout.type_id.is_none());
         let id = RelationKindId(self.kinds.len());
         self.kinds.push(RelationKindInfo { data: layout, id });
         self.kinds.last().unwrap()
     }
 
-    pub fn new_component_kind(&mut self, layout: ComponentDescriptor) -> &RelationKindInfo {
+    pub fn new_component_kind(
+        &mut self,
+        layout: ComponentDescriptor,
+    ) -> Result<&RelationKindInfo, RelationsError> {
         let id = RelationKindId(self.kinds.len());
-        let prev_inserted = self.component_indices.insert(layout.type_id().unwrap(), id);
-        assert!(prev_inserted.is_none());
+        if self
+            .component_indices
+            .contains_key(&layout.type_id().unwrap())
+        {
+            return Err(RelationsError::ComponentAlreadyExists {
+                type_id: layout.type_id().unwrap(),
+                name: layout.name,
+            });
+        }
+        self.component_indices.insert(layout.type_id().unwrap(), id);
         self.kinds.push(RelationKindInfo { data: layout, id });
-        self.kinds.last().unwrap()
+        Ok(self.kinds.last().unwrap())
     }
 
-    pub fn new_resource_kind(&mut self, layout: ComponentDescriptor) -> &RelationKindInfo {
+    pub fn new_resource_kind(
+        &mut self,
+        layout: ComponentDescriptor,
+    ) -> Result<&RelationKindInfo, RelationsError> {
         let id = RelationKindId(self.kinds.len());
-        let prev_inserted = self.resource_indices.insert(layout.type_id().unwrap(), id);
-        assert!(prev_inserted.is_none());
+        if self
+            .resource_indices
+            .contains_key(&layout.type_id().unwrap())
+        {
+            return Err(RelationsError::ResourceAlreadyExists {
+                type_id: layout.type_id().unwrap(),
+                name: layout.name,
+            });
+        }
+        self.resource_indices.insert(layout.type_id().unwrap(), id);
         self.kinds.push(RelationKindInfo { data: layout, id });
-        self.kinds.last().unwrap()
+        Ok(self.kinds.last().unwrap())
     }
 
     pub fn get_relation_kind(&self, id: RelationKindId) -> &RelationKindInfo {
@@ -228,7 +250,7 @@ impl Components {
             .copied()
         {
             Some(kind) => &self.kinds[kind.0],
-            None => self.new_component_kind(layout),
+            None => self.new_component_kind(layout).unwrap(),
         }
     }
 
@@ -242,7 +264,7 @@ impl Components {
             .copied()
         {
             Some(kind) => &self.kinds[kind.0],
-            None => self.new_resource_kind(layout),
+            None => self.new_resource_kind(layout).unwrap(),
         }
     }
 

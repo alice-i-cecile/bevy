@@ -158,7 +158,7 @@ impl World {
         descriptor: ComponentDescriptor,
     ) -> Result<RelationKindId, RelationsError> {
         let storage_type = descriptor.storage_type();
-        let relation_kind = self.components.new_relation_kind(descriptor);
+        let relation_kind = self.components.new_component_kind(descriptor)?;
 
         // ensure sparse set is created for SparseSet components
         if storage_type == StorageType::SparseSet {
