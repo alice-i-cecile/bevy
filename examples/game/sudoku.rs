@@ -2,6 +2,8 @@ use bevy::prelude::*;
 
 fn main() {
     App::build()
+        // Changes the background color to white
+        .insert_resource(ClearColor(Color::rgb(1.0, 1.0, 1.0)))
         .add_plugins(DefaultPlugins)
         .add_plugin(setup::SetupPlugin)
         .add_plugin(sudoku_rules::SudokuRulesPlugin)
@@ -14,12 +16,13 @@ mod setup {
 
     pub const CELL_SIZE: f32 = 50.0;
     pub const GRID_SIZE: f32 = 9.0 * CELL_SIZE;
-    pub const MINOR_LINE_THICKNESS: f32 = 5.0;
-    pub const MAJOR_LINE_THICKNESS: f32 = 10.0;
-    // Defines the bottom left corner of the grid in absolute coordinates
+    pub const MINOR_LINE_THICKNESS: f32 = 2.0;
+    pub const MAJOR_LINE_THICKNESS: f32 = 4.0;
+    // Defines the center lines of the grid in absolute coordinates
     // (0, 0) is in the center of the screen in Bevy
-    pub const GRID_LEFT_EDGE: f32 = -100.0;
-    pub const GRID_BOTTOM_EDGE: f32 = -100.0;
+    pub const GRID_CENTER_X: f32 = 0.0;
+    pub const GRID_CENTER_Y: f32 = 0.0;
+    pub const GRID_COLOR: Color = Color::rgb(0.1, 0.1, 0.1);
 
     pub struct SetupPlugin;
 
@@ -34,13 +37,23 @@ mod setup {
         commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     }
 
-    fn spawn_grid(mut commands: Commands) {
+    fn spawn_grid(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+        let grid_handle = materials.add(GRID_COLOR.into());
+
         for row in 0..=9 {
-            commands.spawn_bundle(new_gridline(Orientation::Horizontal, row));
+            commands.spawn_bundle(new_gridline(
+                Orientation::Horizontal,
+                row,
+                grid_handle.clone(),
+            ));
         }
 
         for column in 0..=9 {
-            commands.spawn_bundle(new_gridline(Orientation::Vertical, column));
+            commands.spawn_bundle(new_gridline(
+                Orientation::Vertical,
+                column,
+                grid_handle.clone(),
+            ));
         }
     }
 
@@ -49,7 +62,11 @@ mod setup {
         Vertical,
     }
 
-    fn new_gridline(orientation: Orientation, i: u8) -> SpriteBundle {
+    fn new_gridline(
+        orientation: Orientation,
+        i: u8,
+        grid_handle: Handle<ColorMaterial>,
+    ) -> SpriteBundle {
         // The grid lines that define the boxes need to be thicker
         let thickness = if (i % 3) == 0 {
             MAJOR_LINE_THICKNESS
@@ -65,13 +82,14 @@ mod setup {
         let offset = i as f32 * CELL_SIZE - 0.5 * GRID_SIZE;
 
         let (x, y) = match orientation {
-            Orientation::Horizontal => (GRID_LEFT_EDGE, GRID_BOTTOM_EDGE + offset),
-            Orientation::Vertical => (GRID_LEFT_EDGE + offset, GRID_BOTTOM_EDGE),
+            Orientation::Horizontal => (GRID_CENTER_X, GRID_CENTER_Y + offset),
+            Orientation::Vertical => (GRID_CENTER_X + offset, GRID_CENTER_Y),
         };
 
         SpriteBundle {
             sprite: Sprite::new(size),
             transform: Transform::from_xyz(x, y, 0.0),
+            material: grid_handle,
             ..Default::default()
         }
     }
