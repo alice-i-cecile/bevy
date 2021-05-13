@@ -280,6 +280,10 @@ name = "removal_detection"
 path = "examples/ecs/removal_detection.rs"
 
 [[example]]
+name = "sudoku"
+path = "examples/game/sudoku.rs"
+
+[[example]]
 name = "startup_system"
 path = "examples/ecs/startup_system.rs"
 
