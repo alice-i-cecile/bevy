@@ -21,6 +21,11 @@ struct Coordinates {
     /// but that's a reserved word in Rust
     pub square: u8,
 }
+/// The number marked inside of each cell
+struct Value(Option<u8>);
+
+/// A marker component that marks digits as provided by the puzzle
+struct Fixed;
 
 mod setup {
     use super::*;
@@ -124,7 +129,7 @@ mod setup {
     struct CellBundle {
         cell: Cell,
         coordinates: Coordinates,
-        value: Option<u8>,
+        value: Value,
         #[bundle]
         cell_fill: SpriteBundle,
     }
@@ -142,7 +147,7 @@ mod setup {
                     square: Self::compute_square(row, column),
                 },
                 // No digits are filled in to begin with
-                value: None,
+                value: Value(None),
                 cell_fill: SpriteBundle {
                     // The material for this sprite begins with the same material as our background
                     sprite: Sprite::new(Vec2::new(CELL_SIZE, CELL_SIZE)),
@@ -206,6 +211,7 @@ mod interaction {
                 // Should run before input to ensure mapping from position to cell is correct
                 .add_system(index_cells.system().before("input"))
                 .add_system(mouse_selection.system().label("input"))
+                .add_system(set_cell_value.system().label("input"))
                 // Should run after input to avoid delays
                 .add_system(color_selected.system().after("input"));
         }
@@ -328,6 +334,34 @@ mod interaction {
             match maybe_selected {
                 Some(_) => *material_handle = selection_color.0.clone(),
                 None => *material_handle = background_color.0.clone(),
+            }
+        }
+    }
+
+    fn set_cell_value(
+        mut query: Query<&mut Value, (With<Cell>, With<Selected>, Without<Fixed>)>,
+        keyboard_input: Res<Input<KeyCode>>,
+    ) {
+        for key_code in keyboard_input.get_just_pressed() {
+            let key_u8 = *key_code as u8;
+
+            // The u8 values of our key codes correspond to their digits when <= 9
+            if 1 <= key_u8 && key_u8 <= 9 {
+                for mut value in query.iter_mut() {
+                    *value = Value(match value.0 {
+                        // Fill blank values with the key pressed
+                        None => Some(key_u8),
+                        Some(old_value) => {
+                            // Remove existing values if they match
+                            if old_value == key_u8 {
+                                None
+                            } else {
+                                // Otherwise overwrite them
+                                Some(key_u8)
+                            }
+                        }
+                    });
+                }
             }
         }
     }
