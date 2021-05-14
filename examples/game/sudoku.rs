@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{input::system::exit_on_esc_system, prelude::*};
 
 fn main() {
     App::build()
@@ -6,6 +6,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(setup::SetupPlugin)
         .add_plugin(interaction::InteractionPlugin)
+        .add_system(exit_on_esc_system.system())
         .run();
 }
 
