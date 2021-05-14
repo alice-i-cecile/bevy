@@ -196,7 +196,7 @@ mod interaction {
     struct BackgroundColor(Handle<ColorMaterial>);
     pub const BACKGROUND_COLOR: Color = Color::rgb(1.0, 1.0, 1.0);
     struct SelectionColor(Handle<ColorMaterial>);
-    pub const SELECTION_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
+    pub const SELECTION_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
 
     impl Plugin for InteractionPlugin {
         fn build(&self, app: &mut AppBuilder) {
@@ -229,7 +229,6 @@ mod interaction {
             // These coordinates are in terms of the window's coordinates
             // and must be converted to the world coordinates used by our cell
             let mut cursor_position = window.cursor_position().unwrap();
-
             // FIXME: use https://github.com/bevyengine/bevy/pull/1799 once merged instead
             let camera_transform = camera_query.single().unwrap();
             let window_size = Vec2::new(window.width() as f32, window.height() as f32);
