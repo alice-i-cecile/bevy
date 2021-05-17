@@ -59,7 +59,7 @@ struct Fixed(bool);
 mod setup {
     use super::*;
 
-    pub const CELL_SIZE: f32 = 30.0;
+    pub const CELL_SIZE: f32 = 50.0;
     pub const GRID_SIZE: f32 = 9.0 * CELL_SIZE;
     pub const MINOR_LINE_THICKNESS: f32 = 2.0;
     pub const MAJOR_LINE_THICKNESS: f32 = 4.0;
