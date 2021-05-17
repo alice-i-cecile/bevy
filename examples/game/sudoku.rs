@@ -4,10 +4,18 @@ fn main() {
     App::build()
         .insert_resource(ClearColor(interaction::BACKGROUND_COLOR))
         .add_plugins(DefaultPlugins)
+        // Must occur after DefaultPlugins, but before our stage is used
+        // Implicitly inserts a startup stage after the default CoreStage::Startup
+        .add_startup_stage(SudokuStage::PostStartup, SystemStage::parallel())
         .add_plugin(setup::SetupPlugin)
         .add_plugin(interaction::InteractionPlugin)
         .add_system(exit_on_esc_system.system())
         .run();
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, StageLabel)]
+enum SudokuStage {
+    PostStartup,
 }
 
 struct Cell;
@@ -23,6 +31,10 @@ struct Coordinates {
 }
 /// The number marked inside of each cell
 struct Value(Option<u8>);
+
+// Marker relation to designate that the Value on the source entity (the Cell entity)
+// is displayed by the target entity (the Text2d entity in the same location)
+pub struct DisplayedBy;
 
 /// A marker component that marks digits as provided by the puzzle
 struct Fixed;
@@ -42,13 +54,20 @@ mod setup {
     pub const GRID_BOT_EDGE: f32 = GRID_CENTER_Y - 0.5 * GRID_SIZE;
     pub const GRID_COLOR: Color = Color::rgb(0.1, 0.1, 0.1);
 
+    pub const NUMBER_COLOR: Color = Color::BLACK;
+    pub const GIVEN_NUM_FONT: &str = "fonts/FiraSans-Bold.ttf";
+    pub const PLAYER_NUM_FONT: &str = "fonts/FiraMono-Medium.ttf";
+
     pub struct SetupPlugin;
 
     impl Plugin for SetupPlugin {
         fn build(&self, app: &mut AppBuilder) {
             app.add_startup_system(spawn_camera.system())
                 .add_startup_system(spawn_grid.system())
-                .add_startup_system(spawn_cells.system());
+                .add_startup_system(spawn_cells.system())
+                // Must occur in a new stage to ensure that the cells are initialized
+                // as commands are not processed until the end of the stage
+                .add_startup_system_to_stage(SudokuStage::PostStartup, spawn_cell_numbers.system());
         }
     }
 
@@ -186,6 +205,53 @@ mod setup {
             unreachable!("Each set in possible_squares_r shares exactly one element with each set in possible_squares_c");
         }
     }
+
+    /// Adds a text number associated with each cell to display its value
+    fn spawn_cell_numbers(
+        query: Query<(Entity, &Transform, Option<&Fixed>), With<Cell>>,
+        mut commands: Commands,
+        asset_server: Res<AssetServer>,
+    ) {
+        let given_font = asset_server.load(GIVEN_NUM_FONT);
+        let player_font = asset_server.load(PLAYER_NUM_FONT);
+
+        const TEXT_ALIGNMENT: TextAlignment = TextAlignment {
+            vertical: VerticalAlign::Center,
+            horizontal: HorizontalAlign::Center,
+        };
+
+        for (cell_entity, cell_transform, maybe_given) in query.iter() {
+            // These numbers must be displayed on top of the cells they are in
+            let mut number_transform = cell_transform.clone();
+            number_transform.translation.z += 1.0;
+
+            // Change the font based on whether a cell is given or not
+            let font = match maybe_given {
+                Some(_) => given_font.clone(),
+                None => player_font.clone(),
+            };
+
+            let text_style = TextStyle {
+                font,
+                font_size: 0.8 * CELL_SIZE,
+                color: NUMBER_COLOR,
+            };
+
+            let text_entity = commands.spawn().id();
+
+            commands.entity(text_entity).insert_bundle(Text2dBundle {
+                // This value begins empty, but then is later set in update_cell_numbers system
+                // to match the cell's `value` field
+                text: Text::with_section("", text_style.clone(), TEXT_ALIGNMENT),
+                transform: number_transform,
+                ..Default::default()
+            });
+
+            commands
+                .entity(cell_entity)
+                .insert_relation(DisplayedBy, text_entity);
+        }
+    }
 }
 
 mod interaction {
@@ -213,7 +279,8 @@ mod interaction {
                 .add_system(mouse_selection.system().label("input"))
                 .add_system(set_cell_value.system().label("input"))
                 // Should run after input to avoid delays
-                .add_system(color_selected.system().after("input"));
+                .add_system(color_selected.system().after("input"))
+                .add_system(update_cell_numbers.system().after("input"));
         }
     }
 
@@ -361,6 +428,23 @@ mod interaction {
                             }
                         }
                     });
+                }
+            }
+        }
+    }
+
+    fn update_cell_numbers(
+        cell_query: Query<(&Value, &Relation<DisplayedBy>), (With<Cell>, Changed<Value>)>,
+        mut num_query: Query<&mut Text>,
+    ) {
+        for (cell_value, displayed_by) in cell_query.iter() {
+            for (num_entity, _) in displayed_by {
+                let mut text = num_query.get_mut(num_entity).unwrap();
+
+                // There is only one section in our text
+                text.sections[0].value = match cell_value.0 {
+                    Some(n) => n.to_string(),
+                    None => "".to_string(),
                 }
             }
         }
