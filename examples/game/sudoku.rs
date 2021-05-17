@@ -304,7 +304,7 @@ mod interaction {
             // These coordinates are in terms of the window's coordinates
             // and must be converted to the world coordinates used by our cell
             let mut cursor_position = window.cursor_position().unwrap();
-            // FIXME: use https://github.com/bevyengine/bevy/pull/1799 once merged instead
+            // QUALITY: use https://github.com/bevyengine/bevy/pull/1799 once merged instead
             let camera_transform = camera_query.single().unwrap();
             let window_size = Vec2::new(window.width() as f32, window.height() as f32);
 
@@ -421,6 +421,8 @@ mod interaction {
         background_color: Res<BackgroundColor>,
         selection_color: Res<SelectionColor>,
     ) {
+        // QUALITY: use Added and Removed queries to avoid excessive spinning
+        // once https://github.com/bevyengine/bevy/issues/2148 is fixed
         for (maybe_selected, mut material_handle) in query.iter_mut() {
             match maybe_selected {
                 Some(_) => *material_handle = selection_color.0.clone(),
