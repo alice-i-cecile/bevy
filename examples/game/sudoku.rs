@@ -272,7 +272,9 @@ mod interaction {
                 .add_event::<CellClick>()
                 // Should run before input to ensure mapping from position to cell is correct
                 .add_system(index_cells.system().before("input"))
+                // Various input systems
                 .add_system(cell_click.system().label("input"))
+                .add_system(select_all.system().label("input"))
                 .add_system(set_cell_value.system().label("input"))
                 .add_system(clear_selected.system().label("input"))
                 // Should immediately run to process input events after
@@ -381,6 +383,7 @@ mod interaction {
         }
     }
 
+    /// Clears all selected cells when Backspace or Delete is pressed
     fn clear_selected(
         mut query: Query<(&mut Value, &Fixed), With<Selected>>,
         keyboard_input: Res<Input<KeyCode>>,
@@ -396,6 +399,23 @@ mod interaction {
         }
     }
 
+    /// Selects all cells when Ctrl + A is pressed
+    fn select_all(
+        query: Query<Entity, With<Cell>>,
+        keyboard_input: Res<Input<KeyCode>>,
+        mut commands: Commands,
+    ) {
+        let ctrl =
+            keyboard_input.pressed(KeyCode::LControl) || keyboard_input.pressed(KeyCode::RControl);
+
+        if ctrl && keyboard_input.just_pressed(KeyCode::A) {
+            for entity in query.iter() {
+                commands.entity(entity).insert(Selected);
+            }
+        }
+    }
+
+    /// Set the background color of selected cells
     fn color_selected(
         mut query: Query<(Option<&Selected>, &mut Handle<ColorMaterial>), With<Cell>>,
         background_color: Res<BackgroundColor>,
@@ -409,8 +429,9 @@ mod interaction {
         }
     }
 
+    /// Set the value of the selected cells when 1-9 is pressed
     fn set_cell_value(
-        mut query: Query<(&mut Value, &Fixed), (With<Cell>, With<Selected>)>,
+        mut query: Query<(&mut Value, &Fixed), With<Selected>>,
         keyboard_input: Res<Input<KeyCode>>,
     ) {
         for key_code in keyboard_input.get_just_pressed() {
