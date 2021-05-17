@@ -274,6 +274,7 @@ mod interaction {
                 .add_system(index_cells.system().before("input"))
                 .add_system(cell_click.system().label("input"))
                 .add_system(set_cell_value.system().label("input"))
+                .add_system(clear_selected.system().label("input"))
                 // Should immediately run to process input events after
                 .add_system(handle_clicks.system().label("actions").after("input"))
                 // Should run after actions to avoid delays
@@ -375,6 +376,21 @@ mod interaction {
                     } else {
                         commands.entity(entity).insert(Selected);
                     }
+                }
+            }
+        }
+    }
+
+    fn clear_selected(
+        mut query: Query<(&mut Value, &Fixed), With<Selected>>,
+        keyboard_input: Res<Input<KeyCode>>,
+    ) {
+        if keyboard_input.just_pressed(KeyCode::Delete)
+            || keyboard_input.just_pressed(KeyCode::Back)
+        {
+            for (mut value, is_fixed) in query.iter_mut() {
+                if !is_fixed.0 {
+                    *value = Value(None);
                 }
             }
         }
