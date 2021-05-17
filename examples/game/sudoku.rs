@@ -555,7 +555,8 @@ mod sudoku_generation {
             app.add_startup_system(load_fonts.system())
                 .add_startup_system(generate_sudoku.system())
                 .add_startup_system_to_stage(SudokuStage::PostStartup, fill_puzzle.system())
-                .add_system(style_numbers.system());
+                .add_system(style_numbers.system())
+                .add_system(cheat_at_sudoku.system());
         }
     }
 
@@ -644,6 +645,22 @@ mod sudoku_generation {
                     true => fixed_font_res.0.clone(),
                     false => fillable_font_res.0.clone(),
                 }
+            }
+        }
+    }
+
+    /// Cheats and fills in the solution for you when space is pressed
+    fn cheat_at_sudoku(
+        complete_puzzle: Res<CompletePuzzle>,
+        mut query: Query<(&Coordinates, &mut Value), With<Cell>>,
+        keyboard_input: Res<Input<KeyCode>>,
+    ) {
+        if keyboard_input.just_pressed(KeyCode::Space) {
+            for (coordinates, mut value) in query.iter_mut() {
+                let correct_value = complete_puzzle.numbers.get(coordinates).unwrap();
+
+                // Fill in cells from initial puzzle and mark those cells as fixed
+                *value = *correct_value;
             }
         }
     }
