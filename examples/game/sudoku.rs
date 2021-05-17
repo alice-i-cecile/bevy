@@ -18,7 +18,7 @@ enum SudokuStage {
     PostStartup,
 }
 
-struct Cell;
+pub struct Cell;
 struct Coordinates {
     pub row: u8,
     pub column: u8,
@@ -258,11 +258,20 @@ mod interaction {
     use bevy::{render::camera::Camera, utils::HashMap};
 
     use super::*;
+    use cell_indexing::{index_cells, CellIndex};
     pub struct InteractionPlugin;
 
-    // Marker component for selected cells
+    /// Marker component for selected cells
     #[derive(Debug)]
     pub struct Selected;
+
+    /// Event to dispatch cell clicks
+    struct CellClick {
+        /// Some(entity) if a cell was clicked, otherwise None
+        selected_cell: Option<Entity>,
+        /// Was shift held down at the time the event was sent
+        shift: bool,
+    }
 
     // Various colors for our cells
     struct BackgroundColor(Handle<ColorMaterial>);
@@ -274,13 +283,16 @@ mod interaction {
         fn build(&self, app: &mut AppBuilder) {
             app.add_startup_system(cell_colors.system())
                 .init_resource::<CellIndex>()
+                .add_event::<CellClick>()
                 // Should run before input to ensure mapping from position to cell is correct
                 .add_system(index_cells.system().before("input"))
-                .add_system(mouse_selection.system().label("input"))
+                .add_system(cell_click.system().label("input"))
                 .add_system(set_cell_value.system().label("input"))
-                // Should run after input to avoid delays
-                .add_system(color_selected.system().after("input"))
-                .add_system(update_cell_numbers.system().after("input"));
+                // Should immediately run to process input events after
+                .add_system(handle_clicks.system().label("actions").after("input"))
+                // Should run after actions to avoid delays
+                .add_system(color_selected.system().after("actions"))
+                .add_system(update_cell_numbers.system().after("actions"));
         }
     }
 
@@ -289,13 +301,13 @@ mod interaction {
         commands.insert_resource(SelectionColor(materials.add(SELECTION_COLOR.into())));
     }
 
-    fn mouse_selection(
-        cell_query: Query<(Entity, Option<&Selected>), With<Cell>>,
+    fn cell_click(
         camera_query: Query<&Transform, With<Camera>>,
         mouse_button_input: Res<Input<MouseButton>>,
+        keyboard_input: Res<Input<KeyCode>>,
         windows: Res<Windows>,
         cell_index: Res<CellIndex>,
-        mut commands: Commands,
+        mut cell_click_events: EventWriter<CellClick>,
     ) {
         if mouse_button_input.just_pressed(MouseButton::Left) {
             // Our game only has one window
@@ -321,74 +333,53 @@ mod interaction {
             // Use the CellIndex resource to map the mouse position to a particular cell
             let selected_cell = cell_index.get(cursor_position_world);
 
-            if let Some(entity) = selected_cell {
-                let (_, maybe_selected) = cell_query.get(entity).unwrap();
-                match maybe_selected {
-                    // Select cells that aren't selected
-                    None => commands.entity(entity).insert(Selected),
-                    // Unselect cells that were already selected
-                    Some(_) => commands.entity(entity).remove::<Selected>(),
-                };
+            cell_click_events.send(CellClick {
+                selected_cell,
+                shift: keyboard_input.pressed(KeyCode::LShift)
+                    || keyboard_input.pressed(KeyCode::RShift),
+            })
+        }
+    }
+
+    fn handle_clicks(
+        mut cell_click_events: EventReader<CellClick>,
+        cell_query: Query<(Entity, Option<&Selected>), With<Cell>>,
+        mut commands: Commands,
+    ) {
+        // Usually there's just going to be one of these per frame
+        // But we may as well loop through all just in case
+        for click_event in cell_click_events.iter() {
+            // Select multiple tiles when shift is held
+            if click_event.shift {
+                if let Some(entity) = click_event.selected_cell {
+                    let (_, maybe_selected) = cell_query.get(entity).unwrap();
+                    match maybe_selected {
+                        // Select cells that aren't selected
+                        None => commands.entity(entity).insert(Selected),
+                        // Unselect cells that were already selected
+                        Some(_) => commands.entity(entity).remove::<Selected>(),
+                    };
+                } else {
+                    for (entity, _) in cell_query.iter() {
+                        // If the user clicks outside of the grid, unselect everything
+                        commands.entity(entity).remove::<Selected>();
+                    }
+                }
             } else {
+                // Begin by deselecting everything
                 for (entity, _) in cell_query.iter() {
-                    // If the user clicks outside of the grid, unselect everything
                     commands.entity(entity).remove::<Selected>();
                 }
-            }
-        }
-    }
 
-    #[derive(Default)]
-    struct CellIndex {
-        pub cell_map: HashMap<Entity, BoundingBox>,
-    }
-
-    struct BoundingBox {
-        pub bottom_left: Vec2,
-        pub top_right: Vec2,
-    }
-
-    impl CellIndex {
-        pub fn get(&self, position: Vec2) -> Option<Entity> {
-            // This is a slow and naive linear-time approach to spatial indexing
-            // But it works fine for 81 items!
-            for (entity, bounding_box) in self.cell_map.iter() {
-                // Checks if the position is in the bounding box on both x and y
-                let in_bounds = position.cmpge(bounding_box.bottom_left)
-                    & position.cmple(bounding_box.top_right);
-                // Only returns true if it's inside the box on both x and y
-                if in_bounds.all() {
-                    // This early return of a single item only works correctly
-                    // because we know our entitities never overlap
-                    // We would need a way to break ties otherwise
-                    return Some(*entity);
+                // Only select one tile at once normally
+                if let Some(entity) = click_event.selected_cell {
+                    let (_, maybe_selected) = cell_query.get(entity).unwrap();
+                    if maybe_selected.is_none() {
+                        // Select cells that aren't selected
+                        commands.entity(entity).insert(Selected);
+                    };
                 }
             }
-            // Return None if no matches found
-            None
-        }
-    }
-
-    fn index_cells(
-        query: Query<(Entity, &Sprite, &Transform), (With<Cell>, Changed<Transform>)>,
-        mut cell_index: ResMut<CellIndex>,
-    ) {
-        // Our Changed<Transform> filter ensures that this system only does work
-        // on entities whose Transforms were added or mutated since the last time
-        // this system ran
-        for (entity, sprite, transform) in query.iter() {
-            let center = transform.translation.truncate();
-            let bottom_left = center - sprite.size / 2.0;
-            let top_right = center + sprite.size / 2.0;
-
-            // .insert overwrites existing values
-            cell_index.cell_map.insert(
-                entity,
-                BoundingBox {
-                    bottom_left,
-                    top_right,
-                },
-            );
         }
     }
 
@@ -412,19 +403,21 @@ mod interaction {
         for key_code in keyboard_input.get_just_pressed() {
             let key_u8 = *key_code as u8;
 
-            // The u8 values of our key codes correspond to their digits when <= 9
-            if 1 <= key_u8 && key_u8 <= 9 {
+            // The u8 values of our key codes correspond to their digits + 1 when < 9
+            if key_u8 < 9 {
+                let new_value = key_u8 + 1;
+
                 for mut value in query.iter_mut() {
                     *value = Value(match value.0 {
                         // Fill blank values with the key pressed
-                        None => Some(key_u8),
+                        None => Some(new_value),
                         Some(old_value) => {
                             // Remove existing values if they match
-                            if old_value == key_u8 {
+                            if old_value == new_value {
                                 None
                             } else {
                                 // Otherwise overwrite them
-                                Some(key_u8)
+                                Some(new_value)
                             }
                         }
                     });
@@ -446,6 +439,63 @@ mod interaction {
                     Some(n) => n.to_string(),
                     None => "".to_string(),
                 }
+            }
+        }
+    }
+
+    mod cell_indexing {
+        use super::*;
+        #[derive(Default)]
+        pub struct CellIndex {
+            pub cell_map: HashMap<Entity, BoundingBox>,
+        }
+
+        pub struct BoundingBox {
+            pub bottom_left: Vec2,
+            pub top_right: Vec2,
+        }
+
+        impl CellIndex {
+            pub fn get(&self, position: Vec2) -> Option<Entity> {
+                // This is a slow and naive linear-time approach to spatial indexing
+                // But it works fine for 81 items!
+                for (entity, bounding_box) in self.cell_map.iter() {
+                    // Checks if the position is in the bounding box on both x and y
+                    let in_bounds = position.cmpge(bounding_box.bottom_left)
+                        & position.cmple(bounding_box.top_right);
+                    // Only returns true if it's inside the box on both x and y
+                    if in_bounds.all() {
+                        // This early return of a single item only works correctly
+                        // because we know our entitities never overlap
+                        // We would need a way to break ties otherwise
+                        return Some(*entity);
+                    }
+                }
+                // Return None if no matches found
+                None
+            }
+        }
+
+        pub fn index_cells(
+            query: Query<(Entity, &Sprite, &Transform), (With<Cell>, Changed<Transform>)>,
+            mut cell_index: ResMut<CellIndex>,
+        ) {
+            // Our Changed<Transform> filter ensures that this system only does work
+            // on entities whose Transforms were added or mutated since the last time
+            // this system ran
+            for (entity, sprite, transform) in query.iter() {
+                let center = transform.translation.truncate();
+                let bottom_left = center - sprite.size / 2.0;
+                let top_right = center + sprite.size / 2.0;
+
+                // .insert overwrites existing values
+                cell_index.cell_map.insert(
+                    entity,
+                    BoundingBox {
+                        bottom_left,
+                        top_right,
+                    },
+                );
             }
         }
     }
