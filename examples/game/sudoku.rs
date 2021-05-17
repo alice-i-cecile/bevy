@@ -30,6 +30,7 @@ struct Coordinates {
     pub square: u8,
 }
 /// The number marked inside of each cell
+#[derive(PartialEq, Eq)]
 struct Value(Option<u8>);
 
 // Marker relation to designate that the Value on the source entity (the Cell entity)
@@ -343,7 +344,7 @@ mod interaction {
 
     fn handle_clicks(
         mut cell_click_events: EventReader<CellClick>,
-        cell_query: Query<(Entity, Option<&Selected>), With<Cell>>,
+        cell_query: Query<(Entity, Option<&Selected>, &Value), With<Cell>>,
         mut commands: Commands,
     ) {
         // Usually there's just going to be one of these per frame
@@ -352,7 +353,7 @@ mod interaction {
             // Select multiple tiles when shift is held
             if click_event.shift {
                 if let Some(entity) = click_event.selected_cell {
-                    let (_, maybe_selected) = cell_query.get(entity).unwrap();
+                    let (_, maybe_selected, _) = cell_query.get(entity).unwrap();
                     match maybe_selected {
                         // Select cells that aren't selected
                         None => commands.entity(entity).insert(Selected),
@@ -360,24 +361,35 @@ mod interaction {
                         Some(_) => commands.entity(entity).remove::<Selected>(),
                     };
                 } else {
-                    for (entity, _) in cell_query.iter() {
+                    for (entity, _, _) in cell_query.iter() {
                         // If the user clicks outside of the grid, unselect everything
                         commands.entity(entity).remove::<Selected>();
                     }
                 }
             } else {
                 // Begin by deselecting everything
-                for (entity, _) in cell_query.iter() {
+                for (entity, _, _) in cell_query.iter() {
                     commands.entity(entity).remove::<Selected>();
                 }
 
                 // Only select one tile at once normally
                 if let Some(entity) = click_event.selected_cell {
-                    let (_, maybe_selected) = cell_query.get(entity).unwrap();
-                    if maybe_selected.is_none() {
-                        // Select cells that aren't selected
+                    let (_, maybe_selected, current_value) = cell_query.get(entity).unwrap();
+                    let n_selected = cell_query
+                        .iter()
+                        .filter(|(_, maybe_selected, _)| maybe_selected.is_some())
+                        .count();
+                    // On a double click, select all tiles with a matching number
+                    if maybe_selected.is_some() && n_selected <= 1 {
+                        for (entity, _, value) in cell_query.iter() {
+                            if *value == *current_value {
+                                commands.entity(entity).insert(Selected);
+                            }
+                        }
+                    // Normally, select just the cell clicked on
+                    } else {
                         commands.entity(entity).insert(Selected);
-                    };
+                    }
                 }
             }
         }
