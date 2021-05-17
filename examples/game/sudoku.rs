@@ -9,6 +9,7 @@ fn main() {
         .add_startup_stage(SudokuStage::PostStartup, SystemStage::parallel())
         .add_plugin(setup::SetupPlugin)
         .add_plugin(interaction::InteractionPlugin)
+        .add_plugin(sudoku_generation::GenerationPlugin)
         .add_system(exit_on_esc_system.system())
         .run();
 }
@@ -37,8 +38,8 @@ struct Value(Option<u8>);
 // is displayed by the target entity (the Text2d entity in the same location)
 pub struct DisplayedBy;
 
-/// A marker component that marks digits as provided by the puzzle
-struct Fixed;
+/// A component that specifies whether digits were provided by the puzzle
+struct Fixed(bool);
 
 mod setup {
     use super::*;
@@ -56,8 +57,6 @@ mod setup {
     pub const GRID_COLOR: Color = Color::rgb(0.1, 0.1, 0.1);
 
     pub const NUMBER_COLOR: Color = Color::BLACK;
-    pub const GIVEN_NUM_FONT: &str = "fonts/FiraSans-Bold.ttf";
-    pub const PLAYER_NUM_FONT: &str = "fonts/FiraMono-Medium.ttf";
 
     pub struct SetupPlugin;
 
@@ -150,6 +149,7 @@ mod setup {
         cell: Cell,
         coordinates: Coordinates,
         value: Value,
+        fixed: Fixed,
         #[bundle]
         cell_fill: SpriteBundle,
     }
@@ -168,6 +168,7 @@ mod setup {
                 },
                 // No digits are filled in to begin with
                 value: Value(None),
+                fixed: Fixed(false),
                 cell_fill: SpriteBundle {
                     // The material for this sprite begins with the same material as our background
                     sprite: Sprite::new(Vec2::new(CELL_SIZE, CELL_SIZE)),
@@ -207,46 +208,43 @@ mod setup {
         }
     }
 
+    /// Marker component for the visual representation of a cell's values
+    pub struct CellNumber;
+
     /// Adds a text number associated with each cell to display its value
     fn spawn_cell_numbers(
-        query: Query<(Entity, &Transform, Option<&Fixed>), With<Cell>>,
+        query: Query<(Entity, &Transform), With<Cell>>,
         mut commands: Commands,
-        asset_server: Res<AssetServer>,
+        font_res: Res<sudoku_generation::FixedFont>,
     ) {
-        let given_font = asset_server.load(GIVEN_NUM_FONT);
-        let player_font = asset_server.load(PLAYER_NUM_FONT);
-
         const TEXT_ALIGNMENT: TextAlignment = TextAlignment {
             vertical: VerticalAlign::Center,
             horizontal: HorizontalAlign::Center,
         };
 
-        for (cell_entity, cell_transform, maybe_given) in query.iter() {
+        for (cell_entity, cell_transform) in query.iter() {
             // These numbers must be displayed on top of the cells they are in
             let mut number_transform = cell_transform.clone();
             number_transform.translation.z += 1.0;
 
-            // Change the font based on whether a cell is given or not
-            let font = match maybe_given {
-                Some(_) => given_font.clone(),
-                None => player_font.clone(),
-            };
-
             let text_style = TextStyle {
-                font,
+                font: font_res.0.clone(),
                 font_size: 0.8 * CELL_SIZE,
                 color: NUMBER_COLOR,
             };
 
             let text_entity = commands.spawn().id();
 
-            commands.entity(text_entity).insert_bundle(Text2dBundle {
-                // This value begins empty, but then is later set in update_cell_numbers system
-                // to match the cell's `value` field
-                text: Text::with_section("", text_style.clone(), TEXT_ALIGNMENT),
-                transform: number_transform,
-                ..Default::default()
-            });
+            commands
+                .entity(text_entity)
+                .insert_bundle(Text2dBundle {
+                    // This value begins empty, but then is later set in update_cell_numbers system
+                    // to match the cell's `value` field
+                    text: Text::with_section("", text_style.clone(), TEXT_ALIGNMENT),
+                    transform: number_transform,
+                    ..Default::default()
+                })
+                .insert(CellNumber);
 
             commands
                 .entity(cell_entity)
@@ -409,7 +407,7 @@ mod interaction {
     }
 
     fn set_cell_value(
-        mut query: Query<&mut Value, (With<Cell>, With<Selected>, Without<Fixed>)>,
+        mut query: Query<(&mut Value, &Fixed), (With<Cell>, With<Selected>)>,
         keyboard_input: Res<Input<KeyCode>>,
     ) {
         for key_code in keyboard_input.get_just_pressed() {
@@ -419,7 +417,12 @@ mod interaction {
             if key_u8 < 9 {
                 let new_value = key_u8 + 1;
 
-                for mut value in query.iter_mut() {
+                for (mut value, is_fixed) in query.iter_mut() {
+                    // Don't change the values of cells given by the puzzle
+                    if is_fixed.0 {
+                        break;
+                    }
+
                     *value = Value(match value.0 {
                         // Fill blank values with the key pressed
                         None => Some(new_value),
@@ -508,6 +511,54 @@ mod interaction {
                         top_right,
                     },
                 );
+            }
+        }
+    }
+}
+
+mod sudoku_generation {
+    use super::*;
+
+    pub const FIXED_NUM_FONT: &str = "fonts/FiraSans-Bold.ttf";
+    pub const FILLABLE_NUM_FONT: &str = "fonts/FiraMono-Medium.ttf";
+
+    pub struct GenerationPlugin;
+
+    impl Plugin for GenerationPlugin {
+        fn build(&self, app: &mut AppBuilder) {
+            app.add_startup_system(load_fonts.system())
+                .add_startup_system(generate_sudoku.system())
+                .add_system(style_numbers.system());
+        }
+    }
+
+    /// The clues and constraints given by the puzzle
+    struct InitialPuzzle;
+    /// The true solution to the puzzle
+    struct CompletePuzzle;
+
+    /// Creates a new sudoku using the `sudoku` crate
+    fn generate_sudoku(mut commands: Commands) {
+        commands.insert_resource(InitialPuzzle);
+        commands.insert_resource(CompletePuzzle);
+    }
+
+    pub struct FixedFont(pub Handle<Font>);
+    pub struct FillableFont(pub Handle<Font>);
+    fn load_fonts(mut commands: Commands, asset_server: ResMut<AssetServer>) {
+        commands.insert_resource(FixedFont(asset_server.load(FIXED_NUM_FONT)));
+        commands.insert_resource(FillableFont(asset_server.load(FILLABLE_NUM_FONT)));
+    }
+
+    fn style_numbers(
+        mut query: Query<(&mut Text, &Fixed), Changed<Fixed>>,
+        fixed_font_res: Res<FixedFont>,
+        fillable_font_res: Res<FillableFont>,
+    ) {
+        for (mut text, is_fixed) in query.iter_mut() {
+            text.sections[0].style.font = match is_fixed.0 {
+                true => fixed_font_res.0.clone(),
+                false => fillable_font_res.0.clone(),
             }
         }
     }
