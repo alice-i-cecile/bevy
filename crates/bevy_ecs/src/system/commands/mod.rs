@@ -41,11 +41,8 @@ pub struct Commands<'w, 's> {
 
 impl<'w, 's> Commands<'w, 's> {
     /// Create a new `Commands` from a queue and a world.
-    pub fn new(queue: &'s mut CommandQueue, world: &'w World) -> Self {
-        Self {
-            queue,
-            entities: world.entities(),
-        }
+    pub fn new(queue: &'s mut CommandQueue, entities: &'w Entities) -> Self {
+        Self { queue, entities }
     }
 
     /// Creates a new empty [`Entity`] and returns an [`EntityCommands`] builder for it.
@@ -772,7 +769,7 @@ mod tests {
     fn commands() {
         let mut world = World::default();
         let mut command_queue = CommandQueue::default();
-        let entity = Commands::new(&mut command_queue, &world)
+        let entity = Commands::new(&mut command_queue, &world.entities())
             .spawn_bundle((W(1u32), W(2u64)))
             .id();
         command_queue.apply(&mut world);
@@ -785,7 +782,7 @@ mod tests {
         assert_eq!(results, vec![(1u32, 2u64)]);
         // test entity despawn
         {
-            let mut commands = Commands::new(&mut command_queue, &world);
+            let mut commands = Commands::new(&mut command_queue, world.entities());
             commands.entity(entity).despawn();
             commands.entity(entity).despawn(); // double despawn shouldn't panic
         }
@@ -807,7 +804,7 @@ mod tests {
         let (sparse_dropck, sparse_is_dropped) = DropCk::new_pair();
         let sparse_dropck = SparseDropCk(sparse_dropck);
 
-        let entity = Commands::new(&mut command_queue, &world)
+        let entity = Commands::new(&mut command_queue, world.entities())
             .spawn()
             .insert_bundle((W(1u32), W(2u64), dense_dropck, sparse_dropck))
             .id();
@@ -820,7 +817,7 @@ mod tests {
         assert_eq!(results_before, vec![(1u32, 2u64)]);
 
         // test component removal
-        Commands::new(&mut command_queue, &world)
+        Commands::new(&mut command_queue, world.entities())
             .entity(entity)
             .remove::<W<u32>>()
             .remove_bundle::<(W<u32>, W<u64>, SparseDropCk, DropCk)>();
@@ -850,7 +847,7 @@ mod tests {
         let mut world = World::default();
         let mut queue = CommandQueue::default();
         {
-            let mut commands = Commands::new(&mut queue, &world);
+            let mut commands = Commands::new(&mut queue, world.entities());
             commands.insert_resource(123);
             commands.insert_resource(456.0);
         }
@@ -860,7 +857,7 @@ mod tests {
         assert!(world.contains_resource::<f64>());
 
         {
-            let mut commands = Commands::new(&mut queue, &world);
+            let mut commands = Commands::new(&mut queue, world.entities());
             // test resource removal
             commands.remove_resource::<i32>();
         }

@@ -340,7 +340,7 @@ mod tests {
     fn build_children() {
         let mut world = World::default();
         let mut queue = CommandQueue::default();
-        let mut commands = Commands::new(&mut queue, &world);
+        let mut commands = Commands::new(&mut queue, world.entities());
 
         let mut children = Vec::new();
         let parent = commands.spawn().insert(C(1)).id();
@@ -378,7 +378,7 @@ mod tests {
 
         let mut queue = CommandQueue::default();
         {
-            let mut commands = Commands::new(&mut queue, &world);
+            let mut commands = Commands::new(&mut queue, world.entities());
             commands.entity(entities[0]).push_children(&entities[1..3]);
         }
         queue.apply(&mut world);
@@ -407,7 +407,7 @@ mod tests {
         );
 
         {
-            let mut commands = Commands::new(&mut queue, &world);
+            let mut commands = Commands::new(&mut queue, world.entities());
             commands.entity(parent).insert_children(1, &entities[3..]);
         }
         queue.apply(&mut world);

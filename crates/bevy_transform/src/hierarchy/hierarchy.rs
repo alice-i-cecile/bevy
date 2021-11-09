@@ -90,7 +90,7 @@ mod tests {
         let mut queue = CommandQueue::default();
         let grandparent_entity;
         {
-            let mut commands = Commands::new(&mut queue, &world);
+            let mut commands = Commands::new(&mut queue, world.entities());
 
             commands
                 .spawn_bundle((N("Another parent".to_owned()), Idx(0)))
@@ -128,7 +128,7 @@ mod tests {
         let parent_entity = world.get::<Children>(grandparent_entity).unwrap()[0];
 
         {
-            let mut commands = Commands::new(&mut queue, &world);
+            let mut commands = Commands::new(&mut queue, world.entities());
             commands.entity(parent_entity).despawn_recursive();
             // despawning the same entity twice should not panic
             commands.entity(parent_entity).despawn_recursive();

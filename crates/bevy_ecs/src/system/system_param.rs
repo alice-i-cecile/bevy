@@ -526,7 +526,7 @@ impl<'w, 's> SystemParamFetch<'w, 's> for CommandQueue {
         world: &'w World,
         _change_tick: u32,
     ) -> Self::Item {
-        Commands::new(state, world)
+        Commands::new(state, world.entities())
     }
 }
 

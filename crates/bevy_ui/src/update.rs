@@ -83,7 +83,7 @@ mod tests {
     fn test_ui_z_system() {
         let mut world = World::default();
         let mut queue = CommandQueue::default();
-        let mut commands = Commands::new(&mut queue, &world);
+        let mut commands = Commands::new(&mut queue, world.entities());
         commands.spawn_bundle(node_with_transform("0"));
 
         commands

@@ -152,7 +152,7 @@ mod test {
 
         // Root entity
         let mut queue = CommandQueue::default();
-        let mut commands = Commands::new(&mut queue, &world);
+        let mut commands = Commands::new(&mut queue, world.entities());
         let mut children = Vec::new();
         commands
             .spawn_bundle((

@@ -94,7 +94,7 @@ mod test {
 
         // Add parent entities
         let mut command_queue = CommandQueue::default();
-        let mut commands = Commands::new(&mut command_queue, &world);
+        let mut commands = Commands::new(&mut command_queue, world.entities());
         let mut children = Vec::new();
         let parent = commands
             .spawn()
