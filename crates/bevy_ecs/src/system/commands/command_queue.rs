@@ -1,6 +1,7 @@
 use super::Command;
 use crate::world::World;
 
+#[derive(Clone)]
 struct CommandMeta {
     offset: usize,
     func: unsafe fn(value: *mut u8, world: &mut World),
@@ -13,7 +14,7 @@ struct CommandMeta {
 // entities/components/resources, and it's not currently possible to parallelize these
 // due to mutable [`World`] access, maximizing performance for [`CommandQueue`] is
 // preferred to simplicity of implementation.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct CommandQueue {
     bytes: Vec<u8>,
     metas: Vec<CommandMeta>,

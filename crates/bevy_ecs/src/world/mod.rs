@@ -15,7 +15,7 @@ use crate::{
     entity::{AllocAtWithoutReplacement, Entities, Entity},
     query::{FilterFetch, QueryState, WorldQuery},
     storage::{Column, SparseSet, Storages},
-    system::Resource,
+    system::{CommandQueue, Commands, Resource},
 };
 use std::{
     any::TypeId,
@@ -76,6 +76,7 @@ pub struct World {
     pub(crate) storages: Storages,
     pub(crate) bundles: Bundles,
     pub(crate) removed_components: SparseSet<ComponentId, Vec<Entity>>,
+    pub(crate) command_queue: CommandQueue,
     /// Access cache used by [WorldCell].
     pub(crate) archetype_component_access: ArchetypeComponentAccess,
     main_thread_validator: MainThreadValidator,
@@ -93,6 +94,7 @@ impl Default for World {
             storages: Default::default(),
             bundles: Default::default(),
             removed_components: Default::default(),
+            command_queue: CommandQueue::default(),
             archetype_component_access: Default::default(),
             main_thread_validator: Default::default(),
             // Default value is `1`, and `last_change_tick`s default to `0`, such that changes
@@ -161,6 +163,46 @@ impl World {
     #[inline]
     pub fn bundles(&self) -> &Bundles {
         &self.bundles
+    }
+
+    /// Provides access to the World's internal [Commands] buffer
+    ///
+    /// Commands allow you to defer complex work until a later point in time.
+    /// In the context of exclusive-world-access,
+    /// this can be particularly valuable for satisfying the borrow checker.
+    ///
+    /// This method can be called multiple times to create new instances of commands,
+    /// each of which can be used independently and will populate the same underlying [CommandQueue]
+    ///
+    /// When working with systems, you should use the [Commands] system parameter instead.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    ///     let world = World::new();
+    ///     let mut commands = World::commands();
+    ///     assert_eq!(world.entities.len(), 0);
+    ///     world.spawn_batch();
+    ///
+    ///     for i in 0..10{
+    ///         commands.spawn();
+    ///         assert_eq!(world.entities.len(), 0);
+    ///     }
+    ///     world.apply_commands();
+    ///     assert_eq!(world.entities.len(), 10);
+    /// ```
+    pub fn commands(&mut self) -> Commands {
+        Commands::new(&mut self.command_queue, &self.entities)
+    }
+
+    /// Applies all currently queued commands to the world immediately
+    ///
+    /// See [World::commands] for more details.
+    pub fn apply_commands(&mut self) {
+        // We must clone and then reset the command queue here
+        // as it is stored in the World itself
+        self.command_queue.clone().apply(self);
+        self.command_queue = CommandQueue::default();
     }
 
     /// Retrieves a [WorldCell], which safely enables multiple mutable World accesses at the same
