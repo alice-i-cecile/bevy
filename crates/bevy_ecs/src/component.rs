@@ -35,6 +35,9 @@ pub trait Component: Send + Sync + 'static {
     type Storage: ComponentStorage;
 }
 
+/// An object-safe version of a [Component]
+///
+/// The [StorageType] information is erased, and stored as a method on the trait.
 pub trait DynComponent: Send + Sync + 'static {
     fn storage(&self) -> StorageType;
 
