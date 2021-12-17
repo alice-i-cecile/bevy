@@ -13,13 +13,6 @@ use crate::{
 use bevy_ecs_macros::all_tuples;
 use std::{any::TypeId, collections::HashMap};
 
-pub trait ReadBundle {
-    /// Calls `func` on each value, in the order of this bundle's Components. This will
-    /// "mem::forget" the bundle fields, so callers are responsible for dropping the fields if
-    /// that is desirable.
-    fn get_components(self, func: impl FnMut(*mut dyn DynComponent));
-}
-
 /// An ordered collection of components.
 ///
 /// Commonly used for spawning entities and adding and removing components in bulk. This
@@ -88,7 +81,7 @@ pub unsafe trait Bundle: Send + Sync + 'static {
 ///   _exact_ order that [Bundle::get_components] is called.
 /// - [Bundle::from_components] must call `func` exactly once for each [ComponentId] returned by
 ///   [Bundle::component_ids].
-pub unsafe trait Bundle: ReadBundle + Send + Sync + 'static {
+pub unsafe trait Bundle: DynamicBundle + Send + Sync + 'static {
     /// Gets this [Bundle]'s component ids, in the order of this bundle's Components
     fn component_ids(components: &mut Components, storages: &mut Storages) -> Vec<ComponentId>;
 
@@ -105,9 +98,17 @@ pub unsafe trait Bundle: ReadBundle + Send + Sync + 'static {
         Self: Sized;
 }
 
+pub trait DynamicBundle {
+    /// Calls `func` on each value, in the order of this bundle's Components.
+    ///
+    /// This will `mem::forget` the bundle fields,
+    /// so callers are responsible for dropping the fields if that is desirable.
+    fn get_components(self, func: impl FnMut(*mut dyn DynComponent));
+}
+
 macro_rules! tuple_impl {
     ($($name: ident),*) => {
-        impl <$($name: Component),*> ReadBundle for ($($name,)*) {
+        impl <$($name: Component),*> DynamicBundle for ($($name,)*) {
             #[allow(unused_variables, unused_mut)]
             fn get_components(self, mut func: impl FnMut(*mut dyn DynComponent)) {
                 #[allow(non_snake_case)]
