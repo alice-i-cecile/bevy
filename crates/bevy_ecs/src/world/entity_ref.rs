@@ -1,6 +1,6 @@
 use crate::{
     archetype::{Archetype, ArchetypeId, Archetypes},
-    bundle::{Bundle, BundleInfo},
+    bundle::{Bundle, BundleInfo, DynAddBundle},
     change_detection::Ticks,
     component::{Component, ComponentId, ComponentTicks, Components, StorageType},
     entity::{Entities, Entity, EntityLocation},
@@ -195,6 +195,25 @@ impl<'w> EntityMut<'w> {
             .world
             .bundles
             .init_info::<T>(&mut self.world.components, &mut self.world.storages);
+        let mut bundle_inserter = bundle_info.get_bundle_inserter(
+            &mut self.world.entities,
+            &mut self.world.archetypes,
+            &mut self.world.components,
+            &mut self.world.storages,
+            self.location.archetype_id,
+            change_tick,
+        );
+        // SAFE: location matches current entity. `T` matches `bundle_info`
+        unsafe {
+            self.location = bundle_inserter.insert(self.entity, self.location.index, bundle);
+        }
+
+        self
+    }
+
+    pub fn insert_dyn_bundle<T: DynAddBundle>(&mut self, bundle: T) -> &mut Self {
+        let change_tick = self.world.change_tick();
+        let bundle_info = bundle.info(&mut self.world.components, &mut self.world.storages);
         let mut bundle_inserter = bundle_info.get_bundle_inserter(
             &mut self.world.entities,
             &mut self.world.archetypes,
@@ -613,6 +632,8 @@ fn contains_component_with_id(
 /// current archetype will fail, returning None. if `intersection` is true, components in the bundle
 /// but not in the current archetype will be ignored
 ///
+/// It will panic if the bundle info does not have an ID.
+///
 /// # Safety
 /// `archetype_id` must exist and components in `bundle_info` must exist
 unsafe fn remove_bundle_from_archetype(
@@ -623,6 +644,7 @@ unsafe fn remove_bundle_from_archetype(
     bundle_info: &BundleInfo,
     intersection: bool,
 ) -> Option<ArchetypeId> {
+    let bundle_id = bundle_info.id.unwrap();
     // check the archetype graph to see if the Bundle has been removed from this archetype in the
     // past
     let remove_bundle_result = {
@@ -630,9 +652,9 @@ unsafe fn remove_bundle_from_archetype(
         if intersection {
             current_archetype
                 .edges()
-                .get_remove_bundle_intersection(bundle_info.id)
+                .get_remove_bundle_intersection(bundle_id)
         } else {
-            current_archetype.edges().get_remove_bundle(bundle_info.id)
+            current_archetype.edges().get_remove_bundle(bundle_id)
         }
     };
     let result = if let Some(result) = remove_bundle_result {
@@ -660,7 +682,7 @@ unsafe fn remove_bundle_from_archetype(
                     // graph
                     current_archetype
                         .edges_mut()
-                        .insert_remove_bundle(bundle_info.id, None);
+                        .insert_remove_bundle(bundle_id, None);
                     return None;
                 }
             }
@@ -699,11 +721,11 @@ unsafe fn remove_bundle_from_archetype(
     if intersection {
         current_archetype
             .edges_mut()
-            .insert_remove_bundle_intersection(bundle_info.id, result);
+            .insert_remove_bundle_intersection(bundle_id, result);
     } else {
         current_archetype
             .edges_mut()
-            .insert_remove_bundle(bundle_info.id, result);
+            .insert_remove_bundle(bundle_id, result);
     }
     result
 }

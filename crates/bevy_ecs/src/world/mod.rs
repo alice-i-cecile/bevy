@@ -796,7 +796,8 @@ impl World {
         I::IntoIter: Iterator<Item = (Entity, B)>,
         B: Bundle,
     {
-        self.flush();
+        todo!();
+        /*self.flush();
 
         let iter = iter.into_iter();
         let change_tick = *self.change_tick.get_mut();
@@ -886,6 +887,7 @@ impl World {
         } else {
             Err(invalid_entities)
         }
+        */
     }
 
     /// Temporarily removes the requested resource from this [World], then re-adds it before

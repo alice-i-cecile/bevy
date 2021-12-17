@@ -50,6 +50,7 @@ pub struct Entity {
     pub(crate) id: u32,
 }
 
+#[derive(Copy, Clone)]
 pub enum AllocAtWithoutReplacement {
     Exists(EntityLocation),
     DidNotExist,

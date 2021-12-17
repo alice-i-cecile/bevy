@@ -33,26 +33,28 @@ impl ArchetypeId {
     }
 }
 
+#[derive(Clone)]
 pub enum ComponentStatus {
     Added,
     Mutated,
 }
 
-pub struct AddBundle {
+#[derive(Clone)]
+pub struct AddBundlePlan {
     pub archetype_id: ArchetypeId,
     pub bundle_status: Vec<ComponentStatus>,
 }
 
 #[derive(Default)]
 pub struct Edges {
-    pub add_bundle: SparseArray<BundleId, AddBundle>,
+    pub add_bundle: SparseArray<BundleId, AddBundlePlan>,
     pub remove_bundle: SparseArray<BundleId, Option<ArchetypeId>>,
     pub remove_bundle_intersection: SparseArray<BundleId, Option<ArchetypeId>>,
 }
 
 impl Edges {
     #[inline]
-    pub fn get_add_bundle(&self, bundle_id: BundleId) -> Option<&AddBundle> {
+    pub fn get_add_bundle(&self, bundle_id: BundleId) -> Option<&AddBundlePlan> {
         self.add_bundle.get(bundle_id)
     }
 
@@ -65,7 +67,7 @@ impl Edges {
     ) {
         self.add_bundle.insert(
             bundle_id,
-            AddBundle {
+            AddBundlePlan {
                 archetype_id,
                 bundle_status,
             },

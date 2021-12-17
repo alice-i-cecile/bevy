@@ -155,11 +155,6 @@ impl ComponentInfo {
         self.descriptor.is_send_and_sync
     }
 
-    #[inline]
-    pub fn dyn_metadata(&self) -> <dyn DynComponent as std::ptr::Pointee>::Metadata {
-        self.descriptor.dyn_metadata.unwrap()
-    }
-
     fn new(id: ComponentId, descriptor: ComponentDescriptor) -> Self {
         ComponentInfo { id, descriptor }
     }
@@ -203,7 +198,6 @@ pub struct ComponentDescriptor {
     type_id: Option<TypeId>,
     layout: Layout,
     drop: unsafe fn(*mut u8),
-    dyn_metadata: Option<<dyn DynComponent as std::ptr::Pointee>::Metadata>,
 }
 
 impl ComponentDescriptor {
@@ -220,7 +214,6 @@ impl ComponentDescriptor {
             type_id: Some(TypeId::of::<T>()),
             layout: Layout::new::<T>(),
             drop: Self::drop_ptr::<T>,
-            dyn_metadata: Some(std::ptr::metadata::<dyn DynComponent>(std::ptr::null::<T>())),
         }
     }
 
@@ -232,7 +225,6 @@ impl ComponentDescriptor {
             type_id: Some(TypeId::of::<T>()),
             layout: Layout::new::<T>(),
             drop: Self::drop_ptr::<T>,
-            dyn_metadata: None,
         }
     }
 
@@ -244,7 +236,6 @@ impl ComponentDescriptor {
             type_id: Some(TypeId::of::<T>()),
             layout: Layout::new::<T>(),
             drop: Self::drop_ptr::<T>,
-            dyn_metadata: None,
         }
     }
 

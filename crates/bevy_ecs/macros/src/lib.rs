@@ -148,6 +148,12 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 
     TokenStream::from(quote! {
         /// SAFE: ComponentId is returned in field-definition-order. [from_components] and [get_components] use field-definition-order
+        unsafe impl #impl_generics #ecs_path::bundle::AddBundle for #struct_name #ty_generics #where_clause {
+            #[allow(unused_variables, unused_mut, forget_copy, forget_ref)]
+            fn get_components(mut self, mut func: impl FnMut(*mut u8)) {
+                #(#field_get_components)*
+            }
+        }
         unsafe impl #impl_generics #ecs_path::bundle::Bundle for #struct_name #ty_generics #where_clause {
             fn component_ids(
                 components: &mut #ecs_path::component::Components,
@@ -163,11 +169,6 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 Self {
                     #(#field_from_components)*
                 }
-            }
-
-            #[allow(unused_variables, unused_mut, forget_copy, forget_ref)]
-            fn get_components(mut self, mut func: impl FnMut(*mut u8)) {
-                #(#field_get_components)*
             }
         }
     })
