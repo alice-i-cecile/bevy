@@ -38,6 +38,7 @@ pub trait Component: Send + Sync + 'static {
 pub trait DynComponent: Send + Sync + 'static {
     fn storage(&self) -> StorageType;
 
+    // TODO: return a ComponentDescriptor instead
     fn init_in_components(
         &self,
         components: &mut Components,
@@ -157,6 +158,7 @@ impl ComponentInfo {
 
     #[inline]
     pub fn dyn_metadata(&self) -> <dyn DynComponent as std::ptr::Pointee>::Metadata {
+        // TODO: return an option, so it doesn't panic on resources
         self.descriptor.dyn_metadata.unwrap()
     }
 
