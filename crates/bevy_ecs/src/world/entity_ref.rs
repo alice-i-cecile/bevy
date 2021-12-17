@@ -631,13 +631,9 @@ unsafe fn remove_bundle_from_archetype(
         if intersection {
             current_archetype
                 .edges()
-                // TODO: Decide how to handle dynamic bundles
-                .get_remove_bundle_intersection(bundle_info.id.unwrap())
+                .get_remove_bundle_intersection(bundle_info.id)
         } else {
-            current_archetype
-                .edges()
-                // TODO: Decide how to handle dynamic bundles
-                .get_remove_bundle(bundle_info.id.unwrap())
+            current_archetype.edges().get_remove_bundle(bundle_info.id)
         }
     };
     let result = if let Some(result) = remove_bundle_result {
@@ -665,8 +661,7 @@ unsafe fn remove_bundle_from_archetype(
                     // graph
                     current_archetype
                         .edges_mut()
-                        // TODO: Decide how to handle dynamic bundles
-                        .insert_remove_bundle(bundle_info.id.unwrap(), None);
+                        .insert_remove_bundle(bundle_info.id, None);
                     return None;
                 }
             }
@@ -705,12 +700,11 @@ unsafe fn remove_bundle_from_archetype(
     if intersection {
         current_archetype
             .edges_mut()
-            // TODO: Decide how to handle dynamic bundles
-            .insert_remove_bundle_intersection(bundle_info.id.unwrap(), result);
+            .insert_remove_bundle_intersection(bundle_info.id, result);
     } else {
         current_archetype
             .edges_mut()
-            .insert_remove_bundle(bundle_info.id.unwrap(), result);
+            .insert_remove_bundle(bundle_info.id, result);
     }
     result
 }

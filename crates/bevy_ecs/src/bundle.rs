@@ -166,14 +166,14 @@ impl SparseSetIndex for BundleId {
 
 /// The metadata of a [Bundle] and its constituent components
 pub struct BundleInfo {
-    pub(crate) id: Option<BundleId>,
+    pub(crate) id: BundleId,
     pub(crate) component_ids: Vec<ComponentId>,
     pub(crate) storage_types: Vec<StorageType>,
 }
 
 impl BundleInfo {
     #[inline]
-    pub fn id(&self) -> Option<BundleId> {
+    pub fn id(&self) -> BundleId {
         self.id
     }
 
@@ -617,13 +617,7 @@ impl Bundles {
             let id = BundleId(bundle_infos.len());
             // SAFE: T::component_id ensures info was created
             let bundle_info = unsafe {
-                // TODO: Decide how to handle dynamic bundles
-                initialize_bundle(
-                    std::any::type_name::<T>(),
-                    component_ids,
-                    Some(id),
-                    components,
-                )
+                initialize_bundle(std::any::type_name::<T>(), component_ids, id, components)
             };
             bundle_infos.push(bundle_info);
             id
@@ -639,7 +633,7 @@ impl Bundles {
 unsafe fn initialize_bundle(
     bundle_type_name: &'static str,
     component_ids: Vec<ComponentId>,
-    id: Option<BundleId>,
+    id: BundleId,
     components: &mut Components,
 ) -> BundleInfo {
     let mut storage_types = Vec::new();

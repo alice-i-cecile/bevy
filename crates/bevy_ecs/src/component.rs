@@ -117,6 +117,7 @@ impl Default for StorageType {
     }
 }
 
+/// Stores metadata that identify and describe a specific [Component]
 #[derive(Debug)]
 pub struct ComponentInfo {
     id: ComponentId,
@@ -172,7 +173,8 @@ impl ComponentInfo {
 
 /// Unique identifier for a component (or resource) type.
 ///
-/// Used to lookup storage information in ['Components'](crate::component::Components)
+/// Used to lookup storage information in ['Components'](crate::component::Components).
+/// These are assigned sequentially, beginning at 0.
 #[derive(Debug, Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub struct ComponentId(usize);
 
