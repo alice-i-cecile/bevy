@@ -52,19 +52,21 @@ pub struct Edges {
 
 impl Edges {
     #[inline]
-    pub fn get_add_bundle(&self, bundle_id: BundleId) -> Option<&AddBundle> {
-        self.add_bundle.get(bundle_id)
+    pub fn get_add_bundle(&self, bundle_id: Option<BundleId>) -> Option<&AddBundle> {
+        // TODO: Decide how to handle dynamic bundles
+        self.add_bundle.get(bundle_id.unwrap())
     }
 
     #[inline]
     pub fn insert_add_bundle(
         &mut self,
-        bundle_id: BundleId,
+        bundle_id: Option<BundleId>,
         archetype_id: ArchetypeId,
         bundle_status: Vec<ComponentStatus>,
     ) {
         self.add_bundle.insert(
-            bundle_id,
+            // TODO: Decide how to handle dynamic bundles
+            bundle_id.unwrap(),
             AddBundle {
                 archetype_id,
                 bundle_status,

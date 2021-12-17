@@ -140,6 +140,7 @@ macro_rules! tuple_impl {
 
 all_tuples!(tuple_impl, 0, 15, C);
 
+// PERF: use niche to store Option<BundleId> more efficiently
 #[derive(Debug, Clone, Copy)]
 pub struct BundleId(usize);
 
@@ -162,14 +163,14 @@ impl SparseSetIndex for BundleId {
 }
 
 pub struct BundleInfo {
-    pub(crate) id: BundleId,
+    pub(crate) id: Option<BundleId>,
     pub(crate) component_ids: Vec<ComponentId>,
     pub(crate) storage_types: Vec<StorageType>,
 }
 
 impl BundleInfo {
     #[inline]
-    pub fn id(&self) -> BundleId {
+    pub fn id(&self) -> Option<BundleId> {
         self.id
     }
 
@@ -612,7 +613,13 @@ impl Bundles {
             let id = BundleId(bundle_infos.len());
             // SAFE: T::component_id ensures info was created
             let bundle_info = unsafe {
-                initialize_bundle(std::any::type_name::<T>(), component_ids, id, components)
+                // TODO: Decide how to handle dynamic bundles
+                initialize_bundle(
+                    std::any::type_name::<T>(),
+                    component_ids,
+                    Some(id),
+                    components,
+                )
             };
             bundle_infos.push(bundle_info);
             id
@@ -628,7 +635,7 @@ impl Bundles {
 unsafe fn initialize_bundle(
     bundle_type_name: &'static str,
     component_ids: Vec<ComponentId>,
-    id: BundleId,
+    id: Option<BundleId>,
     components: &mut Components,
 ) -> BundleInfo {
     let mut storage_types = Vec::new();
