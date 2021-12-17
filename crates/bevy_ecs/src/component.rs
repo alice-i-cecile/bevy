@@ -54,7 +54,7 @@ impl<C: Component> DynComponent for C {
         components: &mut Components,
         storages: &mut Storages,
     ) -> ComponentId {
-        components.init_component::<Self>(storages)
+        components.get_or_insert::<Self>(storages)
     }
 }
 
@@ -302,7 +302,7 @@ pub enum ComponentsError {
 
 impl Components {
     #[inline]
-    pub fn init_component<T: Component>(&mut self, storages: &mut Storages) -> ComponentId {
+    pub fn get_or_insert<T: Component>(&mut self, storages: &mut Storages) -> ComponentId {
         let type_id = TypeId::of::<T>();
         let components = &mut self.components;
         let index = self.indices.entry(type_id).or_insert_with(|| {

@@ -123,7 +123,7 @@ macro_rules! tuple_impl {
         unsafe impl<$($name: Component),*> Bundle for ($($name,)*) {
             #[allow(unused_variables)]
             fn component_ids(components: &mut Components, storages: &mut Storages) -> Vec<ComponentId> {
-                vec![$(components.init_component::<$name>(storages)),*]
+                vec![$(components.get_or_insert::<$name>(storages)),*]
             }
 
             #[allow(unused_variables, unused_mut)]

@@ -171,7 +171,7 @@ impl World {
     }
 
     pub fn init_component<T: Component>(&mut self) -> ComponentId {
-        self.components.init_component::<T>(&mut self.storages)
+        self.components.get_or_insert::<T>(&mut self.storages)
     }
 
     /// Retrieves an [`EntityRef`] that exposes read-only operations for the given `entity`.

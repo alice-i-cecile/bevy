@@ -130,7 +130,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             });
         } else {
             field_component_ids.push(quote! {
-                component_ids.push(components.init_component::<#field_type>(storages));
+                component_ids.push(components.get_or_insert::<#field_type>(storages));
             });
             field_get_components.push(quote! {
                 func(&mut self.#field as *mut dyn #ecs_path::component::DynComponent);
