@@ -141,6 +141,7 @@ macro_rules! tuple_impl {
 
 all_tuples!(tuple_impl, 0, 15, C);
 
+/// The unique identifer of a type that implements [Bundle]
 // PERF: use niche to store Option<BundleId> more efficiently
 #[derive(Debug, Clone, Copy)]
 pub struct BundleId(usize);
@@ -163,6 +164,7 @@ impl SparseSetIndex for BundleId {
     }
 }
 
+/// The metadata of a [Bundle] and its constituent components
 pub struct BundleInfo {
     pub(crate) id: Option<BundleId>,
     pub(crate) component_ids: Vec<ComponentId>,
@@ -586,6 +588,7 @@ impl<'a, 'b> BundleSpawner<'a, 'b> {
     }
 }
 
+/// A central storage of [Bundle]s
 #[derive(Default)]
 pub struct Bundles {
     bundle_infos: Vec<BundleInfo>,
