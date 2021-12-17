@@ -133,7 +133,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 component_ids.push(components.init_component::<#field_type>(storages));
             });
             field_get_components.push(quote! {
-                func((&mut self.#field as *mut #field_type).cast::<u8>());
+                func(&mut self.#field as *mut dyn #ecs_path::component::DynComponent);
                 std::mem::forget(self.#field);
             });
             field_from_components.push(quote! {
@@ -147,6 +147,12 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
     let struct_name = &ast.ident;
 
     TokenStream::from(quote! {
+        impl #impl_generics #ecs_path::bundle::ReadBundle for #struct_name #ty_generics #where_clause {
+            #[allow(unused_variables, unused_mut, forget_copy, forget_ref)]
+            fn get_components(mut self, mut func: impl FnMut(*mut dyn #ecs_path::component::DynComponent)) {
+                #(#field_get_components)*
+            }
+        }
         /// SAFE: ComponentId is returned in field-definition-order. [from_components] and [get_components] use field-definition-order
         unsafe impl #impl_generics #ecs_path::bundle::Bundle for #struct_name #ty_generics #where_clause {
             fn component_ids(
@@ -159,15 +165,10 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             }
 
             #[allow(unused_variables, unused_mut, non_snake_case)]
-            unsafe fn from_components(mut func: impl FnMut() -> *mut u8) -> Self {
+            unsafe fn from_components(mut func: impl FnMut() -> *mut dyn #ecs_path::component::DynComponent) -> Self {
                 Self {
                     #(#field_from_components)*
                 }
-            }
-
-            #[allow(unused_variables, unused_mut, forget_copy, forget_ref)]
-            fn get_components(mut self, mut func: impl FnMut(*mut u8)) {
-                #(#field_get_components)*
             }
         }
     })

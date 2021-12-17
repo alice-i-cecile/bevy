@@ -2,7 +2,7 @@ use crate::{
     archetype::{Archetype, ArchetypeId, Archetypes},
     bundle::{Bundle, BundleInfo},
     change_detection::Ticks,
-    component::{Component, ComponentId, ComponentTicks, Components, StorageType},
+    component::{Component, ComponentId, ComponentTicks, Components, DynComponent, StorageType},
     entity::{Entities, Entity, EntityLocation},
     storage::{SparseSet, Storages},
     world::{Mut, World},
@@ -544,11 +544,11 @@ unsafe fn take_component(
     component_id: ComponentId,
     entity: Entity,
     location: EntityLocation,
-) -> *mut u8 {
+) -> *mut dyn DynComponent {
     let component_info = components.get_info_unchecked(component_id);
     let removed_components = removed_components.get_or_insert_with(component_id, Vec::new);
     removed_components.push(entity);
-    match component_info.storage_type() {
+    let data = match component_info.storage_type() {
         StorageType::Table => {
             let table = &storages.tables[archetype.table_id()];
             // SAFE: archetypes will always point to valid columns
@@ -563,7 +563,8 @@ unsafe fn take_component(
             .unwrap()
             .remove_and_forget(entity)
             .unwrap(),
-    }
+    };
+    std::ptr::from_raw_parts_mut(data.cast(), component_info.dyn_metadata())
 }
 
 /// # Safety

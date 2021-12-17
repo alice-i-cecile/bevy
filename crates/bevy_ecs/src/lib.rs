@@ -1,5 +1,7 @@
 #![doc = include_str!("../README.md")]
 
+#![feature(ptr_metadata)]
+
 pub mod archetype;
 pub mod bundle;
 pub mod change_detection;

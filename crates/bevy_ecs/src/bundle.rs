@@ -6,14 +6,21 @@ pub use bevy_ecs_macros::Bundle;
 
 use crate::{
     archetype::{AddBundle, Archetype, ArchetypeId, Archetypes, ComponentStatus},
-    component::{Component, ComponentId, ComponentTicks, Components, StorageType},
+    component::{Component, ComponentId, ComponentTicks, Components, DynComponent, StorageType},
     entity::{Entities, Entity, EntityLocation},
     storage::{SparseSetIndex, SparseSets, Storages, Table},
 };
 use bevy_ecs_macros::all_tuples;
 use std::{any::TypeId, collections::HashMap};
 
-/// An ordered collection of [`Component`]s.
+pub trait ReadBundle {
+    /// Calls `func` on each value, in the order of this bundle's Components. This will
+    /// "mem::forget" the bundle fields, so callers are responsible for dropping the fields if
+    /// that is desirable.
+    fn get_components(self, func: impl FnMut(*mut dyn DynComponent));
+}
+
+/// An ordered collection of components.
 ///
 /// Commonly used for spawning entities and adding and removing components in bulk. This
 /// trait is automatically implemented for tuples of components: `(ComponentA, ComponentB)`
@@ -77,6 +84,12 @@ use std::{any::TypeId, collections::HashMap};
 ///   [`Bundle::component_ids`].
 pub unsafe trait Bundle: Send + Sync + 'static {
     /// Gets this [`Bundle`]'s component ids, in the order of this bundle's [`Component`]s
+/// - [Bundle::component_ids] must return the ComponentId for each component type in the bundle, in the
+///   _exact_ order that [Bundle::get_components] is called.
+/// - [Bundle::from_components] must call `func` exactly once for each [ComponentId] returned by
+///   [Bundle::component_ids].
+pub unsafe trait Bundle: ReadBundle + Send + Sync + 'static {
+    /// Gets this [Bundle]'s component ids, in the order of this bundle's Components
     fn component_ids(components: &mut Components, storages: &mut Storages) -> Vec<ComponentId>;
 
     /// Calls `func`, which should return data for each component in the bundle, in the order of
@@ -86,17 +99,26 @@ pub unsafe trait Bundle: Send + Sync + 'static {
     /// Caller must return data for each component in the bundle, in the order of this bundle's
     /// [`Component`]s
     unsafe fn from_components(func: impl FnMut() -> *mut u8) -> Self
+    /// Components
+    unsafe fn from_components(func: impl FnMut() -> *mut dyn DynComponent) -> Self
     where
         Self: Sized;
-
-    /// Calls `func` on each value, in the order of this bundle's [`Component`]s. This will
-    /// [`std::mem::forget`] the bundle fields, so callers are responsible for dropping the fields
-    /// if that is desirable.
-    fn get_components(self, func: impl FnMut(*mut u8));
 }
 
 macro_rules! tuple_impl {
     ($($name: ident),*) => {
+        impl <$($name: Component),*> ReadBundle for ($($name,)*) {
+            #[allow(unused_variables, unused_mut)]
+            fn get_components(self, mut func: impl FnMut(*mut dyn DynComponent)) {
+                #[allow(non_snake_case)]
+                let ($(mut $name,)*) = self;
+                $(
+                    func(&mut $name as *mut dyn DynComponent);
+                    std::mem::forget($name);
+                )*
+            }
+        }
+        /// SAFE: Component is returned in tuple-order. [Bundle::from_components] and [Bundle::get_components] use tuple-order
         unsafe impl<$($name: Component),*> Bundle for ($($name,)*) {
             #[allow(unused_variables)]
             fn component_ids(components: &mut Components, storages: &mut Storages) -> Vec<ComponentId> {
@@ -105,22 +127,12 @@ macro_rules! tuple_impl {
 
             #[allow(unused_variables, unused_mut)]
             #[allow(clippy::unused_unit)]
-            unsafe fn from_components(mut func: impl FnMut() -> *mut u8) -> Self {
+            unsafe fn from_components(mut func: impl FnMut() -> *mut dyn DynComponent) -> Self {
                 #[allow(non_snake_case)]
                 let ($(mut $name,)*) = (
                     $(func().cast::<$name>(),)*
                 );
                 ($($name.read(),)*)
-            }
-
-            #[allow(unused_variables, unused_mut)]
-            fn get_components(self, mut func: impl FnMut(*mut u8)) {
-                #[allow(non_snake_case)]
-                let ($(mut $name,)*) = self;
-                $(
-                    func((&mut $name as *mut $name).cast::<u8>());
-                    std::mem::forget($name);
-                )*
             }
         }
     }
@@ -283,18 +295,18 @@ impl BundleInfo {
                         ComponentStatus::Added => {
                             column.initialize(
                                 table_row,
-                                component_ptr,
+                                component_ptr.cast::<u8>(),
                                 ComponentTicks::new(change_tick),
                             );
                         }
                         ComponentStatus::Mutated => {
-                            column.replace(table_row, component_ptr, change_tick);
+                            column.replace(table_row, component_ptr.cast::<u8>(), change_tick);
                         }
                     }
                 }
                 StorageType::SparseSet => {
                     let sparse_set = sparse_sets.get_mut(component_id).unwrap();
-                    sparse_set.insert(entity, component_ptr, change_tick);
+                    sparse_set.insert(entity, component_ptr.cast::<u8>(), change_tick);
                 }
             }
             bundle_component += 1;
