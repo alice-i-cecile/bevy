@@ -153,6 +153,10 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             fn get_components(mut self, mut func: impl FnMut(*mut u8)) {
                 #(#field_get_components)*
             }
+
+            fn info<'bundles>(&self, bundles: &'bundles mut #ecs_path::bundle::Bundles, components: &mut #ecs_path::component::Components, storages: &mut #ecs_path::storage::Storages) -> ::std::borrow::Cow<'bundles, #ecs_path::bundle::BundleInfo> {
+                ::std::borrow::Cow::Borrowed(bundles.init_info::<Self>(components, storages))
+            }
         }
         unsafe impl #impl_generics #ecs_path::bundle::Bundle for #struct_name #ty_generics #where_clause {
             fn component_ids(

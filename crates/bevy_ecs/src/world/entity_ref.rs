@@ -1,6 +1,6 @@
 use crate::{
     archetype::{Archetype, ArchetypeId, Archetypes},
-    bundle::{Bundle, BundleInfo, DynAddBundle},
+    bundle::{AddBundle, Bundle, BundleInfo},
     change_detection::Ticks,
     component::{Component, ComponentId, ComponentTicks, Components, StorageType},
     entity::{Entities, Entity, EntityLocation},
@@ -189,31 +189,13 @@ impl<'w> EntityMut<'w> {
             })
     }
 
-    pub fn insert_bundle<T: Bundle>(&mut self, bundle: T) -> &mut Self {
+    pub fn insert_bundle<T: AddBundle>(&mut self, bundle: T) -> &mut Self {
         let change_tick = self.world.change_tick();
-        let bundle_info = self
-            .world
-            .bundles
-            .init_info::<T>(&mut self.world.components, &mut self.world.storages);
-        let mut bundle_inserter = bundle_info.get_bundle_inserter(
-            &mut self.world.entities,
-            &mut self.world.archetypes,
+        let bundle_info = bundle.info(
+            &mut self.world.bundles,
             &mut self.world.components,
             &mut self.world.storages,
-            self.location.archetype_id,
-            change_tick,
         );
-        // SAFE: location matches current entity. `T` matches `bundle_info`
-        unsafe {
-            self.location = bundle_inserter.insert(self.entity, self.location.index, bundle);
-        }
-
-        self
-    }
-
-    pub fn insert_dyn_bundle<T: DynAddBundle>(&mut self, bundle: T) -> &mut Self {
-        let change_tick = self.world.change_tick();
-        let bundle_info = bundle.info(&mut self.world.components, &mut self.world.storages);
         let mut bundle_inserter = bundle_info.get_bundle_inserter(
             &mut self.world.entities,
             &mut self.world.archetypes,

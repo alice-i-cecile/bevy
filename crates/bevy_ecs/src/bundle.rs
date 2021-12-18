@@ -11,13 +11,20 @@ use crate::{
     storage::{SparseSetIndex, SparseSets, Storages, Table},
 };
 use bevy_ecs_macros::all_tuples;
-use std::{any::TypeId, collections::HashMap};
+use std::{any::TypeId, borrow::Cow, collections::HashMap};
 
 pub unsafe trait AddBundle {
     /// Calls `func` on each value, in the order of this bundle's Components. This will
     /// "mem::forget" the bundle fields, so callers are responsible for dropping the fields if
     /// that is desirable.
     fn get_components(self, func: impl FnMut(*mut u8));
+
+    fn info<'bundles>(
+        &self,
+        bundles: &'bundles mut Bundles,
+        components: &mut Components,
+        storages: &mut Storages,
+    ) -> Cow<'bundles, BundleInfo>;
 }
 /// An ordered collection of components.
 ///
@@ -109,6 +116,9 @@ macro_rules! tuple_impl {
                     std::mem::forget($name);
                 )*
             }
+            fn info<'bundles>(&self, bundles: &'bundles mut Bundles, components: &mut Components, storages: &mut Storages) -> Cow<'bundles, BundleInfo> {
+                Cow::Borrowed(bundles.init_info::<Self>(components, storages))
+            }
         }
         unsafe impl<$($name: Component),*> Bundle for ($($name,)*) {
             #[allow(unused_variables)]
@@ -130,9 +140,6 @@ macro_rules! tuple_impl {
 }
 
 all_tuples!(tuple_impl, 0, 15, C);
-pub unsafe trait DynAddBundle: AddBundle {
-    fn info(&self, components: &mut Components, storages: &mut Storages) -> BundleInfo;
-}
 
 unsafe impl AddBundle for Vec<Box<dyn DynComponent + 'static>> {
     fn get_components(mut self, mut func: impl FnMut(*mut u8)) {
@@ -142,14 +149,19 @@ unsafe impl AddBundle for Vec<Box<dyn DynComponent + 'static>> {
         // Set the length to 0 so that we leak the contents.
         unsafe { self.set_len(0) }
     }
-}
-unsafe impl DynAddBundle for Vec<Box<dyn DynComponent + 'static>> {
-    fn info(&self, components: &mut Components, storages: &mut Storages) -> BundleInfo {
+    fn info<'bundles>(
+        &self,
+        _bundles: &'bundles mut Bundles,
+        components: &mut Components,
+        storages: &mut Storages,
+    ) -> Cow<'bundles, BundleInfo> {
         let component_ids = self
             .iter()
             .map(|component| component.init_in_components(components, storages))
             .collect();
-        unsafe { initialize_bundle("dynamic Vec bundle", component_ids, None, components) }
+        Cow::Owned(unsafe {
+            initialize_bundle("dynamic Vec bundle", component_ids, None, components)
+        })
     }
 }
 
@@ -174,6 +186,7 @@ impl SparseSetIndex for BundleId {
     }
 }
 
+#[derive(Clone)]
 pub struct BundleInfo {
     pub(crate) id: Option<BundleId>,
     pub(crate) component_ids: Vec<ComponentId>,
@@ -272,16 +285,18 @@ impl BundleInfo {
         let (empty_archetype, archetype) =
             archetypes.get_2_mut(ArchetypeId::EMPTY, new_archetype_id);
         let table = &mut storages.tables[archetype.table_id()];
-        let add_bundle = (if let Some(add_bundle) = add_bundle {
-            std::borrow::Cow::Owned(add_bundle)
-        } else {
-            std::borrow::Cow::Borrowed(
-                empty_archetype
-                    .edges()
-                    .get_add_bundle(self.id.unwrap())
-                    .unwrap(),
-            )
-        });
+        let add_bundle = {
+            if let Some(add_bundle) = add_bundle {
+                std::borrow::Cow::Owned(add_bundle)
+            } else {
+                std::borrow::Cow::Borrowed(
+                    empty_archetype
+                        .edges()
+                        .get_add_bundle(self.id.unwrap())
+                        .unwrap(),
+                )
+            }
+        };
         BundleSpawner {
             archetype,
             add_bundle,
