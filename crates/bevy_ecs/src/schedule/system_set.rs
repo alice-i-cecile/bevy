@@ -1,7 +1,7 @@
 use crate::schedule::{
-    AmbiguitySetLabel, BoxedAmbiguitySetLabel, BoxedSystemLabel, IntoRunCriteria,
-    IntoSystemDescriptor, RunCriteriaDescriptorOrLabel, State, StateData, SystemDescriptor,
-    SystemLabel,
+    AmbiguitySetLabel, AtomicSystemLabel, BoxedAmbiguitySetLabel, BoxedSystemLabel,
+    IntoRunCriteria, IntoSystemDescriptor, RunCriteriaDescriptorOrLabel, State, StateData,
+    SystemDescriptor, SystemLabel,
 };
 use crate::system::AsSystemLabel;
 
@@ -103,6 +103,21 @@ impl SystemSet {
     #[must_use]
     pub fn after<Marker>(mut self, label: impl AsSystemLabel<Marker>) -> Self {
         self.after.push(Box::new(label.as_system_label()));
+        self
+    }
+
+    #[must_use]
+    /// Adds another system scheduled after the last-added system, returning the resulting [`SystemSet`]
+    pub fn then<Params>(mut self, system: impl IntoSystemDescriptor<Params>) -> SystemSet {
+        let last_system = self
+            .systems
+            .last_mut()
+            .expect("You must add at least one system to the `SystemSet` before calling `.then`");
+        let label_for_last_system = AtomicSystemLabel(42);
+        last_system.label(label_for_last_system);
+
+        self.systems
+            .push(system.after(label_for_last_system).into_descriptor());
         self
     }
 

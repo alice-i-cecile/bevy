@@ -1,7 +1,7 @@
 use crate::{
     schedule::{
         AmbiguitySetLabel, BoxedAmbiguitySetLabel, BoxedSystemLabel, IntoRunCriteria,
-        RunCriteriaDescriptorOrLabel, SystemLabel,
+        RunCriteriaDescriptorOrLabel, SystemLabel, SystemSet,
     },
     system::{
         AsSystemLabel, BoxedSystem, ExclusiveSystem, ExclusiveSystemCoerced, ExclusiveSystemFn,
@@ -47,6 +47,14 @@ pub trait IntoSystemDescriptor<Params> {
 }
 
 pub struct SystemLabelMarker;
+
+/// An atomically incrementing unique [`SystemLabel`].
+///
+/// Used for joining systems with `.then`
+// FIXME: this isn't actually atomic yet!
+use crate as bevy_ecs;
+#[derive(PartialEq, Clone, Eq, Hash, Debug, SystemLabel)]
+pub(crate) struct AtomicSystemLabel(pub(crate) u16);
 
 impl IntoSystemDescriptor<()> for ParallelSystemDescriptor {
     fn into_descriptor(self) -> SystemDescriptor {
@@ -134,6 +142,9 @@ pub trait ParallelSystemDescriptorCoercion<Params> {
     /// Specifies that the system should run after systems with the given label.
     fn after<Marker>(self, label: impl AsSystemLabel<Marker>) -> ParallelSystemDescriptor;
 
+    /// Adds another system scheduled after the current system, returning the resulting [`SystemSet`]
+    fn then<Params2, S2: IntoSystem<(), (), Params2>>(self, system: S2) -> SystemSet;
+
     /// Specifies that the system is exempt from execution order ambiguity detection
     /// with other systems in this set.
     fn in_ambiguity_set(self, set: impl AmbiguitySetLabel) -> ParallelSystemDescriptor;
@@ -161,6 +172,13 @@ impl ParallelSystemDescriptorCoercion<()> for ParallelSystemDescriptor {
     fn after<Marker>(mut self, label: impl AsSystemLabel<Marker>) -> ParallelSystemDescriptor {
         self.after.push(Box::new(label.as_system_label()));
         self
+    }
+
+    fn then<Params2, S2: IntoSystem<(), (), Params2>>(mut self, system: S2) -> SystemSet {
+        let set = SystemSet::new();
+        self.before
+            .push(Box::new(AtomicSystemLabel(42).as_system_label()));
+        set.with_system(self).with_system(system)
     }
 
     fn in_ambiguity_set(mut self, set: impl AmbiguitySetLabel) -> ParallelSystemDescriptor {
@@ -193,6 +211,10 @@ where
         new_parallel_descriptor(Box::new(IntoSystem::into_system(self))).after(label)
     }
 
+    fn then<Params2, S2: IntoSystem<(), (), Params2>>(self, system: S2) -> SystemSet {
+        new_parallel_descriptor(Box::new(IntoSystem::into_system(self))).then(system)
+    }
+
     fn in_ambiguity_set(self, set: impl AmbiguitySetLabel) -> ParallelSystemDescriptor {
         new_parallel_descriptor(Box::new(IntoSystem::into_system(self))).in_ambiguity_set(set)
     }
@@ -216,6 +238,10 @@ impl ParallelSystemDescriptorCoercion<()> for BoxedSystem<(), ()> {
 
     fn after<Marker>(self, label: impl AsSystemLabel<Marker>) -> ParallelSystemDescriptor {
         new_parallel_descriptor(self).after(label)
+    }
+
+    fn then<Params2, S2: IntoSystem<(), (), Params2>>(self, system: S2) -> SystemSet {
+        new_parallel_descriptor(self).then(system)
     }
 
     fn in_ambiguity_set(self, set: impl AmbiguitySetLabel) -> ParallelSystemDescriptor {
