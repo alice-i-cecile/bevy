@@ -951,6 +951,16 @@ description = "A simple game menu"
 category = "Games"
 wasm = true
 
+[[example]]
+name = "tic_tac_toe"
+path = "examples/games/tic_tac_toe.rs"
+
+[package.metadata.example.tic_tac_toe]
+name = "Tic Tac Toe"
+description = "A simple turn-based game"
+category = "Games"
+wasm = true
+
 # Input
 [[example]]
 name = "char_input_events"
