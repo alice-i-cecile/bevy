@@ -106,13 +106,12 @@ mod ui {
                         },
                         ..default()
                     })
-                    // Track where each cell is spawned
-                    .insert(Position { x, y })
-                    // Store what's in each cell
-                    .insert(CellContents::Empty)
                     .id();
 
+                let text = commands.spawn_bundle(TextBundle { ..default() }).id();
+
                 commands.entity(column).add_child(cell);
+                commands.entity(cell).add_child(text);
             }
         }
     }
