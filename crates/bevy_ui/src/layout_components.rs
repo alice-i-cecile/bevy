@@ -37,6 +37,10 @@ pub enum PositionType {
     Absolute,
 }
 
+/// The position of a UI node, before layouting
+///
+/// Layout is performed according to the [`LayoutStrategy`].
+/// To check the actual position of a UI element, read its [`Transform](bevy_transform::Transform) component
 #[derive(
     Component,
     Deref,
@@ -50,11 +54,6 @@ pub enum PositionType {
     Deserialize,
     Reflect,
 )]
-
-/// The position of a UI node, before layouting
-///
-/// Layout is performed according to the [`LayoutStrategy`].
-/// To check the actual position of a UI element, read its [`Transform](bevy_transform::Transform) component
 #[reflect_value(PartialEq, Serialize, Deserialize)]
 pub struct UiPosition(pub UiRect<Val>);
 
