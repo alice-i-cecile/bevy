@@ -7,6 +7,7 @@ use bevy_ecs::prelude::{Bundle, Component};
 use bevy_reflect::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// Controls which layout algorithm is used to position this UI node
 #[derive(
     Component, Copy, Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, Reflect,
 )]
@@ -49,22 +50,38 @@ pub enum PositionType {
     Deserialize,
     Reflect,
 )]
+
+/// The position of a UI node, before layouting
+///
+/// Layout is performed according to the [`LayoutStrategy`].
+/// To check the actual position of a UI element, read its [`Transform](bevy_transform::Transform) component
 #[reflect_value(PartialEq, Serialize, Deserialize)]
 pub struct UiPosition(pub UiRect<Val>);
 
+/// Controls the size of UI nodes
+///
+/// Layout is performed according to the [`LayoutStrategy`]
+/// To check the actual size of a UI element, read its [`Transform](bevy_transform::Transform) component
 #[derive(Component, Copy, Clone, PartialEq, Debug, Default, Serialize, Deserialize, Reflect)]
 #[reflect_value(PartialEq, Serialize, Deserialize)]
 pub struct SizeConstraints {
+    /// The minimum extent, which cannot be violated by the layouting algorithm
     pub min: Size<Val>,
+    /// The suggested extent, which will be used if other constraints can be comfortably satisfied
     pub suggested: Size<Val>,
+    /// The minimum extent, which cannot be violated by the layouting algorithm
     pub max: Size<Val>,
 }
 
+/// The space around and inside of a UI node
 #[derive(Component, Copy, Clone, PartialEq, Debug, Default, Serialize, Deserialize, Reflect)]
 #[reflect_value(PartialEq, Serialize, Deserialize)]
-pub struct Decorations {
+pub struct Spacing {
+    /// The space around the outside of the UI element
     pub margin: UiRect<Val>,
+    /// The space around the inside of the UI element
     pub padding: UiRect<Val>,
+    /// The space around the outside of the UI element that can be colored to create a visible border
     pub border: UiRect<Val>,
 }
 
@@ -98,6 +115,7 @@ pub enum Overflow {
     Hidden,
 }
 
+/// Flexbox-specific layout components
 pub mod flex {
 
     use bevy_ecs::query::{Changed, Or, WorldQuery};
@@ -168,7 +186,7 @@ pub mod flex {
                 position: query.position.clone(),
                 position_type: query.position_type.clone(),
                 size_constraints: query.size_constraints.clone(),
-                decorations: query.decorations.clone(),
+                spacing: query.spacing.clone(),
                 flexbox_layout: query.flexbox_layout.clone(),
                 text_direction: query.text_direction.clone(),
                 overflow: query.overflow.clone(),
@@ -176,14 +194,26 @@ pub mod flex {
         }
     }
 
+    /// The flexbox-specific layout configuration of a UI node
+    ///
+    /// This follows the web spec closely,
+    /// you can use [guides](https://css-tricks.com/snippets/css/a-guide-to-flexbox/) for additional documentation.
     #[derive(Component, Serialize, Deserialize, Reflect, Debug, PartialEq, Clone, Copy)]
     #[reflect_value(PartialEq, Serialize, Deserialize)]
     pub struct FlexboxLayout {
+        /// How items are ordered inside a flexbox
+        ///
+        /// Sets the main and cross-axis: if this is a "row" variant, the main axis will be rows.
         pub flex_direction: FlexDirection,
+        /// Aligns this container's contents according to the cross-axis
         pub align_items: AlignItems,
+        /// Overrides the inherited [`AlignItems`] value for this node
         pub align_self: AlignSelf,
+        /// Aligns this containers lines according to the cross-axis
         pub align_content: AlignContent,
+        /// Aligns this containers items along the main-axis
         pub justify_content: JustifyContent,
+        /// Controls how the content wraps
         pub flex_wrap: FlexWrap,
         /// Defines how much a flexbox item should grow if there's space available
         pub flex_grow: f32,
