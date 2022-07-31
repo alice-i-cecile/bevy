@@ -3,7 +3,7 @@
 use crate::{
     layout_components::{
         flex::FlexboxLayout, LayoutStrategy, Offset, Overflow, PositionType, SizeConstraints,
-        Spacing, TextDirection,
+        Spacing, TextDirection, Wrap,
     },
     widget::{Button, ImageMode},
     CalculatedSize, FocusPolicy, Interaction, Node, UiColor, UiImage,
@@ -39,6 +39,8 @@ pub struct NodeBundle {
     pub flexbox_layout: FlexboxLayout,
     /// The direction of the text
     pub text_direction: TextDirection,
+    /// Controls how the content wraps
+    pub wrap: Wrap,
     /// The behavior in case the node overflows its allocated space
     pub overflow: Overflow,
     /// Describes the color of the node
@@ -76,6 +78,8 @@ pub struct ImageBundle {
     pub flexbox_layout: FlexboxLayout,
     /// The direction of the text
     pub text_direction: TextDirection,
+    /// Controls how the content wraps
+    pub wrap: Wrap,
     /// The behavior in case the node overflows its allocated space
     pub overflow: Overflow,
     /// Configures how the image should scale
@@ -117,6 +121,8 @@ pub struct TextBundle {
     pub flexbox_layout: FlexboxLayout,
     /// The direction of the text
     pub text_direction: TextDirection,
+    /// Controls how the content wraps
+    pub wrap: Wrap,
     /// The behavior in case the node overflows its allocated space
     pub overflow: Overflow,
     /// Contains the text of the node
@@ -181,6 +187,7 @@ impl Default for TextBundle {
             size_constraints: Default::default(),
             flexbox_layout: Default::default(),
             text_direction: Default::default(),
+            wrap: Default::default(),
             overflow: Default::default(),
             transform: Default::default(),
             global_transform: Default::default(),
@@ -213,6 +220,8 @@ pub struct ButtonBundle {
     pub flexbox_layout: FlexboxLayout,
     /// The direction of the text
     pub text_direction: TextDirection,
+    /// Controls how the content wraps
+    pub wrap: Wrap,
     /// The behavior in case the node overflows its allocated space
     pub overflow: Overflow,
     /// Describes whether and how the button has been interacted with by the input

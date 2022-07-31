@@ -1,9 +1,8 @@
-use crate::{
-    layout_components::{
-        flex::{AlignContent, AlignItems, AlignSelf, FlexDirection, FlexWrap, JustifyContent},
-        PositionType,
+use crate::layout_components::{
+    flex::{
+        AlignContent, AlignItems, AlignSelf, FlexDirection, FlexboxLayoutQueryItem, JustifyContent,
     },
-    prelude::{flex::FlexboxLayoutQueryItem, LayoutStrategy},
+    LayoutStrategy, PositionType, Wrap,
 };
 use crate::{Size, UiRect, Val};
 
@@ -45,7 +44,7 @@ pub fn from_flexbox_layout(
         display: (*value.layout_strategy).into(),
         position_type: (*value.position_type).into(),
         flex_direction: value.flexbox_layout.flex_direction.into(),
-        flex_wrap: value.flexbox_layout.wrap.into(),
+        flex_wrap: (*value.wrap).into(),
         align_items: value.flexbox_layout.align_items.into(),
         align_self: value.flexbox_layout.align_self.into(),
         align_content: value.flexbox_layout.align_content.into(),
@@ -165,12 +164,12 @@ impl From<PositionType> for taffy::style::PositionType {
     }
 }
 
-impl From<FlexWrap> for taffy::style::FlexWrap {
-    fn from(value: FlexWrap) -> Self {
+impl From<Wrap> for taffy::style::FlexWrap {
+    fn from(value: Wrap) -> Self {
         match value {
-            FlexWrap::NoWrap => taffy::style::FlexWrap::NoWrap,
-            FlexWrap::Wrap => taffy::style::FlexWrap::Wrap,
-            FlexWrap::WrapReverse => taffy::style::FlexWrap::WrapReverse,
+            Wrap::NoWrap => taffy::style::FlexWrap::NoWrap,
+            Wrap::Wrap => taffy::style::FlexWrap::Wrap,
+            Wrap::WrapReverse => taffy::style::FlexWrap::WrapReverse,
         }
     }
 }

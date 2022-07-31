@@ -84,7 +84,7 @@ impl Plugin for UiPlugin {
             .register_type::<TextDirection>()
             .register_type::<LayoutStrategy>()
             .register_type::<FlexDirection>()
-            .register_type::<FlexWrap>()
+            .register_type::<Wrap>()
             .register_type::<FocusPolicy>()
             .register_type::<Interaction>()
             .register_type::<JustifyContent>()
