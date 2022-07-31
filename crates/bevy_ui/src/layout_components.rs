@@ -99,6 +99,9 @@ pub enum Overflow {
 }
 
 pub mod flex {
+
+    use bevy_ecs::query::{Changed, Or, WorldQuery};
+
     use super::*;
 
     /// A [`Bundle`] used to control the layout of a UI node
@@ -120,6 +123,57 @@ pub mod flex {
         pub text_direction: TextDirection,
         /// The behavior in case the node overflows its allocated space
         pub overflow: Overflow,
+    }
+
+    /// A query for all of the components in a [`FlexboxLayoutBundle`].
+    ///
+    /// See [`FlexboxLayoutChanged`] when attempting to use this as a query filter.
+    #[derive(WorldQuery)]
+    pub struct FlexboxLayoutQuery {
+        /// The layout algorithm used
+        pub layout_strategy: &'static LayoutStrategy,
+        /// The position of this UI node
+        pub position: &'static UiPosition,
+        /// Whether the node should be absolute or relatively positioned
+        pub position_type: &'static PositionType,
+        /// The constraints on the size of this node
+        pub size_constraints: &'static SizeConstraints,
+        /// The margin, padding and border of the UI node
+        pub decorations: &'static Decorations,
+        /// The flexbox layout parameters
+        pub flexbox_layout: &'static FlexboxLayout,
+        /// The direction of the text
+        pub text_direction: &'static TextDirection,
+        /// The behavior in case the node overflows its allocated space
+        pub overflow: &'static Overflow,
+    }
+
+    /// A type alias for when any of the components in the [`FlexboxLayoutBundle`] has been changed
+    ///
+    /// See [`FlexboxLayoutQuery`] for the data-fetching equivalent.
+    pub type FlexboxLayoutChanged = Or<(
+        Changed<LayoutStrategy>,
+        Changed<PositionType>,
+        Changed<SizeConstraints>,
+        Changed<Decorations>,
+        Changed<FlexboxLayout>,
+        Changed<TextDirection>,
+        Changed<Overflow>,
+    )>;
+
+    impl From<&FlexboxLayoutQuery> for FlexboxLayoutBundle {
+        fn from(query: &FlexboxLayoutQuery) -> Self {
+            Self {
+                layout_strategy: query.layout_strategy.clone(),
+                position: query.position.clone(),
+                position_type: query.position_type.clone(),
+                size_constraints: query.size_constraints.clone(),
+                decorations: query.decorations.clone(),
+                flexbox_layout: query.flexbox_layout.clone(),
+                text_direction: query.text_direction.clone(),
+                overflow: query.overflow.clone(),
+            }
+        }
     }
 
     #[derive(Component, Serialize, Deserialize, Reflect, Debug, PartialEq, Clone, Copy)]

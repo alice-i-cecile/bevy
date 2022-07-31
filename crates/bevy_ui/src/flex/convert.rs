@@ -3,7 +3,7 @@ use crate::{
         flex::{AlignContent, AlignItems, AlignSelf, FlexDirection, FlexWrap, JustifyContent},
         PositionType,
     },
-    prelude::{flex::FlexboxLayoutBundle, LayoutStrategy},
+    prelude::{flex::FlexboxLayoutQueryItem, LayoutStrategy},
 };
 use crate::{Size, UiRect, Val};
 
@@ -37,10 +37,13 @@ pub fn from_val_size(
     }
 }
 
-pub fn from_flexbox_layout(scale_factor: f64, value: &FlexboxLayoutBundle) -> taffy::style::Style {
+pub fn from_flexbox_layout(
+    scale_factor: f64,
+    value: FlexboxLayoutQueryItem<'_>,
+) -> taffy::style::Style {
     taffy::style::Style {
-        display: value.layout_strategy.into(),
-        position_type: value.position_type.into(),
+        display: (*value.layout_strategy).into(),
+        position_type: (*value.position_type).into(),
         flex_direction: value.flexbox_layout.flex_direction.into(),
         flex_wrap: value.flexbox_layout.flex_wrap.into(),
         align_items: value.flexbox_layout.align_items.into(),

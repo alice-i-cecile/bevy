@@ -1,6 +1,6 @@
 //! This module contains systems that update the UI when something changes
 
-use crate::{layout_components::Overflow, CalculatedClip};
+use crate::{layout_components::Overflow, prelude::flex::FlexboxLayoutQuery, CalculatedClip};
 
 use super::Node;
 use bevy_ecs::{
@@ -67,7 +67,12 @@ fn update_hierarchy(
 pub fn update_clipping_system(
     mut commands: Commands,
     root_node_query: Query<Entity, (With<Node>, Without<Parent>)>,
-    mut node_query: Query<(&Node, &GlobalTransform, &Style, Option<&mut CalculatedClip>)>,
+    mut node_query: Query<(
+        &Node,
+        &GlobalTransform,
+        FlexboxLayoutQuery,
+        Option<&mut CalculatedClip>,
+    )>,
     children_query: Query<&Children>,
 ) {
     for root_node in &root_node_query {
@@ -84,11 +89,16 @@ pub fn update_clipping_system(
 fn update_clipping(
     commands: &mut Commands,
     children_query: &Query<&Children>,
-    node_query: &mut Query<(&Node, &GlobalTransform, &Style, Option<&mut CalculatedClip>)>,
+    node_query: &mut Query<(
+        &Node,
+        &GlobalTransform,
+        FlexboxLayoutQuery,
+        Option<&mut CalculatedClip>,
+    )>,
     entity: Entity,
     clip: Option<Rect>,
 ) {
-    let (node, global_transform, style, calculated_clip) = node_query.get_mut(entity).unwrap();
+    let (node, global_transform, layout, calculated_clip) = node_query.get_mut(entity).unwrap();
     // Update this node's CalculatedClip component
     match (clip, calculated_clip) {
         (None, None) => {}
@@ -104,7 +114,7 @@ fn update_clipping(
     }
 
     // Calculate new clip for its children
-    let children_clip = match style.overflow {
+    let children_clip = match layout.overflow {
         Overflow::Visible => clip,
         Overflow::Hidden => {
             let node_center = global_transform.translation().truncate();
