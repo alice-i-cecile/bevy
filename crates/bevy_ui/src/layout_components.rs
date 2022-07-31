@@ -122,27 +122,6 @@ pub mod flex {
 
     use super::*;
 
-    /// A [`Bundle`] used to control the layout of a UI node
-    #[derive(Bundle)]
-    pub struct FlexboxLayoutBundle {
-        /// The layout algorithm used
-        pub layout_strategy: LayoutStrategy,
-        /// The position of this UI node
-        pub position: UiPosition,
-        /// Whether the node should be absolute or relatively positioned
-        pub position_type: PositionType,
-        /// The constraints on the size of this node
-        pub size_constraints: SizeConstraints,
-        /// The margin, padding and border of the UI node
-        pub spacing: Spacing,
-        /// The flexbox layout parameters
-        pub flexbox_layout: FlexboxLayout,
-        /// The direction of the text
-        pub text_direction: TextDirection,
-        /// The behavior in case the node overflows its allocated space
-        pub overflow: Overflow,
-    }
-
     /// A query for all of the components in a [`FlexboxLayoutBundle`].
     ///
     /// See [`FlexboxLayoutChanged`] when attempting to use this as a query filter.
@@ -178,21 +157,6 @@ pub mod flex {
         Changed<TextDirection>,
         Changed<Overflow>,
     )>;
-
-    impl From<&FlexboxLayoutQuery> for FlexboxLayoutBundle {
-        fn from(query: &FlexboxLayoutQuery) -> Self {
-            Self {
-                layout_strategy: query.layout_strategy.clone(),
-                position: query.position.clone(),
-                position_type: query.position_type.clone(),
-                size_constraints: query.size_constraints.clone(),
-                spacing: query.spacing.clone(),
-                flexbox_layout: query.flexbox_layout.clone(),
-                text_direction: query.text_direction.clone(),
-                overflow: query.overflow.clone(),
-            }
-        }
-    }
 
     /// The flexbox-specific layout configuration of a UI node
     ///
