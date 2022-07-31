@@ -1,6 +1,6 @@
 mod convert;
 
-use crate::{CalculatedSize, Node, Style, UiScale};
+use crate::{CalculatedSize, Node, UiScale};
 use bevy_ecs::{
     entity::Entity,
     event::EventReader,
@@ -60,7 +60,7 @@ impl FlexSurface {
     pub fn upsert_node(&mut self, entity: Entity, style: &Style, scale_factor: f64) {
         let mut added = false;
         let taffy = &mut self.taffy;
-        let taffy_style = convert::from_style(scale_factor, style);
+        let taffy_style = convert::from_flexbox_layout(scale_factor, style);
         let taffy_node = self.entity_to_taffy.entry(entity).or_insert_with(|| {
             added = true;
             taffy.new_node(taffy_style, &Vec::new()).unwrap()
@@ -79,7 +79,7 @@ impl FlexSurface {
         scale_factor: f64,
     ) {
         let taffy = &mut self.taffy;
-        let taffy_style = convert::from_style(scale_factor, style);
+        let taffy_style = convert::from_flexbox_layout(scale_factor, style);
         let measure = taffy::node::MeasureFunc::Boxed(Box::new(
             move |constraints: taffy::geometry::Size<Number>| {
                 let mut size = convert::from_f32_size(scale_factor, calculated_size.size);

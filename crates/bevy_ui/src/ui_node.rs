@@ -1,4 +1,4 @@
-use crate::{Size, UiRect};
+use crate::Size;
 use bevy_asset::Handle;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{prelude::Component, reflect::ReflectComponent};
@@ -118,90 +118,6 @@ impl DivAssign<f32> for Val {
         match self {
             Val::Undefined | Val::Auto => {}
             Val::Px(value) | Val::Percent(value) => *value /= rhs,
-        }
-    }
-}
-
-/// Describes the style of a UI node
-///
-/// It uses the [Flexbox](https://cssreference.io/flexbox/) system.
-///
-/// **Note:** Bevy's UI is upside down compared to how Flexbox normally works, to stay consistent with engine paradigms about layouting from
-/// the upper left corner of the display
-#[derive(Component, Clone, PartialEq, Debug, Reflect)]
-#[reflect(Component, Default, PartialEq)]
-pub struct Style {
-    /// Whether to arrange this node and its children with flexbox layout
-    ///
-    /// If this is set to [`Display::None`], this node will be collapsed.
-    pub display: Display,
-    /// Whether to arrange this node relative to other nodes, or positioned absolutely
-    pub position_type: PositionType,
-    /// Which direction the content of this node should go
-    pub direction: Direction,
-    /// Whether to use column or row layout
-    pub flex_direction: FlexDirection,
-    /// How to wrap nodes
-    pub flex_wrap: FlexWrap,
-    /// How items are aligned according to the cross axis
-    pub align_items: AlignItems,
-    /// Like align_items but for only this item
-    pub align_self: AlignSelf,
-    /// How to align each line, only applies if flex_wrap is set to
-    /// [`FlexWrap::Wrap`] and there are multiple lines of items
-    pub align_content: AlignContent,
-    /// How items align according to the main axis
-    pub justify_content: JustifyContent,
-    /// The position of the node as described by its Rect
-    pub position: UiRect,
-    /// The margin of the node
-    pub margin: UiRect,
-    /// The padding of the node
-    pub padding: UiRect,
-    /// The border of the node
-    pub border: UiRect,
-    /// Defines how much a flexbox item should grow if there's space available
-    pub flex_grow: f32,
-    /// How to shrink if there's not enough space available
-    pub flex_shrink: f32,
-    /// The initial size of the item
-    pub flex_basis: Val,
-    /// The size of the flexbox
-    pub size: Size,
-    /// The minimum size of the flexbox
-    pub min_size: Size,
-    /// The maximum size of the flexbox
-    pub max_size: Size,
-    /// The aspect ratio of the flexbox
-    pub aspect_ratio: Option<f32>,
-    /// How to handle overflow
-    pub overflow: Overflow,
-}
-
-impl Default for Style {
-    fn default() -> Self {
-        Self {
-            display: Default::default(),
-            position_type: Default::default(),
-            direction: Default::default(),
-            flex_direction: Default::default(),
-            flex_wrap: Default::default(),
-            align_items: Default::default(),
-            align_self: Default::default(),
-            align_content: Default::default(),
-            justify_content: Default::default(),
-            position: Default::default(),
-            margin: Default::default(),
-            padding: Default::default(),
-            border: Default::default(),
-            flex_grow: 0.0,
-            flex_shrink: 1.0,
-            flex_basis: Val::Auto,
-            size: Size::AUTO,
-            min_size: Size::AUTO,
-            max_size: Size::AUTO,
-            aspect_ratio: Default::default(),
-            overflow: Default::default(),
         }
     }
 }

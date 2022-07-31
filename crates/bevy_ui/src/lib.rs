@@ -9,6 +9,7 @@ mod render;
 mod ui_node;
 
 pub mod entity;
+pub mod layout_components;
 pub mod update;
 pub mod widget;
 
@@ -22,7 +23,9 @@ pub use ui_node::*;
 #[doc(hidden)]
 pub mod prelude {
     #[doc(hidden)]
-    pub use crate::{entity::*, geometry::*, ui_node::*, widget::Button, Interaction, UiScale};
+    pub use crate::{
+        entity::*, geometry::*, layout_components::*, ui_node::*, widget::Button, Interaction, UiScale,
+    };
 }
 
 use bevy_app::prelude::*;
@@ -68,6 +71,9 @@ impl Default for UiScale {
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
+        use crate::layout_components::flex::*;
+        use crate::layout_components::*;
+
         app.add_plugin(ExtractComponentPlugin::<UiCameraConfig>::default())
             .init_resource::<FlexSurface>()
             .init_resource::<UiScale>()
@@ -75,8 +81,8 @@ impl Plugin for UiPlugin {
             .register_type::<AlignItems>()
             .register_type::<AlignSelf>()
             .register_type::<CalculatedSize>()
-            .register_type::<Direction>()
-            .register_type::<Display>()
+            .register_type::<TextDirection>()
+            .register_type::<LayoutStrategy>()
             .register_type::<FlexDirection>()
             .register_type::<FlexWrap>()
             .register_type::<FocusPolicy>()
@@ -88,8 +94,11 @@ impl Plugin for UiPlugin {
             .register_type::<Overflow>()
             .register_type::<PositionType>()
             .register_type::<Size>()
+            .register_type::<Size<f32>>()
+            .register_type::<Size<Val>>()
             .register_type::<UiRect>()
-            .register_type::<Style>()
+            .register_type::<UiRect<Val>>()
+            .register_type::<FlexboxLayout>()
             .register_type::<UiColor>()
             .register_type::<UiImage>()
             .register_type::<Val>()

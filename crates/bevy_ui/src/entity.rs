@@ -1,8 +1,12 @@
 //! This module contains the bundles used in Bevy's UI
 
 use crate::{
+    layout_components::{
+        flex::FlexboxLayout, Decorations, LayoutStrategy, Overflow, PositionType, SizeConstraints,
+        TextDirection, UiPosition,
+    },
     widget::{Button, ImageMode},
-    CalculatedSize, FocusPolicy, Interaction, Node, Style, UiColor, UiImage,
+    CalculatedSize, FocusPolicy, Interaction, Node, UiColor, UiImage,
 };
 use bevy_ecs::{
     bundle::Bundle,
@@ -21,8 +25,22 @@ use bevy_transform::prelude::{GlobalTransform, Transform};
 pub struct NodeBundle {
     /// Describes the size of the node
     pub node: Node,
-    /// Describes the style including flexbox settings
-    pub style: Style,
+    /// The layout algorithm used
+    pub layout_strategy: LayoutStrategy,
+    /// The position of this UI node
+    pub position: UiPosition,
+    /// Whether the node should be absolute or relatively positioned
+    pub position_type: PositionType,
+    /// The constraints on the size of this node
+    pub size_constraints: SizeConstraints,
+    /// The margin, padding and border of the UI node
+    pub decorations: Decorations,
+    /// The flexbox layout parameters
+    pub flexbox_layout: FlexboxLayout,
+    /// The direction of the text
+    pub text_direction: TextDirection,
+    /// The behavior in case the node overflows its allocated space
+    pub overflow: Overflow,
     /// Describes the color of the node
     pub color: UiColor,
     /// Describes the image of the node
@@ -44,8 +62,22 @@ pub struct NodeBundle {
 pub struct ImageBundle {
     /// Describes the size of the node
     pub node: Node,
-    /// Describes the style including flexbox settings
-    pub style: Style,
+    /// The layout algorithm used
+    pub layout_strategy: LayoutStrategy,
+    /// The position of this UI node
+    pub position: UiPosition,
+    /// Whether the node should be absolute or relatively positioned
+    pub position_type: PositionType,
+    /// The constraints on the size of this node
+    pub size_constraints: SizeConstraints,
+    /// The margin, padding and border of the UI node
+    pub decorations: Decorations,
+    /// The flexbox layout parameters
+    pub flexbox_layout: FlexboxLayout,
+    /// The direction of the text
+    pub text_direction: TextDirection,
+    /// The behavior in case the node overflows its allocated space
+    pub overflow: Overflow,
     /// Configures how the image should scale
     pub image_mode: ImageMode,
     /// The calculated size based on the given image
@@ -71,8 +103,22 @@ pub struct ImageBundle {
 pub struct TextBundle {
     /// Describes the size of the node
     pub node: Node,
-    /// Describes the style including flexbox settings
-    pub style: Style,
+    /// The layout algorithm used
+    pub layout_strategy: LayoutStrategy,
+    /// The position of this UI node
+    pub position: UiPosition,
+    /// Whether the node should be absolute or relatively positioned
+    pub position_type: PositionType,
+    /// The constraints on the size of this node
+    pub size_constraints: SizeConstraints,
+    /// The margin, padding and border of the UI node
+    pub decorations: Decorations,
+    /// The flexbox layout parameters
+    pub flexbox_layout: FlexboxLayout,
+    /// The direction of the text
+    pub text_direction: TextDirection,
+    /// The behavior in case the node overflows its allocated space
+    pub overflow: Overflow,
     /// Contains the text of the node
     pub text: Text,
     /// The calculated size based on the given image
@@ -116,9 +162,9 @@ impl TextBundle {
         self
     }
 
-    /// Returns this [`TextBundle`] with a new [`Style`].
-    pub const fn with_style(mut self, style: Style) -> Self {
-        self.style = style;
+    /// Returns this [`TextBundle`] with a new [`FlexboxLayout`].
+    pub const fn with_flex_layout(mut self, layout: FlexboxLayout) -> Self {
+        self.flexbox_layout = layout;
         self
     }
 }
@@ -130,24 +176,45 @@ impl Default for TextBundle {
             text: Default::default(),
             node: Default::default(),
             calculated_size: Default::default(),
-            style: Default::default(),
+            layout_strategy: Default::default(),
+            position_type: Default::default(),
+            size_constraints: Default::default(),
+            flexbox_layout: Default::default(),
+            text_direction: Default::default(),
+            overflow: Default::default(),
             transform: Default::default(),
             global_transform: Default::default(),
             visibility: Default::default(),
             computed_visibility: Default::default(),
+            position: Default::default(),
+            decorations: Default::default(),
         }
     }
 }
 
 /// A UI node that is a button
-#[derive(Bundle, Clone, Debug)]
+#[derive(Bundle, Clone, Debug, Default)]
 pub struct ButtonBundle {
     /// Describes the size of the node
     pub node: Node,
     /// Marker component that signals this node is a button
     pub button: Button,
-    /// Describes the style including flexbox settings
-    pub style: Style,
+    /// The layout algorithm used
+    pub layout_strategy: LayoutStrategy,
+    /// The position of this UI node
+    pub position: UiPosition,
+    /// Whether the node should be absolute or relatively positioned
+    pub position_type: PositionType,
+    /// The constraints on the size of this node
+    pub size_constraints: SizeConstraints,
+    /// The margin, padding and border of the UI node
+    pub decorations: Decorations,
+    /// The flexbox layout parameters
+    pub flexbox_layout: FlexboxLayout,
+    /// The direction of the text
+    pub text_direction: TextDirection,
+    /// The behavior in case the node overflows its allocated space
+    pub overflow: Overflow,
     /// Describes whether and how the button has been interacted with by the input
     pub interaction: Interaction,
     /// Whether this node should block interaction with lower nodes
@@ -166,23 +233,6 @@ pub struct ButtonBundle {
     pub computed_visibility: ComputedVisibility,
 }
 
-impl Default for ButtonBundle {
-    fn default() -> Self {
-        ButtonBundle {
-            button: Button,
-            interaction: Default::default(),
-            focus_policy: Default::default(),
-            node: Default::default(),
-            style: Default::default(),
-            color: Default::default(),
-            image: Default::default(),
-            transform: Default::default(),
-            global_transform: Default::default(),
-            visibility: Default::default(),
-            computed_visibility: Default::default(),
-        }
-    }
-}
 /// Configuration for cameras related to UI.
 ///
 /// When a [`Camera`] doesn't have the [`UiCameraConfig`] component,

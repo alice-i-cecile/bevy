@@ -1,7 +1,11 @@
 use crate::{
-    AlignContent, AlignItems, AlignSelf, Display, FlexDirection, FlexWrap, JustifyContent,
-    PositionType, Size, Style, UiRect, Val,
+    layout_components::{
+        flex::{AlignContent, AlignItems, AlignSelf, FlexDirection, FlexWrap, JustifyContent},
+        PositionType,
+    },
+    prelude::{flex::FlexboxLayoutBundle, LayoutStrategy},
 };
+use crate::{Size, UiRect, Val};
 
 pub fn from_rect(
     scale_factor: f64,
@@ -33,27 +37,27 @@ pub fn from_val_size(
     }
 }
 
-pub fn from_style(scale_factor: f64, value: &Style) -> taffy::style::Style {
+pub fn from_flexbox_layout(scale_factor: f64, value: &FlexboxLayoutBundle) -> taffy::style::Style {
     taffy::style::Style {
-        display: value.display.into(),
+        display: value.layout_strategy.into(),
         position_type: value.position_type.into(),
-        flex_direction: value.flex_direction.into(),
-        flex_wrap: value.flex_wrap.into(),
-        align_items: value.align_items.into(),
-        align_self: value.align_self.into(),
-        align_content: value.align_content.into(),
-        justify_content: value.justify_content.into(),
-        position: from_rect(scale_factor, value.position),
-        margin: from_rect(scale_factor, value.margin),
-        padding: from_rect(scale_factor, value.padding),
-        border: from_rect(scale_factor, value.border),
-        flex_grow: value.flex_grow,
-        flex_shrink: value.flex_shrink,
-        flex_basis: from_val(scale_factor, value.flex_basis),
-        size: from_val_size(scale_factor, value.size),
-        min_size: from_val_size(scale_factor, value.min_size),
-        max_size: from_val_size(scale_factor, value.max_size),
-        aspect_ratio: match value.aspect_ratio {
+        flex_direction: value.flexbox_layout.flex_direction.into(),
+        flex_wrap: value.flexbox_layout.flex_wrap.into(),
+        align_items: value.flexbox_layout.align_items.into(),
+        align_self: value.flexbox_layout.align_self.into(),
+        align_content: value.flexbox_layout.align_content.into(),
+        justify_content: value.flexbox_layout.justify_content.into(),
+        position: from_rect(scale_factor, value.position.0),
+        margin: from_rect(scale_factor, value.decorations.margin),
+        padding: from_rect(scale_factor, value.decorations.padding),
+        border: from_rect(scale_factor, value.decorations.border),
+        flex_grow: value.flexbox_layout.flex_grow,
+        flex_shrink: value.flexbox_layout.flex_shrink,
+        flex_basis: from_val(scale_factor, value.flexbox_layout.flex_basis),
+        size: from_val_size(scale_factor, value.size_constraints.suggested),
+        min_size: from_val_size(scale_factor, value.size_constraints.min),
+        max_size: from_val_size(scale_factor, value.size_constraints.max),
+        aspect_ratio: match value.flexbox_layout.aspect_ratio {
             Some(value) => taffy::number::Number::Defined(value),
             None => taffy::number::Number::Undefined,
         },
@@ -116,11 +120,11 @@ impl From<AlignContent> for taffy::style::AlignContent {
     }
 }
 
-impl From<Display> for taffy::style::Display {
-    fn from(value: Display) -> Self {
+impl From<LayoutStrategy> for taffy::style::Display {
+    fn from(value: LayoutStrategy) -> Self {
         match value {
-            Display::Flex => taffy::style::Display::Flex,
-            Display::None => taffy::style::Display::None,
+            LayoutStrategy::Flexbox => taffy::style::Display::Flex,
+            LayoutStrategy::None => taffy::style::Display::None,
         }
     }
 }
