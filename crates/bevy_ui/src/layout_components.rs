@@ -178,13 +178,13 @@ pub mod flex {
         /// Aligns this containers items along the main-axis
         pub justify_content: JustifyContent,
         /// Controls how the content wraps
-        pub flex_wrap: FlexWrap,
+        pub wrap: FlexWrap,
         /// Defines how much a flexbox item should grow if there's space available
-        pub flex_grow: f32,
+        pub grow: f32,
         /// How to shrink if there's not enough space available
-        pub flex_shrink: f32,
+        pub shrink: f32,
         /// The initial size of the item
-        pub flex_basis: Val,
+        pub basis: Val,
         /// The aspect ratio of the flexbox
         pub aspect_ratio: Option<f32>,
     }
@@ -197,10 +197,10 @@ pub mod flex {
                 align_self: Default::default(),
                 align_content: Default::default(),
                 justify_content: Default::default(),
-                flex_wrap: Default::default(),
-                flex_grow: 0.0,
-                flex_shrink: 1.0,
-                flex_basis: Val::Auto,
+                wrap: Default::default(),
+                grow: 0.0,
+                shrink: 1.0,
+                basis: Val::Auto,
                 aspect_ratio: Default::default(),
             }
         }
