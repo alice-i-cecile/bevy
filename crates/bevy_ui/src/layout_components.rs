@@ -73,6 +73,42 @@ pub struct SizeConstraints {
     pub aspect_ratio: Option<f32>,
 }
 
+impl SizeConstraints {
+    ///```rust
+    /// assert_eq!(SizeConstraints::DEFAULT, SizeConstraints::default())
+    ///```
+    pub const DEFAULT: SizeConstraints = SizeConstraints {
+        min: Size::DEFAULT,
+        suggested: Size::DEFAULT,
+        max: Size::DEFAULT,
+        aspect_ratio: None,
+    };
+
+    /// Sets only the minimum extent
+    pub const fn min(width: Val, height: Val) -> SizeConstraints {
+        SizeConstraints {
+            min: Size::new(width, height),
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets only the suggested extent
+    pub const fn suggested(width: Val, height: Val) -> SizeConstraints {
+        SizeConstraints {
+            suggested: Size::new(width, height),
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets only the suggested extent
+    pub const fn max(width: Val, height: Val) -> SizeConstraints {
+        SizeConstraints {
+            max: Size::new(width, height),
+            ..Self::DEFAULT
+        }
+    }
+}
+
 /// The space around and inside of a UI node
 #[derive(Component, Copy, Clone, PartialEq, Debug, Default, Serialize, Deserialize, Reflect)]
 #[reflect_value(PartialEq, Serialize, Deserialize)]
@@ -83,6 +119,43 @@ pub struct Spacing {
     pub padding: UiRect<Val>,
     /// The space around the outside of the UI element that can be colored to create a visible border
     pub border: UiRect<Val>,
+}
+
+impl Spacing {
+    ///```rust
+    /// assert_eq!(Spacing::DEFAULT, Spacing::default())
+    ///```
+    pub const DEFAULT: Spacing = Spacing {
+        margin: UiRect::DEFAULT,
+        padding: UiRect::DEFAULT,
+        border: UiRect::DEFAULT,
+    };
+}
+
+impl Spacing {
+    /// Sets only the margin
+    pub const fn margin(rect: UiRect<Val>) -> Spacing {
+        Spacing {
+            margin: rect,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets only the padding
+    pub const fn padding(rect: UiRect<Val>) -> Spacing {
+        Spacing {
+            padding: rect,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets only the padding
+    pub const fn border(rect: UiRect<Val>) -> Spacing {
+        Spacing {
+            border: rect,
+            ..Self::DEFAULT
+        }
+    }
 }
 
 /// Defines the text direction

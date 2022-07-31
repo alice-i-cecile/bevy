@@ -134,6 +134,18 @@ pub struct UiRect {
     pub bottom: Val,
 }
 
+impl UiRect<Val> {
+    /// ```rust
+    /// assert_eq!(UiRect<Val>::DEFAULT, UiRect<Val>::default());
+    /// ```
+    pub const DEFAULT: UiRect<Val> = UiRect {
+        left: Val::Undefined,
+        right: Val::Undefined,
+        top: Val::Undefined,
+        bottom: Val::Undefined,
+    };
+}
+
 impl UiRect {
     /// Creates a new [`UiRect`] from the values specified.
     ///
@@ -212,7 +224,7 @@ impl Size {
     /// assert_eq!(size.width, Val::Px(100.0));
     /// assert_eq!(size.height, Val::Px(200.0));
     /// ```
-    pub fn new(width: Val, height: Val) -> Self {
+    pub const fn new(width: Val, height: Val) -> Self {
         Size { width, height }
     }
 
