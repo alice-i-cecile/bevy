@@ -31,7 +31,7 @@ pub enum PositionType {
     /// Relative to all other nodes with the [`PositionType::Relative`] value
     #[default]
     Relative,
-    /// Independent of all other nodes
+    /// Positioned as if it was the only child of its parent
     ///
     /// As usual, the `Style.position` field of this node is specified relative to its parent node
     Absolute,
@@ -69,7 +69,7 @@ pub struct SizeConstraints {
     pub min: Size<Val>,
     /// The suggested extent, which will be used if other constraints can be comfortably satisfied
     pub suggested: Size<Val>,
-    /// The minimum extent, which cannot be violated by the layouting algorithm
+    /// The maximum extent, which cannot be violated by the layouting algorithm
     pub max: Size<Val>,
 }
 
