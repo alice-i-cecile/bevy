@@ -1,5 +1,5 @@
 use crate::{
-    layout_components::flex::{FlexboxLayout, FlexboxLayoutChanged, FlexboxLayoutQuery},
+    layout_components::flex::{FlexLayout, FlexLayoutChanged, FlexLayoutQuery},
     CalculatedSize, Size, UiScale, Val,
 };
 use bevy_asset::Assets;
@@ -52,11 +52,11 @@ pub fn text_system(
     mut font_atlas_set_storage: ResMut<Assets<FontAtlasSet>>,
     mut text_pipeline: ResMut<TextPipeline>,
     mut text_queries: ParamSet<(
-        Query<Entity, Or<(Changed<Text>, FlexboxLayoutChanged)>>,
-        Query<Entity, (With<Text>, With<FlexboxLayout>)>,
+        Query<Entity, Or<(Changed<Text>, FlexLayoutChanged)>>,
+        Query<Entity, (With<Text>, With<FlexLayout>)>,
         Query<(
             &Text,
-            FlexboxLayoutQuery,
+            FlexLayoutQuery,
             &mut CalculatedSize,
             Option<&mut TextLayoutInfo>,
         )>,

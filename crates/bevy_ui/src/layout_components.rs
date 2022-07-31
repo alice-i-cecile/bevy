@@ -17,7 +17,7 @@ pub enum LayoutStrategy {
     ///
     /// As implemented by [`taffy`]: some bugs or limitations may exist; please file an issue!\
     #[default]
-    Flexbox,
+    Flex,
 }
 
 /// The strategy used to position this node
@@ -142,11 +142,11 @@ pub mod flex {
     use bevy_reflect::prelude::*;
     use serde::{Deserialize, Serialize};
 
-    /// A query for all of the components in a [`FlexboxLayoutBundle`].
+    /// A query for all of the components need for flexbox layout.
     ///
-    /// See [`FlexboxLayoutChanged`] when attempting to use this as a query filter.
+    /// See [`FlexLayoutChanged`] when attempting to use this as a query filter.
     #[derive(WorldQuery)]
-    pub struct FlexboxLayoutQuery {
+    pub struct FlexLayoutQuery {
         /// The layout algorithm used
         pub layout_strategy: &'static LayoutStrategy,
         /// The position of this UI node
@@ -158,7 +158,7 @@ pub mod flex {
         /// The margin, padding and border of the UI node
         pub spacing: &'static Spacing,
         /// The flexbox layout parameters
-        pub flexbox_layout: &'static FlexboxLayout,
+        pub flex_layout: &'static FlexLayout,
         /// The direction of the text
         pub text_direction: &'static TextDirection,
         /// Controls how the content wraps
@@ -167,15 +167,13 @@ pub mod flex {
         pub overflow: &'static Overflow,
     }
 
-    /// A type alias for when any of the components in the [`FlexboxLayoutBundle`] has been changed
-    ///
-    /// See [`FlexboxLayoutQuery`] for the data-fetching equivalent.
-    pub type FlexboxLayoutChanged = Or<(
+    /// A type alias for when any of the components in a [`FlexLayoutQuery`] have changed.
+    pub type FlexLayoutChanged = Or<(
         Changed<LayoutStrategy>,
         Changed<PositionType>,
         Changed<SizeConstraints>,
         Changed<Spacing>,
-        Changed<FlexboxLayout>,
+        Changed<FlexLayout>,
         Changed<TextDirection>,
         Changed<Overflow>,
     )>;
@@ -186,7 +184,7 @@ pub mod flex {
     /// you can use [guides](https://css-tricks.com/snippets/css/a-guide-to-flexbox/) for additional documentation.
     #[derive(Component, Serialize, Deserialize, Reflect, Debug, PartialEq, Clone, Copy)]
     #[reflect_value(PartialEq, Serialize, Deserialize)]
-    pub struct FlexboxLayout {
+    pub struct FlexLayout {
         /// How items are ordered inside a flexbox
         ///
         /// Sets the main and cross-axis: if this is a "row" variant, the main axis will be rows.
@@ -207,9 +205,9 @@ pub mod flex {
         pub basis: Val,
     }
 
-    impl Default for FlexboxLayout {
-        fn default() -> FlexboxLayout {
-            FlexboxLayout {
+    impl Default for FlexLayout {
+        fn default() -> FlexLayout {
+            FlexLayout {
                 flex_direction: Default::default(),
                 align_items: Default::default(),
                 align_self: Default::default(),

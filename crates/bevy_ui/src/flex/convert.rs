@@ -1,6 +1,6 @@
 use crate::layout_components::{
     flex::{
-        AlignContent, AlignItems, AlignSelf, FlexDirection, FlexboxLayoutQueryItem, JustifyContent,
+        AlignContent, AlignItems, AlignSelf, FlexDirection, FlexLayoutQueryItem, JustifyContent,
     },
     LayoutStrategy, PositionType, Wrap,
 };
@@ -36,26 +36,23 @@ pub fn from_val_size(
     }
 }
 
-pub fn from_flexbox_layout(
-    scale_factor: f64,
-    value: FlexboxLayoutQueryItem<'_>,
-) -> taffy::style::Style {
+pub fn from_flex_layout(scale_factor: f64, value: FlexLayoutQueryItem<'_>) -> taffy::style::Style {
     taffy::style::Style {
         display: (*value.layout_strategy).into(),
         position_type: (*value.position_type).into(),
-        flex_direction: value.flexbox_layout.flex_direction.into(),
+        flex_direction: value.flex_layout.flex_direction.into(),
         flex_wrap: (*value.wrap).into(),
-        align_items: value.flexbox_layout.align_items.into(),
-        align_self: value.flexbox_layout.align_self.into(),
-        align_content: value.flexbox_layout.align_content.into(),
-        justify_content: value.flexbox_layout.justify_content.into(),
+        align_items: value.flex_layout.align_items.into(),
+        align_self: value.flex_layout.align_self.into(),
+        align_content: value.flex_layout.align_content.into(),
+        justify_content: value.flex_layout.justify_content.into(),
         position: from_rect(scale_factor, value.offset.0),
         margin: from_rect(scale_factor, value.spacing.margin),
         padding: from_rect(scale_factor, value.spacing.padding),
         border: from_rect(scale_factor, value.spacing.border),
-        flex_grow: value.flexbox_layout.grow,
-        flex_shrink: value.flexbox_layout.shrink,
-        flex_basis: from_val(scale_factor, value.flexbox_layout.basis),
+        flex_grow: value.flex_layout.grow,
+        flex_shrink: value.flex_layout.shrink,
+        flex_basis: from_val(scale_factor, value.flex_layout.basis),
         size: from_val_size(scale_factor, value.size_constraints.suggested),
         min_size: from_val_size(scale_factor, value.size_constraints.min),
         max_size: from_val_size(scale_factor, value.size_constraints.max),
@@ -125,7 +122,7 @@ impl From<AlignContent> for taffy::style::AlignContent {
 impl From<LayoutStrategy> for taffy::style::Display {
     fn from(value: LayoutStrategy) -> Self {
         match value {
-            LayoutStrategy::Flexbox => taffy::style::Display::Flex,
+            LayoutStrategy::Flex => taffy::style::Display::Flex,
             LayoutStrategy::None => taffy::style::Display::None,
         }
     }

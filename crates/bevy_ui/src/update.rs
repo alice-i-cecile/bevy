@@ -1,6 +1,6 @@
 //! This module contains systems that update the UI when something changes
 
-use crate::{layout_components::Overflow, prelude::flex::FlexboxLayoutQuery, CalculatedClip};
+use crate::{layout_components::Overflow, prelude::flex::FlexLayoutQuery, CalculatedClip};
 
 use super::Node;
 use bevy_ecs::{
@@ -70,7 +70,7 @@ pub fn update_clipping_system(
     mut node_query: Query<(
         &Node,
         &GlobalTransform,
-        FlexboxLayoutQuery,
+        FlexLayoutQuery,
         Option<&mut CalculatedClip>,
     )>,
     children_query: Query<&Children>,
@@ -92,7 +92,7 @@ fn update_clipping(
     node_query: &mut Query<(
         &Node,
         &GlobalTransform,
-        FlexboxLayoutQuery,
+        FlexLayoutQuery,
         Option<&mut CalculatedClip>,
     )>,
     entity: Entity,

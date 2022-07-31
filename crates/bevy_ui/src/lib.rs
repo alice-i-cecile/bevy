@@ -98,7 +98,7 @@ impl Plugin for UiPlugin {
             .register_type::<Size<Val>>()
             .register_type::<UiRect>()
             .register_type::<UiRect<Val>>()
-            .register_type::<FlexboxLayout>()
+            .register_type::<FlexLayout>()
             .register_type::<UiColor>()
             .register_type::<UiImage>()
             .register_type::<Val>()

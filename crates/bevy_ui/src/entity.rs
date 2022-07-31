@@ -2,8 +2,8 @@
 
 use crate::{
     layout_components::{
-        flex::FlexboxLayout, LayoutStrategy, Offset, Overflow, PositionType, SizeConstraints,
-        Spacing, TextDirection, Wrap,
+        flex::FlexLayout, LayoutStrategy, Offset, Overflow, PositionType, SizeConstraints, Spacing,
+        TextDirection, Wrap,
     },
     widget::{Button, ImageMode},
     CalculatedSize, FocusPolicy, Interaction, Node, UiColor, UiImage,
@@ -36,7 +36,7 @@ pub struct NodeBundle {
     /// The margin, padding and border of the UI node
     pub spacing: Spacing,
     /// The flexbox layout parameters
-    pub flexbox_layout: FlexboxLayout,
+    pub flex_layout: FlexLayout,
     /// The direction of the text
     pub text_direction: TextDirection,
     /// Controls how the content wraps
@@ -75,7 +75,7 @@ pub struct ImageBundle {
     /// The margin, padding and border of the UI node
     pub spacing: Spacing,
     /// The flexbox layout parameters
-    pub flexbox_layout: FlexboxLayout,
+    pub flex_layout: FlexLayout,
     /// The direction of the text
     pub text_direction: TextDirection,
     /// Controls how the content wraps
@@ -118,7 +118,7 @@ pub struct TextBundle {
     /// The margin, padding and border of the UI node
     pub spacing: Spacing,
     /// The flexbox layout parameters
-    pub flexbox_layout: FlexboxLayout,
+    pub flex_layout: FlexLayout,
     /// The direction of the text
     pub text_direction: TextDirection,
     /// Controls how the content wraps
@@ -168,9 +168,9 @@ impl TextBundle {
         self
     }
 
-    /// Returns this [`TextBundle`] with a new [`FlexboxLayout`].
-    pub const fn with_flex_layout(mut self, layout: FlexboxLayout) -> Self {
-        self.flexbox_layout = layout;
+    /// Returns this [`TextBundle`] with a new [`FlexLayout`].
+    pub const fn with_flex_layout(mut self, layout: FlexLayout) -> Self {
+        self.flex_layout = layout;
         self
     }
 }
@@ -185,7 +185,7 @@ impl Default for TextBundle {
             layout_strategy: Default::default(),
             position_type: Default::default(),
             size_constraints: Default::default(),
-            flexbox_layout: Default::default(),
+            flex_layout: Default::default(),
             text_direction: Default::default(),
             wrap: Default::default(),
             overflow: Default::default(),
@@ -217,7 +217,7 @@ pub struct ButtonBundle {
     /// The margin, padding and border of the UI node
     pub spacing: Spacing,
     /// The flexbox layout parameters
-    pub flexbox_layout: FlexboxLayout,
+    pub flex_layout: FlexLayout,
     /// The direction of the text
     pub text_direction: TextDirection,
     /// Controls how the content wraps

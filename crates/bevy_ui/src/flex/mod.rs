@@ -1,7 +1,7 @@
 mod convert;
 
 use crate::{
-    layout_components::flex::{FlexboxLayoutChanged, FlexboxLayoutQuery, FlexboxLayoutQueryItem},
+    layout_components::flex::{FlexLayoutChanged, FlexLayoutQuery, FlexLayoutQueryItem},
     CalculatedSize, Node, UiScale,
 };
 use bevy_ecs::{
@@ -63,12 +63,12 @@ impl FlexSurface {
     pub fn upsert_node(
         &mut self,
         entity: Entity,
-        layout: FlexboxLayoutQueryItem<'_>,
+        layout: FlexLayoutQueryItem<'_>,
         scale_factor: f64,
     ) {
         let mut added = false;
         let taffy = &mut self.taffy;
-        let taffy_style = convert::from_flexbox_layout(scale_factor, layout);
+        let taffy_style = convert::from_flex_layout(scale_factor, layout);
         let taffy_node = self.entity_to_taffy.entry(entity).or_insert_with(|| {
             added = true;
             taffy.new_node(taffy_style, &Vec::new()).unwrap()
@@ -82,12 +82,12 @@ impl FlexSurface {
     pub fn upsert_leaf(
         &mut self,
         entity: Entity,
-        layout: FlexboxLayoutQueryItem<'_>,
+        layout: FlexLayoutQueryItem<'_>,
         calculated_size: CalculatedSize,
         scale_factor: f64,
     ) {
         let taffy = &mut self.taffy;
-        let taffy_style = convert::from_flexbox_layout(scale_factor, layout);
+        let taffy_style = convert::from_flex_layout(scale_factor, layout);
         let measure = taffy::node::MeasureFunc::Boxed(Box::new(
             move |constraints: taffy::geometry::Size<Number>| {
                 let mut size = convert::from_f32_size(scale_factor, calculated_size.size);
@@ -218,12 +218,12 @@ pub fn flex_node_system(
     mut flex_surface: ResMut<FlexSurface>,
     root_node_query: Query<Entity, (With<Node>, Without<Parent>)>,
     node_query: Query<
-        (Entity, FlexboxLayoutQuery, Option<&CalculatedSize>),
-        (With<Node>, FlexboxLayoutChanged),
+        (Entity, FlexLayoutQuery, Option<&CalculatedSize>),
+        (With<Node>, FlexLayoutChanged),
     >,
-    full_node_query: Query<(Entity, FlexboxLayoutQuery, Option<&CalculatedSize>), With<Node>>,
+    full_node_query: Query<(Entity, FlexLayoutQuery, Option<&CalculatedSize>), With<Node>>,
     changed_size_query: Query<
-        (Entity, FlexboxLayoutQuery, &CalculatedSize),
+        (Entity, FlexLayoutQuery, &CalculatedSize),
         (With<Node>, Changed<CalculatedSize>),
     >,
     children_query: Query<(Entity, &Children), (With<Node>, Changed<Children>)>,
@@ -248,7 +248,7 @@ pub fn flex_node_system(
     fn update_changed<F: WorldQuery>(
         flex_surface: &mut FlexSurface,
         scaling_factor: f64,
-        query: Query<(Entity, FlexboxLayoutQuery, Option<&CalculatedSize>), F>,
+        query: Query<(Entity, FlexLayoutQuery, Option<&CalculatedSize>), F>,
     ) {
         // update changed nodes
         for (entity, layout, calculated_size) in &query {
