@@ -3,7 +3,7 @@
 //! Components used to control the layout of [`UiNode`] entities.
 use crate::{Size, UiRect, Val};
 use bevy_derive::{Deref, DerefMut};
-use bevy_ecs::prelude::{Bundle, Component};
+use bevy_ecs::prelude::Component;
 use bevy_reflect::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -37,10 +37,11 @@ pub enum PositionType {
     Absolute,
 }
 
-/// The position of a UI node, before layouting
+/// The offset of a UI node from its base position
 ///
-/// Layout is performed according to the [`LayoutStrategy`].
-/// To check the actual position of a UI element, read its [`Transform](bevy_transform::Transform) component
+/// Layout is performed according to the [`LayoutStrategy`], and then this value is added at the end.
+/// When this is [`LayoutStrategy::None`], this value will represent the absolute position of the UI node.
+/// To check the final position of a UI element, read its [`Transform](bevy_transform::Transform) component.
 #[derive(
     Component,
     Deref,
@@ -55,7 +56,7 @@ pub enum PositionType {
     Reflect,
 )]
 #[reflect_value(PartialEq, Serialize, Deserialize)]
-pub struct UiPosition(pub UiRect<Val>);
+pub struct Offset(pub UiRect<Val>);
 
 /// Controls the size of UI nodes
 ///
@@ -129,7 +130,7 @@ pub mod flex {
         /// The layout algorithm used
         pub layout_strategy: &'static LayoutStrategy,
         /// The position of this UI node
-        pub position: &'static UiPosition,
+        pub offset: &'static Offset,
         /// Whether the node should be absolute or relatively positioned
         pub position_type: &'static PositionType,
         /// The constraints on the size of this node

@@ -2,8 +2,8 @@
 
 use crate::{
     layout_components::{
-        flex::FlexboxLayout, LayoutStrategy, Overflow, PositionType, SizeConstraints, Spacing,
-        TextDirection, UiPosition,
+        flex::FlexboxLayout, LayoutStrategy, Offset, Overflow, PositionType, SizeConstraints,
+        Spacing, TextDirection,
     },
     widget::{Button, ImageMode},
     CalculatedSize, FocusPolicy, Interaction, Node, UiColor, UiImage,
@@ -27,8 +27,8 @@ pub struct NodeBundle {
     pub node: Node,
     /// The layout algorithm used
     pub layout_strategy: LayoutStrategy,
-    /// The position of this UI node
-    pub position: UiPosition,
+    /// The offset of this UI node, relative to its default position
+    pub offset: Offset,
     /// Whether the node should be absolute or relatively positioned
     pub position_type: PositionType,
     /// The constraints on the size of this node
@@ -64,8 +64,8 @@ pub struct ImageBundle {
     pub node: Node,
     /// The layout algorithm used
     pub layout_strategy: LayoutStrategy,
-    /// The position of this UI node
-    pub position: UiPosition,
+    /// The offset of this UI node, relative to its default position
+    pub offset: Offset,
     /// Whether the node should be absolute or relatively positioned
     pub position_type: PositionType,
     /// The constraints on the size of this node
@@ -105,8 +105,8 @@ pub struct TextBundle {
     pub node: Node,
     /// The layout algorithm used
     pub layout_strategy: LayoutStrategy,
-    /// The position of this UI node
-    pub position: UiPosition,
+    /// The offset of this UI node, relative to its default position
+    pub offset: Offset,
     /// Whether the node should be absolute or relatively positioned
     pub position_type: PositionType,
     /// The constraints on the size of this node
@@ -186,7 +186,7 @@ impl Default for TextBundle {
             global_transform: Default::default(),
             visibility: Default::default(),
             computed_visibility: Default::default(),
-            position: Default::default(),
+            offset: Default::default(),
             spacing: Default::default(),
         }
     }
@@ -201,8 +201,8 @@ pub struct ButtonBundle {
     pub button: Button,
     /// The layout algorithm used
     pub layout_strategy: LayoutStrategy,
-    /// The position of this UI node
-    pub position: UiPosition,
+    /// The offset of this UI node, relative to its default position
+    pub offset: Offset,
     /// Whether the node should be absolute or relatively positioned
     pub position_type: PositionType,
     /// The constraints on the size of this node

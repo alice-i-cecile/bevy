@@ -50,7 +50,7 @@ pub fn from_flexbox_layout(
         align_self: value.flexbox_layout.align_self.into(),
         align_content: value.flexbox_layout.align_content.into(),
         justify_content: value.flexbox_layout.justify_content.into(),
-        position: from_rect(scale_factor, value.position.0),
+        position: from_rect(scale_factor, value.offset.0),
         margin: from_rect(scale_factor, value.spacing.margin),
         padding: from_rect(scale_factor, value.spacing.padding),
         border: from_rect(scale_factor, value.spacing.border),
