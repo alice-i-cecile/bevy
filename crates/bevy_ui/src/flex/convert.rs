@@ -59,7 +59,7 @@ pub fn from_flexbox_layout(
         size: from_val_size(scale_factor, value.size_constraints.suggested),
         min_size: from_val_size(scale_factor, value.size_constraints.min),
         max_size: from_val_size(scale_factor, value.size_constraints.max),
-        aspect_ratio: match value.flexbox_layout.aspect_ratio {
+        aspect_ratio: match value.size_constraints.aspect_ratio {
             Some(value) => taffy::number::Number::Defined(value),
             None => taffy::number::Number::Undefined,
         },

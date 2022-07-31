@@ -1,5 +1,3 @@
-#![warn(missing_docs)]
-
 //! Components used to control the layout of [`UiNode`] entities.
 use crate::{Size, UiRect, Val};
 use bevy_derive::{Deref, DerefMut};
@@ -71,6 +69,8 @@ pub struct SizeConstraints {
     pub suggested: Size<Val>,
     /// The maximum extent, which cannot be violated by the layouting algorithm
     pub max: Size<Val>,
+    /// The expected aspect ratio, computed as width / height
+    pub aspect_ratio: Option<f32>,
 }
 
 /// The space around and inside of a UI node
@@ -205,8 +205,6 @@ pub mod flex {
         pub shrink: f32,
         /// The initial size of the item
         pub basis: Val,
-        /// The aspect ratio of the flexbox
-        pub aspect_ratio: Option<f32>,
     }
 
     impl Default for FlexboxLayout {
@@ -220,7 +218,6 @@ pub mod flex {
                 grow: 0.0,
                 shrink: 1.0,
                 basis: Val::Auto,
-                aspect_ratio: Default::default(),
             }
         }
     }
