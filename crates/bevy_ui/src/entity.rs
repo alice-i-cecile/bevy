@@ -2,7 +2,7 @@
 
 use crate::{
     layout_components::{
-        flex::FlexboxLayout, Decorations, LayoutStrategy, Overflow, PositionType, SizeConstraints,
+        flex::FlexboxLayout, LayoutStrategy, Overflow, PositionType, SizeConstraints, Spacing,
         TextDirection, UiPosition,
     },
     widget::{Button, ImageMode},
@@ -34,7 +34,7 @@ pub struct NodeBundle {
     /// The constraints on the size of this node
     pub size_constraints: SizeConstraints,
     /// The margin, padding and border of the UI node
-    pub decorations: Decorations,
+    pub spacing: Spacing,
     /// The flexbox layout parameters
     pub flexbox_layout: FlexboxLayout,
     /// The direction of the text
@@ -71,7 +71,7 @@ pub struct ImageBundle {
     /// The constraints on the size of this node
     pub size_constraints: SizeConstraints,
     /// The margin, padding and border of the UI node
-    pub decorations: Decorations,
+    pub spacing: Spacing,
     /// The flexbox layout parameters
     pub flexbox_layout: FlexboxLayout,
     /// The direction of the text
@@ -112,7 +112,7 @@ pub struct TextBundle {
     /// The constraints on the size of this node
     pub size_constraints: SizeConstraints,
     /// The margin, padding and border of the UI node
-    pub decorations: Decorations,
+    pub spacing: Spacing,
     /// The flexbox layout parameters
     pub flexbox_layout: FlexboxLayout,
     /// The direction of the text
@@ -187,7 +187,7 @@ impl Default for TextBundle {
             visibility: Default::default(),
             computed_visibility: Default::default(),
             position: Default::default(),
-            decorations: Default::default(),
+            spacing: Default::default(),
         }
     }
 }
@@ -208,7 +208,7 @@ pub struct ButtonBundle {
     /// The constraints on the size of this node
     pub size_constraints: SizeConstraints,
     /// The margin, padding and border of the UI node
-    pub decorations: Decorations,
+    pub spacing: Spacing,
     /// The flexbox layout parameters
     pub flexbox_layout: FlexboxLayout,
     /// The direction of the text

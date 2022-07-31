@@ -116,7 +116,7 @@ pub mod flex {
         /// The constraints on the size of this node
         pub size_constraints: SizeConstraints,
         /// The margin, padding and border of the UI node
-        pub decorations: Decorations,
+        pub spacing: Spacing,
         /// The flexbox layout parameters
         pub flexbox_layout: FlexboxLayout,
         /// The direction of the text
@@ -139,7 +139,7 @@ pub mod flex {
         /// The constraints on the size of this node
         pub size_constraints: &'static SizeConstraints,
         /// The margin, padding and border of the UI node
-        pub decorations: &'static Decorations,
+        pub spacing: &'static Spacing,
         /// The flexbox layout parameters
         pub flexbox_layout: &'static FlexboxLayout,
         /// The direction of the text
@@ -155,7 +155,7 @@ pub mod flex {
         Changed<LayoutStrategy>,
         Changed<PositionType>,
         Changed<SizeConstraints>,
-        Changed<Decorations>,
+        Changed<Spacing>,
         Changed<FlexboxLayout>,
         Changed<TextDirection>,
         Changed<Overflow>,
