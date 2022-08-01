@@ -172,7 +172,7 @@ mod game {
                             color: TEXT_COLOR,
                         },
                     ))
-                    .insert(Spacing::margin(UiRect::all(Val::Px(50.0))));
+                    .insert(Spacing::margin_all(Val::Px(50.0)));
 
                 parent
                     .spawn_bundle(TextBundle::from_sections([
@@ -201,7 +201,7 @@ mod game {
                             },
                         ),
                     ]))
-                    .insert(Spacing::margin(UiRect::all(Val::Px(50.0))));
+                    .insert(Spacing::margin_all(Val::Px(50.0)));
             });
         // Spawn a 5 seconds timer to trigger going back to the menu
         commands.insert_resource(GameTimer(Timer::from_seconds(5.0, false)));

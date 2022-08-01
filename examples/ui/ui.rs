@@ -39,7 +39,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                         Val::Px(200.0),
                         Val::Percent(100.0),
                     ),
-                    spacing: Spacing::border(UiRect::all(Val::Px(2.0))),
+                    spacing: Spacing::border_all(Val::Px(2.0)),
                     color: Color::rgb(0.65, 0.65, 0.65).into(),
                     ..default()
                 })
@@ -66,7 +66,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                                         color: Color::WHITE,
                                     },
                                 ))
-                                .insert(Spacing::margin(UiRect::all(Val::Px(5.0))));
+                                .insert(Spacing::margin_all(Val::Px(5.0)));
                         });
                 });
             // right vertical fill

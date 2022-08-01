@@ -36,7 +36,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             parent
                 .spawn_bundle(NodeBundle {
                     size_constraints: SizeConstraints::suggested(Val::Px(200.), Val::FULL),
-                    spacing: Spacing::border(UiRect::all(Val::Px(2.0))),
+                    spacing: Spacing::border_all(Val::Px(2.0)),
                     color: Color::rgb(0.65, 0.65, 0.65).into(),
                     ..default()
                 })

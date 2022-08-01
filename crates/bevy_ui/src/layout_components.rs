@@ -157,6 +157,19 @@ impl Spacing {
         }
     }
 
+    /// Sets the margin on all sides to `val`
+    pub const fn margin_all(val: Val) -> Spacing {
+        Spacing {
+            margin: UiRect {
+                left: val,
+                right: val,
+                bottom: val,
+                top: val,
+            },
+            ..Self::DEFAULT
+        }
+    }
+
     /// Sets only the padding
     pub const fn padding(rect: UiRect<Val>) -> Spacing {
         Spacing {
@@ -165,10 +178,36 @@ impl Spacing {
         }
     }
 
+    /// Sets the padding on all sides to `val`
+    pub const fn padding_all(val: Val) -> Spacing {
+        Spacing {
+            padding: UiRect {
+                left: val,
+                right: val,
+                bottom: val,
+                top: val,
+            },
+            ..Self::DEFAULT
+        }
+    }
+
     /// Sets only the padding
     pub const fn border(rect: UiRect<Val>) -> Spacing {
         Spacing {
             border: rect,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets the border on all sides to `val`
+    pub const fn border_all(val: Val) -> Spacing {
+        Spacing {
+            border: UiRect {
+                left: val,
+                right: val,
+                bottom: val,
+                top: val,
+            },
             ..Self::DEFAULT
         }
     }
