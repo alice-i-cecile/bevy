@@ -57,20 +57,16 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                         })
                         .with_children(|parent| {
                             // text
-                            parent.spawn_bundle(
-                                TextBundle::from_section(
+                            parent
+                                .spawn_bundle(TextBundle::from_section(
                                     "Text Example",
                                     TextStyle {
                                         font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                                         font_size: 30.0,
                                         color: Color::WHITE,
                                     },
-                                )
-                                .with_layout(FlexLayout {
-                                    margin: UiRect::all(Val::Px(5.0)),
-                                    ..default()
-                                }),
-                            );
+                                ))
+                                .insert(Spacing::margin(UiRect::all(Val::Px(5.0))));
                         });
                 });
             // right vertical fill
@@ -90,25 +86,17 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 })
                 .with_children(|parent| {
                     // Title
-                    parent.spawn_bundle(
-                        TextBundle::from_section(
+                    parent
+                        .spawn_bundle(TextBundle::from_section(
                             "Scrolling list",
                             TextStyle {
                                 font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                                 font_size: 25.,
                                 color: Color::WHITE,
                             },
-                        )
-                        .with_layout(FlexLayout {
-                            size: Size::new(Val::Undefined, Val::Px(25.)),
-                            margin: UiRect {
-                                left: Val::Auto,
-                                right: Val::Auto,
-                                ..default()
-                            },
-                            ..default()
-                        }),
-                    );
+                        ))
+                        .insert(SizeConstraints::suggested(Val::Undefined, Val::Px(25.)))
+                        .insert(Spacing::AUTO_MARGIN);
                     // List with hidden overflow
                     parent
                         .spawn_bundle(NodeBundle {
@@ -145,27 +133,27 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                                 .with_children(|parent| {
                                     // List items
                                     for i in 0..30 {
-                                        parent.spawn_bundle(
-                                            TextBundle::from_section(
-                                                format!("Item {i}"),
-                                                TextStyle {
-                                                    font: asset_server
-                                                        .load("fonts/FiraSans-Bold.ttf"),
-                                                    font_size: 20.,
-                                                    color: Color::WHITE,
-                                                },
-                                            )
-                                            .with_layout(FlexLayout {
-                                                flex_shrink: 0.,
-                                                size: Size::new(Val::Undefined, Val::Px(20.)),
-                                                margin: UiRect {
-                                                    left: Val::Auto,
-                                                    right: Val::Auto,
+                                        parent
+                                            .spawn_bundle(
+                                                TextBundle::from_section(
+                                                    format!("Item {i}"),
+                                                    TextStyle {
+                                                        font: asset_server
+                                                            .load("fonts/FiraSans-Bold.ttf"),
+                                                        font_size: 20.,
+                                                        color: Color::WHITE,
+                                                    },
+                                                )
+                                                .with_layout(FlexLayout {
+                                                    shrink: 0.,
                                                     ..default()
-                                                },
-                                                ..default()
-                                            }),
-                                        );
+                                                }),
+                                            )
+                                            .insert(Spacing::AUTO_MARGIN)
+                                            .insert(SizeConstraints::suggested(
+                                                Val::Undefined,
+                                                Val::Px(20.),
+                                            ));
                                     }
                                 });
                         });

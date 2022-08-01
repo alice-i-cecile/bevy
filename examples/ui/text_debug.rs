@@ -25,26 +25,27 @@ struct TextChanges;
 fn infotext_system(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/FiraSans-Bold.ttf");
     commands.spawn_bundle(Camera2dBundle::default());
-    commands.spawn_bundle(
-        TextBundle::from_section(
-            "This is\ntext with\nline breaks\nin the top left",
-            TextStyle {
-                font: font.clone(),
-                font_size: 50.0,
-                color: Color::WHITE,
-            },
-        )
-        .with_layout(FlexLayout {
-            align_self: AlignSelf::FlexEnd,
-            position_type: PositionType::Absolute,
-            position: UiRect {
-                top: Val::Px(5.0),
-                left: Val::Px(15.0),
+    commands
+        .spawn_bundle(
+            TextBundle::from_section(
+                "This is\ntext with\nline breaks\nin the top left",
+                TextStyle {
+                    font: font.clone(),
+                    font_size: 50.0,
+                    color: Color::WHITE,
+                },
+            )
+            .with_layout(FlexLayout {
+                align_self: AlignSelf::FlexEnd,
                 ..default()
-            },
+            }),
+        )
+        .insert(PositionType::Absolute)
+        .insert(Offset(UiRect {
+            top: Val::Px(5.0),
+            left: Val::Px(15.0),
             ..default()
-        }),
-    );
+        }));
     commands.spawn_bundle(TextBundle::from_section(
             "This text is very long, has a limited width, is centred, is positioned in the top right and is also coloured pink.",
             TextStyle {
@@ -56,19 +57,15 @@ fn infotext_system(mut commands: Commands, asset_server: Res<AssetServer>) {
         .with_text_alignment(TextAlignment::CENTER)
         .with_layout(FlexLayout {
             align_self: AlignSelf::FlexEnd,
-            position_type: PositionType::Absolute,
-            position: UiRect {
-                top: Val::Px(5.0),
-                right: Val::Px(15.0),
-                ..default()
-            },
-            max_size: Size {
-                width: Val::Px(400.),
-                height: Val::Undefined,
-            },
             ..default()
-        })
-    );
+        }))
+        .insert(PositionType::Absolute)
+        .insert(Offset(UiRect {
+            top: Val::Px(5.0),
+            right: Val::Px(15.0),
+            ..default()
+        }))
+        .insert(SizeConstraints::max(Val::Px(400.), Val::Undefined));
     commands
         .spawn_bundle(
             TextBundle::from_sections([
@@ -117,40 +114,38 @@ fn infotext_system(mut commands: Commands, asset_server: Res<AssetServer>) {
             ])
             .with_layout(FlexLayout {
                 align_self: AlignSelf::FlexEnd,
-                position_type: PositionType::Absolute,
-                position: UiRect {
-                    bottom: Val::Px(5.0),
-                    right: Val::Px(15.0),
-                    ..default()
-                },
                 ..default()
             }),
         )
-        .insert(TextChanges);
-    commands.spawn_bundle(
-        TextBundle::from_section(
-            "This\ntext has\nline breaks and also a set width in the bottom left",
-            TextStyle {
-                font,
-                font_size: 50.0,
-                color: Color::WHITE,
-            },
-        )
-        .with_layout(FlexLayout {
-            align_self: AlignSelf::FlexEnd,
-            position_type: PositionType::Absolute,
-            position: UiRect {
-                bottom: Val::Px(5.0),
-                left: Val::Px(15.0),
-                ..default()
-            },
-            size: Size {
-                width: Val::Px(200.0),
-                ..default()
-            },
+        .insert(PositionType::Absolute)
+        .insert(Offset(UiRect {
+            bottom: Val::Px(5.0),
+            right: Val::Px(15.0),
             ..default()
-        }),
-    );
+        }))
+        .insert(TextChanges);
+    commands
+        .spawn_bundle(
+            TextBundle::from_section(
+                "This\ntext has\nline breaks and also a set width in the bottom left",
+                TextStyle {
+                    font,
+                    font_size: 50.0,
+                    color: Color::WHITE,
+                },
+            )
+            .with_layout(FlexLayout {
+                align_self: AlignSelf::FlexEnd,
+                ..default()
+            }),
+        )
+        .insert(PositionType::Absolute)
+        .insert(Offset(UiRect {
+            bottom: Val::Px(5.0),
+            left: Val::Px(15.0),
+            ..default()
+        }))
+        .insert(SizeConstraints::suggested(Val::Px(200.), Val::default()));
 }
 
 fn change_text_system(

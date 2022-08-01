@@ -152,25 +152,21 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut game: ResMu
     game.bonus.handle = asset_server.load("models/AlienCake/cakeBirthday.glb#Scene0");
 
     // scoreboard
-    commands.spawn_bundle(
-        TextBundle::from_section(
+    commands
+        .spawn_bundle(TextBundle::from_section(
             "Score:",
             TextStyle {
                 font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                 font_size: 40.0,
                 color: Color::rgb(0.5, 0.5, 1.0),
             },
-        )
-        .with_layout(FlexLayout {
-            position_type: PositionType::Absolute,
-            position: UiRect {
-                top: Val::Px(5.0),
-                left: Val::Px(5.0),
-                ..default()
-            },
+        ))
+        .insert(PositionType::Absolute)
+        .insert(Offset(UiRect {
+            top: Val::Px(5.0),
+            left: Val::Px(5.0),
             ..default()
-        }),
-    );
+        }));
 }
 
 // remove all entities that are not a camera
@@ -373,8 +369,8 @@ fn gameover_keyboard(mut state: ResMut<State<GameState>>, keyboard_input: Res<In
 fn display_score(mut commands: Commands, asset_server: Res<AssetServer>, game: Res<Game>) {
     commands
         .spawn_bundle(NodeBundle {
-            style: Style {
-                margin: UiRect::all(Val::Auto),
+            spacing: Spacing::AUTO_MARGIN,
+            flex_layout: FlexLayout {
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()

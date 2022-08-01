@@ -196,15 +196,15 @@ pub(crate) mod test_setup {
                 ])
                 .with_layout(FlexLayout {
                     align_self: AlignSelf::FlexStart,
-                    position_type: PositionType::Absolute,
-                    position: UiRect {
-                        top: Val::Px(5.0),
-                        left: Val::Px(5.0),
-                        ..default()
-                    },
                     ..default()
                 }),
             )
+            .insert(PositionType::Absolute)
+            .insert(Offset(UiRect {
+                top: Val::Px(5.0),
+                left: Val::Px(5.0),
+                ..default()
+            }))
             .insert(ModeText);
     }
 }

@@ -218,8 +218,8 @@ fn setup(
         .insert(Velocity(INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED));
 
     // Scoreboard
-    commands.spawn_bundle(
-        TextBundle::from_sections([
+    commands
+        .spawn_bundle(TextBundle::from_sections([
             TextSection::new(
                 "Score: ",
                 TextStyle {
@@ -233,17 +233,13 @@ fn setup(
                 font_size: SCOREBOARD_FONT_SIZE,
                 color: SCORE_COLOR,
             }),
-        ])
-        .with_layout(FlexLayout {
-            position_type: PositionType::Absolute,
-            position: UiRect {
-                top: SCOREBOARD_TEXT_PADDING,
-                left: SCOREBOARD_TEXT_PADDING,
-                ..default()
-            },
+        ]))
+        .insert(PositionType::Absolute)
+        .insert(Offset(UiRect {
+            top: SCOREBOARD_TEXT_PADDING,
+            left: SCOREBOARD_TEXT_PADDING,
             ..default()
-        }),
-    );
+        }));
 
     // Walls
     commands.spawn_bundle(WallBundle::new(WallLocation::Left));

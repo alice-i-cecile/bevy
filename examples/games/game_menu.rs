@@ -163,22 +163,19 @@ mod game {
             .insert(OnGameScreen)
             .with_children(|parent| {
                 // Display two lines of text, the second one with the current settings
-                parent.spawn_bundle(
-                    TextBundle::from_section(
+                parent
+                    .spawn_bundle(TextBundle::from_section(
                         "Will be back to the menu shortly...",
                         TextStyle {
                             font: font.clone(),
                             font_size: 80.0,
                             color: TEXT_COLOR,
                         },
-                    )
-                    .with_layout(FlexLayout {
-                        margin: UiRect::all(Val::Px(50.0)),
-                        ..default()
-                    }),
-                );
-                parent.spawn_bundle(
-                    TextBundle::from_sections([
+                    ))
+                    .insert(Spacing::margin(UiRect::all(Val::Px(50.0))));
+
+                parent
+                    .spawn_bundle(TextBundle::from_sections([
                         TextSection::new(
                             format!("quality: {:?}", *display_quality),
                             TextStyle {
@@ -203,12 +200,8 @@ mod game {
                                 color: Color::GREEN,
                             },
                         ),
-                    ])
-                    .with_layout(FlexLayout {
-                        margin: UiRect::all(Val::Px(50.0)),
-                        ..default()
-                    }),
-                );
+                    ]))
+                    .insert(Spacing::margin(UiRect::all(Val::Px(50.0))));
             });
         // Spawn a 5 seconds timer to trigger going back to the menu
         commands.insert_resource(GameTimer(Timer::from_seconds(5.0, false)));

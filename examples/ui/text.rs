@@ -46,15 +46,15 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             // Set the style of the TextBundle itself.
             .with_layout(FlexLayout {
                 align_self: AlignSelf::FlexEnd,
-                position_type: PositionType::Absolute,
-                position: UiRect {
-                    bottom: Val::Px(5.0),
-                    right: Val::Px(15.0),
-                    ..default()
-                },
                 ..default()
             }),
         )
+        .insert(PositionType::Absolute)
+        .insert(Offset(UiRect {
+            bottom: Val::Px(5.0),
+            right: Val::Px(15.0),
+            ..default()
+        }))
         .insert(ColorText);
     // Text with multiple sections
     commands
