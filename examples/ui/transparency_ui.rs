@@ -19,7 +19,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(ButtonBundle {
             size_constraints: SizeConstraints::suggested(Val::Px(150.0), Val::Px(65.0)),
-            spacing: Spacing::CENTER,
+            spacing: Spacing::AUTO_MARGIN,
             flex_layout: FlexLayout {
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
@@ -45,7 +45,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
         .spawn_bundle(ButtonBundle {
             size_constraints: SizeConstraints::suggested(Val::Px(150.0), Val::Px(65.0)),
-            spacing: Spacing::CENTER,
+            spacing: Spacing::AUTO_MARGIN,
             flex_layout: FlexLayout {
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,

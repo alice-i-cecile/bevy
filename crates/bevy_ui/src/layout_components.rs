@@ -138,8 +138,11 @@ impl Spacing {
         border: UiRect::DEFAULT,
     };
 
-    /// Causes an element to be vertically and horizontally centered relative to its parent
-    pub const CENTER: Spacing = Spacing::margin(UiRect {
+    /// Adds an automatic margin on all sides.
+    ///
+    /// When the element is explicitly sized, this will (hopefully) cause the element
+    /// to be vertically and horizontally centered relative to its parent.
+    pub const AUTO_MARGIN: Spacing = Spacing::margin(UiRect {
         left: Val::Auto,
         right: Val::Auto,
         bottom: Val::Auto,

@@ -50,7 +50,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         .spawn_bundle(ButtonBundle {
             size_constraints: SizeConstraints::suggested(Val::Px(150.0), Val::Px(65.0)),
             // center button
-            spacing: Spacing::CENTER,
+            spacing: Spacing::AUTO_MARGIN,
             flex_layout: FlexLayout {
                 // horizontally center child text
                 justify_content: JustifyContent::Center,
