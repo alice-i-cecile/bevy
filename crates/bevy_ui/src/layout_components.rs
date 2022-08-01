@@ -204,32 +204,12 @@ pub enum Overflow {
     Hidden,
 }
 
-/// Defines if child UI items appear on a single line or on multiple lines
-#[derive(
-    Component, Copy, Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, Reflect,
-)]
-#[reflect_value(PartialEq, Serialize, Deserialize)]
-pub enum Wrap {
-    /// Single line, will overflow if needed
-    #[default]
-    NoWrap,
-    /// Multiple lines, if needed
-    Wrap,
-    /// Same as [`FlexWrap::Wrap`] but new lines will appear before the previous one
-    WrapReverse,
-}
-
 /// Flexbox-specific layout components
 pub mod flex {
-    use super::{
-        LayoutStrategy, Offset, Overflow, PositionType, SizeConstraints, Spacing, TextDirection,
-        Wrap,
-    };
-    use crate::Val;
-    use bevy_ecs::prelude::Component;
+
     use bevy_ecs::query::{Changed, Or, WorldQuery};
-    use bevy_reflect::prelude::*;
-    use serde::{Deserialize, Serialize};
+
+    use super::*;
 
     /// A query for all of the components need for flexbox layout.
     ///
@@ -250,8 +230,6 @@ pub mod flex {
         pub flex_layout: &'static FlexLayout,
         /// The direction of the text
         pub text_direction: &'static TextDirection,
-        /// Controls how the content wraps
-        pub wrap: &'static Wrap,
         /// The behavior in case the node overflows its allocated space
         pub overflow: &'static Overflow,
     }
@@ -286,6 +264,8 @@ pub mod flex {
         pub align_content: AlignContent,
         /// Aligns this containers items along the main-axis
         pub justify_content: JustifyContent,
+        /// Controls how the content wraps
+        pub wrap: Wrap,
         /// Defines how much a flexbox item should grow if there's space available
         pub grow: f32,
         /// How to shrink if there's not enough space available
@@ -302,6 +282,7 @@ pub mod flex {
                 align_self: Default::default(),
                 align_content: Default::default(),
                 justify_content: Default::default(),
+                wrap: Default::default(),
                 grow: 0.0,
                 shrink: 1.0,
                 basis: Val::Auto,
@@ -400,5 +381,18 @@ pub mod flex {
         SpaceAround,
         /// Like [`JustifyContent::SpaceAround`] but with even spacing between items
         SpaceEvenly,
+    }
+
+    /// Defines if flexbox items appear on a single line or on multiple lines
+    #[derive(Copy, Clone, PartialEq, Eq, Debug, Default, Serialize, Deserialize, Reflect)]
+    #[reflect_value(PartialEq, Serialize, Deserialize)]
+    pub enum Wrap {
+        /// Single line, will overflow if needed
+        #[default]
+        NoWrap,
+        /// Multiple lines, if needed
+        Wrap,
+        /// Same as [`FlexWrap::Wrap`] but new lines will appear before the previous one
+        WrapReverse,
     }
 }

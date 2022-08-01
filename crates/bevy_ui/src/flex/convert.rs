@@ -1,8 +1,9 @@
 use crate::layout_components::{
     flex::{
         AlignContent, AlignItems, AlignSelf, FlexDirection, FlexLayoutQueryItem, JustifyContent,
+        Wrap,
     },
-    LayoutStrategy, PositionType, Wrap,
+    LayoutStrategy, PositionType,
 };
 use crate::{Size, UiRect, Val};
 
@@ -41,7 +42,7 @@ pub fn from_flex_layout(scale_factor: f64, value: FlexLayoutQueryItem<'_>) -> ta
         display: (*value.layout_strategy).into(),
         position_type: (*value.position_type).into(),
         flex_direction: value.flex_layout.flex_direction.into(),
-        flex_wrap: (*value.wrap).into(),
+        flex_wrap: value.flex_layout.wrap.into(),
         align_items: value.flex_layout.align_items.into(),
         align_self: value.flex_layout.align_self.into(),
         align_content: value.flex_layout.align_content.into(),
