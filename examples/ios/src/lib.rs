@@ -93,16 +93,16 @@ fn setup_scene(
     commands.spawn_bundle(Camera2dBundle::default());
     commands
         .spawn_bundle(ButtonBundle {
-            style: Style {
+            position_type: PositionType::Absolute,
+            offset: Offset(UiRect {
+                left: Val::Px(50.0),
+                right: Val::Px(50.0),
+                top: Val::Auto,
+                bottom: Val::Px(50.0),
+            }),
+            flex_layout: FlexLayout {
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                position_type: PositionType::Absolute,
-                position: UiRect {
-                    left: Val::Px(50.0),
-                    right: Val::Px(50.0),
-                    top: Val::Auto,
-                    bottom: Val::Px(50.0),
-                },
                 ..default()
             },
             ..default()

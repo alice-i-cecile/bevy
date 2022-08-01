@@ -239,6 +239,11 @@ impl Size {
         width: Val::Undefined,
         height: Val::Undefined,
     };
+
+    pub const FULL: Size<Val> = Size {
+        width: Val::Percent(100.),
+        height: Val::Percent(100.),
+    };
 }
 
 impl Add<Vec2> for Size {

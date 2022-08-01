@@ -42,10 +42,10 @@ fn setup(mut commands: Commands) {
 fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
     let button_entity = commands
         .spawn_bundle(ButtonBundle {
-            style: Style {
-                size: Size::new(Val::Px(150.0), Val::Px(65.0)),
-                // center button
-                margin: UiRect::all(Val::Auto),
+            size_constraints: SizeConstraints::suggested(Val::Px(150.), Val::Px(65.)),
+            // center button
+            spacing: Spacing::margin(UiRect::all(Val::Auto)),
+            flex_layout: FlexLayout {
                 // horizontally center child text
                 justify_content: JustifyContent::Center,
                 // vertically center child text

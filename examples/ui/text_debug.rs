@@ -34,7 +34,7 @@ fn infotext_system(mut commands: Commands, asset_server: Res<AssetServer>) {
                 color: Color::WHITE,
             },
         )
-        .with_style(Style {
+        .with_layout(FlexLayout {
             align_self: AlignSelf::FlexEnd,
             position_type: PositionType::Absolute,
             position: UiRect {
@@ -54,7 +54,7 @@ fn infotext_system(mut commands: Commands, asset_server: Res<AssetServer>) {
             },
         )
         .with_text_alignment(TextAlignment::CENTER)
-        .with_style(Style {
+        .with_layout(FlexLayout {
             align_self: AlignSelf::FlexEnd,
             position_type: PositionType::Absolute,
             position: UiRect {
@@ -115,7 +115,7 @@ fn infotext_system(mut commands: Commands, asset_server: Res<AssetServer>) {
                     },
                 ),
             ])
-            .with_style(Style {
+            .with_layout(FlexLayout {
                 align_self: AlignSelf::FlexEnd,
                 position_type: PositionType::Absolute,
                 position: UiRect {
@@ -136,7 +136,7 @@ fn infotext_system(mut commands: Commands, asset_server: Res<AssetServer>) {
                 color: Color::WHITE,
             },
         )
-        .with_style(Style {
+        .with_layout(FlexLayout {
             align_self: AlignSelf::FlexEnd,
             position_type: PositionType::Absolute,
             position: UiRect {

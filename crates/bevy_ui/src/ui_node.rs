@@ -34,6 +34,10 @@ pub enum Val {
     Percent(f32),
 }
 
+impl Val {
+    pub const FULL: Val = Val::Percent(100.);
+}
+
 impl Add<f32> for Val {
     type Output = Val;
 

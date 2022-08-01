@@ -56,10 +56,7 @@ fn setup(mut commands: Commands, font: Res<UiFont>) {
     commands.spawn_bundle(Camera2dBundle::default());
     commands
         .spawn_bundle(NodeBundle {
-            style: Style {
-                size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-                ..default()
-            },
+            size_constraints: SizeConstraints::suggested(Val::FULL, Val::FULL),
             ..default()
         })
         .with_children(|commands| {
@@ -82,16 +79,15 @@ fn spawn_button(
     let width = 90.0 / total;
     commands
         .spawn_bundle(ButtonBundle {
-            style: Style {
-                size: Size::new(Val::Percent(width), Val::Percent(width)),
-
-                position: UiRect {
-                    bottom: Val::Percent(100.0 / total * i as f32),
-                    left: Val::Percent(100.0 / total * j as f32),
-                    ..default()
-                },
+            size_constraints: SizeConstraints::suggested(Val::Percent(width), Val::Percent(width)),
+            offset: Offset(UiRect {
+                bottom: Val::Percent(100.0 / total * i as f32),
+                left: Val::Percent(100.0 / total * j as f32),
+                ..default()
+            }),
+            position_type: PositionType::Absolute,
+            flex_layout: FlexLayout {
                 align_items: AlignItems::Center,
-                position_type: PositionType::Absolute,
                 ..default()
             },
             color,

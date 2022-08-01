@@ -83,13 +83,10 @@ mod splash {
         // Display the logo
         commands
             .spawn_bundle(ImageBundle {
-                style: Style {
-                    // This will center the logo
-                    margin: UiRect::all(Val::Auto),
-                    // This will set the logo to be 200px wide, and auto adjust its height
-                    size: Size::new(Val::Px(200.0), Val::Auto),
-                    ..default()
-                },
+                // This will set the logo to be 200px wide, and auto adjust its height
+                size_constraints: SizeConstraints::suggested(Val::Px(200.0), Val::Auto),
+                // This will center the logo
+                spacing: Spacing::margin(UiRect::all(Val::Auto)),
                 image: UiImage(icon),
                 ..default()
             })
@@ -147,15 +144,16 @@ mod game {
         commands
             // First create a `NodeBundle` for centering what we want to display
             .spawn_bundle(NodeBundle {
-                style: Style {
-                    // This will center the current node
-                    margin: UiRect::all(Val::Auto),
+                // This will center the current node
+                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                flex_layout: FlexLayout {
                     // This will display its children in a column, from top to bottom. Unlike
                     // in Flexbox, Bevy origin is on bottom left, so the vertical axis is reversed
                     flex_direction: FlexDirection::ColumnReverse,
-                    // `align_items` will align children on the cross axis. Here the main axis is
-                    // vertical (column), so the cross axis is horizontal. This will center the
-                    // children
+                    // `align_items` will align children on the cross axis.
+                    // Here the main axis is vertical (column),
+                    // so the cross axis is horizontal.
+                    // Thus, this will center the children horizontally
                     align_items: AlignItems::Center,
                     ..default()
                 },
@@ -174,7 +172,7 @@ mod game {
                             color: TEXT_COLOR,
                         },
                     )
-                    .with_style(Style {
+                    .with_layout(FlexLayout {
                         margin: UiRect::all(Val::Px(50.0)),
                         ..default()
                     }),
@@ -206,7 +204,7 @@ mod game {
                             },
                         ),
                     ])
-                    .with_style(Style {
+                    .with_layout(FlexLayout {
                         margin: UiRect::all(Val::Px(50.0)),
                         ..default()
                     }),
@@ -414,8 +412,8 @@ mod menu {
 
         commands
             .spawn_bundle(NodeBundle {
-                style: Style {
-                    margin: UiRect::all(Val::Auto),
+                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                flex_layout: FlexLayout {
                     flex_direction: FlexDirection::ColumnReverse,
                     align_items: AlignItems::Center,
                     ..default()
@@ -435,7 +433,7 @@ mod menu {
                             color: TEXT_COLOR,
                         },
                     )
-                    .with_style(Style {
+                    .with_layout(FlexLayout {
                         margin: UiRect::all(Val::Px(50.0)),
                         ..default()
                     }),
@@ -519,8 +517,8 @@ mod menu {
 
         commands
             .spawn_bundle(NodeBundle {
-                style: Style {
-                    margin: UiRect::all(Val::Auto),
+                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                flex_layout: FlexLayout {
                     flex_direction: FlexDirection::ColumnReverse,
                     align_items: AlignItems::Center,
                     ..default()
@@ -572,8 +570,8 @@ mod menu {
 
         commands
             .spawn_bundle(NodeBundle {
-                style: Style {
-                    margin: UiRect::all(Val::Auto),
+                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                flex_layout: FlexLayout {
                     flex_direction: FlexDirection::ColumnReverse,
                     align_items: AlignItems::Center,
                     ..default()
@@ -587,7 +585,7 @@ mod menu {
                 // use the default value, `FlexDirection::Row`, from left to right.
                 parent
                     .spawn_bundle(NodeBundle {
-                        style: Style {
+                        flex_layout: FlexLayout {
                             align_items: AlignItems::Center,
                             ..default()
                         },

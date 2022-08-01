@@ -24,7 +24,8 @@ pub use ui_node::*;
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
-        entity::*, geometry::*, layout_components::*, ui_node::*, widget::Button, Interaction, UiScale,
+        entity::*, geometry::*, layout_components::flex::*, layout_components::*, ui_node::*,
+        widget::Button, Interaction, UiScale,
     };
 }
 

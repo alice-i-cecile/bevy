@@ -127,7 +127,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     color: Color::rgb(0.0, 1.0, 1.0),
                 }),
             ])
-            .with_style(Style {
+            .with_layout(FlexLayout {
                 position_type: PositionType::Absolute,
                 position: UiRect {
                     top: Val::Px(5.0),

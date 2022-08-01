@@ -234,7 +234,7 @@ fn setup(
                 color: SCORE_COLOR,
             }),
         ])
-        .with_style(Style {
+        .with_layout(FlexLayout {
             position_type: PositionType::Absolute,
             position: UiRect {
                 top: SCOREBOARD_TEXT_PADDING,

@@ -194,7 +194,7 @@ pub(crate) mod test_setup {
                         color: Color::YELLOW,
                     }),
                 ])
-                .with_style(Style {
+                .with_layout(FlexLayout {
                     align_self: AlignSelf::FlexStart,
                     position_type: PositionType::Absolute,
                     position: UiRect {

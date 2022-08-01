@@ -18,9 +18,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     commands
         .spawn_bundle(ButtonBundle {
-            style: Style {
-                size: Size::new(Val::Px(150.0), Val::Px(65.0)),
-                margin: UiRect::all(Val::Auto),
+            size_constraints: SizeConstraints::suggested(Val::Px(150.0), Val::Px(65.0)),
+            spacing: Spacing::margin(UiRect::all(Val::Auto)),
+            flex_layout: FlexLayout {
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -44,9 +44,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // to demonstrate the text looks different due to its transparency.
     commands
         .spawn_bundle(ButtonBundle {
-            style: Style {
-                size: Size::new(Val::Px(150.0), Val::Px(65.0)),
-                margin: UiRect::all(Val::Auto),
+            size_constraints: SizeConstraints::suggested(Val::Px(150.0), Val::Px(65.0)),
+            spacing: Spacing::margin(UiRect::all(Val::Auto)),
+            flex_layout: FlexLayout {
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()

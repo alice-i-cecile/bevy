@@ -84,6 +84,13 @@ impl SizeConstraints {
         aspect_ratio: None,
     };
 
+    pub const FULL: SizeConstraints = SizeConstraints {
+        min: Size::DEFAULT,
+        suggested: Size::FULL,
+        max: Size::FULL,
+        aspect_ratio: None,
+    };
+
     /// Sets only the minimum extent
     pub const fn min(width: Val, height: Val) -> SizeConstraints {
         SizeConstraints {
@@ -130,9 +137,7 @@ impl Spacing {
         padding: UiRect::DEFAULT,
         border: UiRect::DEFAULT,
     };
-}
 
-impl Spacing {
     /// Sets only the margin
     pub const fn margin(rect: UiRect<Val>) -> Spacing {
         Spacing {

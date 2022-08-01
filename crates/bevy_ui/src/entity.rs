@@ -169,7 +169,7 @@ impl TextBundle {
     }
 
     /// Returns this [`TextBundle`] with a new [`FlexLayout`].
-    pub const fn with_flex_layout(mut self, layout: FlexLayout) -> Self {
+    pub const fn with_layout(mut self, layout: FlexLayout) -> Self {
         self.flex_layout = layout;
         self
     }

@@ -114,7 +114,7 @@ fn infotext_system(mut commands: Commands, asset_server: Res<AssetServer>) {
                 color: Color::WHITE,
             },
         )
-        .with_style(Style {
+        .with_layout(FlexLayout {
             align_self: AlignSelf::FlexEnd,
             ..default()
         }),

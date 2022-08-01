@@ -44,7 +44,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ) // Set the alignment of the Text
             .with_text_alignment(TextAlignment::TOP_CENTER)
             // Set the style of the TextBundle itself.
-            .with_style(Style {
+            .with_layout(FlexLayout {
                 align_self: AlignSelf::FlexEnd,
                 position_type: PositionType::Absolute,
                 position: UiRect {
@@ -75,7 +75,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                     color: Color::GOLD,
                 }),
             ])
-            .with_style(Style {
+            .with_layout(FlexLayout {
                 align_self: AlignSelf::FlexEnd,
                 ..default()
             }),
