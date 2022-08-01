@@ -86,7 +86,7 @@ mod splash {
                 // This will set the logo to be 200px wide, and auto adjust its height
                 size_constraints: SizeConstraints::suggested(Val::Px(200.0), Val::Auto),
                 // This will center the logo
-                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                spacing: Spacing::CENTER,
                 image: UiImage(icon),
                 ..default()
             })
@@ -145,7 +145,7 @@ mod game {
             // First create a `NodeBundle` for centering what we want to display
             .spawn_bundle(NodeBundle {
                 // This will center the current node
-                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                spacing: Spacing::CENTER,
                 flex_layout: FlexLayout {
                     // This will display its children in a column, from top to bottom. Unlike
                     // in Flexbox, Bevy origin is on bottom left, so the vertical axis is reversed
@@ -412,7 +412,7 @@ mod menu {
 
         commands
             .spawn_bundle(NodeBundle {
-                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                spacing: Spacing::CENTER,
                 flex_layout: FlexLayout {
                     flex_direction: FlexDirection::ColumnReverse,
                     align_items: AlignItems::Center,
@@ -517,7 +517,7 @@ mod menu {
 
         commands
             .spawn_bundle(NodeBundle {
-                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                spacing: Spacing::CENTER,
                 flex_layout: FlexLayout {
                     flex_direction: FlexDirection::ColumnReverse,
                     align_items: AlignItems::Center,
@@ -570,7 +570,7 @@ mod menu {
 
         commands
             .spawn_bundle(NodeBundle {
-                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                spacing: Spacing::CENTER,
                 flex_layout: FlexLayout {
                     flex_direction: FlexDirection::ColumnReverse,
                     align_items: AlignItems::Center,
