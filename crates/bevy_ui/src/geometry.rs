@@ -134,18 +134,6 @@ pub struct UiRect {
     pub bottom: Val,
 }
 
-impl UiRect<Val> {
-    /// ```rust
-    /// assert_eq!(UiRect<Val>::DEFAULT, UiRect<Val>::default());
-    /// ```
-    pub const DEFAULT: UiRect<Val> = UiRect {
-        left: Val::Undefined,
-        right: Val::Undefined,
-        top: Val::Undefined,
-        bottom: Val::Undefined,
-    };
-}
-
 impl UiRect {
     /// Creates a new [`UiRect`] from the values specified.
     ///
@@ -166,7 +154,7 @@ impl UiRect {
     /// assert_eq!(ui_rect.top, Val::Px(30.0));
     /// assert_eq!(ui_rect.bottom, Val::Px(40.0));
     /// ```
-    pub fn new(left: Val, right: Val, top: Val, bottom: Val) -> Self {
+    pub const fn new(left: Val, right: Val, top: Val, bottom: Val) -> Self {
         UiRect {
             left,
             right,
@@ -189,7 +177,7 @@ impl UiRect {
     /// assert_eq!(ui_rect.top, Val::Px(10.0));
     /// assert_eq!(ui_rect.bottom, Val::Px(10.0));
     /// ```
-    pub fn all(value: Val) -> Self {
+    pub const fn all(value: Val) -> Self {
         UiRect {
             left: value,
             right: value,
@@ -197,6 +185,27 @@ impl UiRect {
             bottom: value,
         }
     }
+
+    /// ```rust
+    /// assert_eq!(UiRect::DEFAULT, UiRect::default());
+    /// ```
+    pub const DEFAULT: UiRect = UiRect::UNDEFINED;
+
+    /// Creates a [`UiRect`] where all sides are [`Val::Undefined`]
+    pub const UNDEFINED: UiRect = UiRect {
+        left: Val::Undefined,
+        right: Val::Undefined,
+        top: Val::Undefined,
+        bottom: Val::Undefined,
+    };
+
+    /// Creates a [`UiRect`] where all sides are [`Val::Auto`]
+    pub const AUTO: UiRect = UiRect {
+        left: Val::Auto,
+        right: Val::Auto,
+        top: Val::Auto,
+        bottom: Val::Auto,
+    };
 }
 
 /// A 2-dimensional area defined by a width and height.
@@ -228,6 +237,8 @@ impl Size {
         Size { width, height }
     }
 
+    pub const DEFAULT: Size = Size::UNDEFINED;
+
     /// Creates a Size where both values are [`Val::Auto`].
     pub const AUTO: Size = Size {
         width: Val::Auto,
@@ -240,7 +251,8 @@ impl Size {
         height: Val::Undefined,
     };
 
-    pub const FULL: Size<Val> = Size {
+    /// Creates a Size where both values are 100 percent.
+    pub const FULL: Size = Size {
         width: Val::Percent(100.),
         height: Val::Percent(100.),
     };

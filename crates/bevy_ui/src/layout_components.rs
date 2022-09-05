@@ -54,7 +54,7 @@ pub enum PositionType {
     Reflect,
 )]
 #[reflect_value(PartialEq, Serialize, Deserialize)]
-pub struct Offset(pub UiRect<Val>);
+pub struct Offset(pub UiRect);
 
 /// Controls the size of UI nodes
 ///
@@ -64,11 +64,11 @@ pub struct Offset(pub UiRect<Val>);
 #[reflect_value(PartialEq, Serialize, Deserialize)]
 pub struct SizeConstraints {
     /// The minimum extent, which cannot be violated by the layouting algorithm
-    pub min: Size<Val>,
+    pub min: Size,
     /// The suggested extent, which will be used if other constraints can be comfortably satisfied
-    pub suggested: Size<Val>,
+    pub suggested: Size,
     /// The maximum extent, which cannot be violated by the layouting algorithm
-    pub max: Size<Val>,
+    pub max: Size,
     /// The expected aspect ratio, computed as width / height
     pub aspect_ratio: Option<f32>,
 }
@@ -121,11 +121,11 @@ impl SizeConstraints {
 #[reflect_value(PartialEq, Serialize, Deserialize)]
 pub struct Spacing {
     /// The space around the outside of the UI element
-    pub margin: UiRect<Val>,
+    pub margin: UiRect,
     /// The space around the inside of the UI element
-    pub padding: UiRect<Val>,
+    pub padding: UiRect,
     /// The space around the outside of the UI element that can be colored to create a visible border
-    pub border: UiRect<Val>,
+    pub border: UiRect,
 }
 
 impl Spacing {
@@ -150,7 +150,7 @@ impl Spacing {
     });
 
     /// Sets only the margin
-    pub const fn margin(rect: UiRect<Val>) -> Spacing {
+    pub const fn margin(rect: UiRect) -> Spacing {
         Spacing {
             margin: rect,
             ..Self::DEFAULT
@@ -171,7 +171,7 @@ impl Spacing {
     }
 
     /// Sets only the padding
-    pub const fn padding(rect: UiRect<Val>) -> Spacing {
+    pub const fn padding(rect: UiRect) -> Spacing {
         Spacing {
             padding: rect,
             ..Self::DEFAULT
@@ -192,7 +192,7 @@ impl Spacing {
     }
 
     /// Sets only the padding
-    pub const fn border(rect: UiRect<Val>) -> Spacing {
+    pub const fn border(rect: UiRect) -> Spacing {
         Spacing {
             border: rect,
             ..Self::DEFAULT
