@@ -376,27 +376,25 @@ mod menu {
 
     fn main_menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         let font = asset_server.load("fonts/FiraSans-Bold.ttf");
+
         // Common style for all buttons on the screen
-        let button_style = Style {
-            size: Size::new(Val::Px(250.0), Val::Px(65.0)),
-            margin: UiRect::all(Val::Px(20.0)),
+        let button_spacing = Spacing::margin(UiRect::all(Val::Px(20.0)));
+        let button_layout = FlexLayout {
             justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
+            align_items: AlignItems,
             ..default()
         };
-        let button_icon_style = Style {
-            size: Size::new(Val::Px(30.0), Val::Auto),
-            // This takes the icons out of the flexbox flow, to be positioned exactly
-            position_type: PositionType::Absolute,
-            // The icon will be close to the left border of the button
-            position: UiRect {
-                left: Val::Px(10.0),
-                right: Val::Auto,
-                top: Val::Auto,
-                bottom: Val::Auto,
-            },
-            ..default()
-        };
+        let button_size_constraints = SizeConstraints::suggested(Val::Px(250.0), Val::Px(250.0));
+
+        let button_icon_size_constraints = SizeConstraints::suggested(Val::Px(30.0), Val::Auto);
+        let button_icon_offset = Offset(UiRect {
+            left: Val::Px(10.0),
+            right: Val::Auto,
+            top: Val::Auto,
+            bottom: Val::Auto,
+        });
+        let button_icon_position_type = PositionType::Absolute;
+
         let button_text_style = TextStyle {
             font: font.clone(),
             font_size: 40.0,
@@ -426,7 +424,7 @@ mod menu {
                             color: TEXT_COLOR,
                         },
                     )
-                    .with_layout(FlexLayout {
+                    .with_spacing(Spacing {
                         margin: UiRect::all(Val::Px(50.0)),
                         ..default()
                     }),
@@ -438,7 +436,9 @@ mod menu {
                 // - quit
                 parent
                     .spawn_bundle(ButtonBundle {
-                        style: button_style.clone(),
+                        size_constraints: button_size_constraints.clone(),
+                        flex_layout: button_layout.clone(),
+                        spacing: button_spacing.clone(),
                         color: NORMAL_BUTTON.into(),
                         ..default()
                     })
@@ -446,7 +446,9 @@ mod menu {
                     .with_children(|parent| {
                         let icon = asset_server.load("textures/Game Icons/right.png");
                         parent.spawn_bundle(ImageBundle {
-                            style: button_icon_style.clone(),
+                            size_constraints: button_icon_size_constraints.clone(),
+                            offset: button_icon_offset.clone(),
+                            position_type: button_icon_position_type.clone(),
                             image: UiImage(icon),
                             ..default()
                         });
@@ -457,7 +459,9 @@ mod menu {
                     });
                 parent
                     .spawn_bundle(ButtonBundle {
-                        style: button_style.clone(),
+                        size_constraints: button_size_constraints.clone(),
+                        flex_layout: button_layout.clone(),
+                        spacing: button_spacing.clone(),
                         color: NORMAL_BUTTON.into(),
                         ..default()
                     })
@@ -465,7 +469,9 @@ mod menu {
                     .with_children(|parent| {
                         let icon = asset_server.load("textures/Game Icons/wrench.png");
                         parent.spawn_bundle(ImageBundle {
-                            style: button_icon_style.clone(),
+                            size_constraints: button_icon_size_constraints.clone(),
+                            offset: button_icon_offset.clone(),
+                            position_type: button_icon_position_type.clone(),
                             image: UiImage(icon),
                             ..default()
                         });
@@ -476,7 +482,9 @@ mod menu {
                     });
                 parent
                     .spawn_bundle(ButtonBundle {
-                        style: button_style,
+                        size_constraints: button_size_constraints.clone(),
+                        flex_layout: button_layout.clone(),
+                        spacing: button_spacing.clone(),
                         color: NORMAL_BUTTON.into(),
                         ..default()
                     })
@@ -484,7 +492,9 @@ mod menu {
                     .with_children(|parent| {
                         let icon = asset_server.load("textures/Game Icons/exitRight.png");
                         parent.spawn_bundle(ImageBundle {
-                            style: button_icon_style,
+                            size_constraints: button_icon_size_constraints.clone(),
+                            offset: button_icon_offset.clone(),
+                            position_type: button_icon_position_type.clone(),
                             image: UiImage(icon),
                             ..default()
                         });
@@ -494,14 +504,14 @@ mod menu {
     }
 
     fn settings_menu_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-        let button_style = Style {
-            size: Size::new(Val::Px(200.0), Val::Px(65.0)),
-            margin: UiRect::all(Val::Px(20.0)),
+        // Common style for all buttons on this menu
+        let button_spacing = Spacing::margin(UiRect::all(Val::Px(20.0)));
+        let button_layout = FlexLayout {
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             ..default()
         };
-
+        let button_size_constraints = SizeConstraints::suggested(Val::Px(250.0), Val::Px(65.0));
         let button_text_style = TextStyle {
             font: asset_server.load("fonts/FiraSans-Bold.ttf"),
             font_size: 40.0,
@@ -528,7 +538,9 @@ mod menu {
                 ] {
                     parent
                         .spawn_bundle(ButtonBundle {
-                            style: button_style.clone(),
+                            size_constraints: button_size_constraints.clone(),
+                            flex_layout: button_layout.clone(),
+                            spacing: button_spacing.clone(),
                             color: NORMAL_BUTTON.into(),
                             ..default()
                         })
@@ -548,9 +560,10 @@ mod menu {
         asset_server: Res<AssetServer>,
         display_quality: Res<DisplayQuality>,
     ) {
-        let button_style = Style {
-            size: Size::new(Val::Px(200.0), Val::Px(65.0)),
-            margin: UiRect::all(Val::Px(20.0)),
+        // Common style for all buttons on this menu
+        let button_size_constraints = SizeConstraints::suggested(Val::Px(250.0), Val::Px(65.0));
+        let button_spacing = Spacing::margin(UiRect::all(Val::Px(20.0)));
+        let button_layout = FlexLayout {
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             ..default()
@@ -598,10 +611,9 @@ mod menu {
                             DisplayQuality::High,
                         ] {
                             let mut entity = parent.spawn_bundle(ButtonBundle {
-                                style: Style {
-                                    size: Size::new(Val::Px(150.0), Val::Px(65.0)),
-                                    ..button_style.clone()
-                                },
+                                size_constraints: SizeConstraints::suggested(Val::Px(150.0), Val::Px(65.0)),
+                                spacing: button_spacing.clone(),
+                                flex_layout: button_layout.clone(),
                                 color: NORMAL_BUTTON.into(),
                                 ..default()
                             });
@@ -619,7 +631,9 @@ mod menu {
                 // Display the back button to return to the settings screen
                 parent
                     .spawn_bundle(ButtonBundle {
-                        style: button_style,
+                        size_constraints: button_size_constraints.clone(),
+                        spacing: button_spacing.clone(),
+                        flex_layout: button_layout.clone(),
                         color: NORMAL_BUTTON.into(),
                         ..default()
                     })
@@ -635,11 +649,12 @@ mod menu {
         asset_server: Res<AssetServer>,
         volume: Res<Volume>,
     ) {
-        let button_style = Style {
-            size: Size::new(Val::Px(200.0), Val::Px(65.0)),
-            margin: UiRect::all(Val::Px(20.0)),
-            justify_content: JustifyContent::Center,
+        // Common style for all buttons on this menu
+        let button_size_constraints = SizeConstraints::suggested(Val::Px(200.0), Val::Px(65.0));
+        let button_spacing = Spacing::margin(UiRect::all(Val::Px(20.0)));
+        let button_layout = FlexLayout {
             align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
             ..default()
         };
         let button_text_style = TextStyle {
@@ -650,10 +665,10 @@ mod menu {
 
         commands
             .spawn_bundle(NodeBundle {
-                style: Style {
-                    margin: UiRect::all(Val::Auto),
-                    flex_direction: FlexDirection::ColumnReverse,
+                spacing: Spacing::margin(UiRect::all(Val::Auto)),
+                flex_layout: FlexLayout { 
                     align_items: AlignItems::Center,
+                    flex_direction: FlexDirection::ColumnReverse,
                     ..default()
                 },
                 color: Color::CRIMSON.into(),
@@ -663,10 +678,7 @@ mod menu {
             .with_children(|parent| {
                 parent
                     .spawn_bundle(NodeBundle {
-                        style: Style {
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
+                        flex_layout: FlexLayout { align_items: AlignItems::Center, ..default() },
                         color: Color::CRIMSON.into(),
                         ..default()
                     })
@@ -677,10 +689,9 @@ mod menu {
                         ));
                         for volume_setting in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] {
                             let mut entity = parent.spawn_bundle(ButtonBundle {
-                                style: Style {
-                                    size: Size::new(Val::Px(30.0), Val::Px(65.0)),
-                                    ..button_style.clone()
-                                },
+                                size_constraints: SizeConstraints::suggested(Val::Px(30.0), Val::Px(65.0)),
+                                spacing: button_spacing.clone(),
+                                flex_layout: button_layout.clone(),
                                 color: NORMAL_BUTTON.into(),
                                 ..default()
                             });
@@ -692,7 +703,9 @@ mod menu {
                     });
                 parent
                     .spawn_bundle(ButtonBundle {
-                        style: button_style,
+                        size_constraints: button_size_constraints.clone(),
+                        spacing: button_spacing.clone(),
+                        flex_layout: button_layout.clone(),
                         color: NORMAL_BUTTON.into(),
                         ..default()
                     })

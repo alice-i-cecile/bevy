@@ -237,21 +237,37 @@ impl Size {
         Size { width, height }
     }
 
+    /// Creates a new [`Size`] where both values are given in Val::Px.
+    pub const fn px(width: f32, height: f32) -> Self {
+        Size {
+            width: Val::Px(width),
+            height: Val::Px(height),
+        }
+    }
+
+    /// Creates a new [`Size`] where both values are given in Val::Percent.
+    pub const fn percent(width: f32, height: f32) -> Self {
+        Size {
+            width: Val::Percent(width),
+            height: Val::Percent(height),
+        }
+    }
+
     pub const DEFAULT: Size = Size::UNDEFINED;
 
-    /// Creates a Size where both values are [`Val::Auto`].
+    /// Creates a new [`Size`] where both values are [`Val::Auto`].
     pub const AUTO: Size = Size {
         width: Val::Auto,
         height: Val::Auto,
     };
 
-    /// Creates a Size where both values are [`Val::Undefined`].
+    /// Creates a new [`Size`] where both values are [`Val::Undefined`].
     pub const UNDEFINED: Size = Size {
         width: Val::Undefined,
         height: Val::Undefined,
     };
 
-    /// Creates a Size where both values are 100 percent.
+    /// Creates a new [`Size`] where both values are 100 percent.
     pub const FULL: Size = Size {
         width: Val::Percent(100.),
         height: Val::Percent(100.),

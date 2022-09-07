@@ -32,48 +32,42 @@ fn setup(mut commands: Commands, asset_server: ResMut<AssetServer>) {
 
     commands
         .spawn_bundle(NodeBundle {
-            style: Style {
-                size: Size::new(Val::Percent(50.0), Val::Percent(50.0)),
-                position_type: PositionType::Absolute,
-                position: UiRect {
-                    left: Val::Percent(25.),
-                    top: Val::Percent(25.),
-                    ..default()
-                },
-                justify_content: JustifyContent::SpaceAround,
-                align_items: AlignItems::Center,
+            size_constraints: SizeConstraints::suggested(Val::Percent(50.0), Val::Percent(50.0)),
+            position_type: PositionType::Absolute,
+            offset: UiRect {
+                left: Val::Percent(25.),
+                top: Val::Percent(25.),
                 ..default()
             },
-            color: Color::ANTIQUE_WHITE.into(),
+            flex_layout: FlexLayout {
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceAround,
+                ..default()
+            },
+            color: Color::ANTIQUE_WHITE,
             ..default()
         })
         .with_children(|parent| {
             parent
                 .spawn_bundle(NodeBundle {
-                    style: Style {
-                        size: Size::new(Val::Px(40.), Val::Px(40.)),
-                        ..default()
-                    },
-                    color: Color::RED.into(),
+                    size_constraints: SizeConstraints::suggested(Val::Px(40.0), Val::Px(40.0)),
+                    color: Color::RED,
                     ..default()
                 })
                 .with_children(|parent| {
                     parent.spawn_bundle(TextBundle::from_section("Size!", text_style));
                 });
             parent.spawn_bundle(NodeBundle {
-                style: Style {
-                    size: Size::new(Val::Percent(15.), Val::Percent(15.)),
-                    ..default()
-                },
-                color: Color::BLUE.into(),
+                size_constraints: SizeConstraints::suggested(
+                    Val::Percent(15.0),
+                    Val::Percent(15.0),
+                ),
+                color: Color::BLUE,
                 ..default()
             });
             parent.spawn_bundle(ImageBundle {
-                style: Style {
-                    size: Size::new(Val::Px(30.0), Val::Px(30.0)),
-                    ..default()
-                },
-                image: asset_server.load("branding/icon.png").into(),
+                size_constraints: SizeConstraints::suggested(Val::Px(30.0), Val::Px(30.0)),
+                image: asset_server.load("branding/icon.png"),
                 ..default()
             });
         });

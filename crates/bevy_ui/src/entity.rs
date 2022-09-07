@@ -167,6 +167,12 @@ impl TextBundle {
         self.flex_layout = layout;
         self
     }
+
+    /// Returns this [`TextBundle`] with a new [`Spacing`].
+    pub const fn with_spacing(mut self, spacing: Spacing) -> Self {
+        self.spacing = spacing;
+        self
+    }
 }
 
 impl Default for TextBundle {
