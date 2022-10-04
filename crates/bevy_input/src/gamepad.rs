@@ -45,7 +45,8 @@ impl Gamepads {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// The data contained in a [`GamepadEvent`] or [`GamepadEventRaw`].
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub enum GamepadEventType {
     Connected,
@@ -54,7 +55,26 @@ pub enum GamepadEventType {
     AxisChanged(GamepadAxisType, f32),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// An event of a [`Gamepad`].
+///
+/// This event is the translated version of the [`GamepadEventRaw`]. It is available to
+/// the end user and can be used for game logic.
+///
+/// ## Differences
+///
+/// The difference between the [`GamepadEventRaw`] and the [`GamepadEvent`] is that the
+/// former respects user defined [`GamepadSettings`] for the gamepad inputs when translating it
+/// to the latter. The former also updates the [`Input<GamepadButton>`], [`Axis<GamepadAxis>`],
+/// and [`Axis<GamepadButton>`] resources accordingly.
+///
+/// ## Gamepad input mocking
+///
+/// When mocking gamepad input, use [`GamepadEventRaw`]s instead of [`GamepadEvent`]s.
+/// Otherwise [`GamepadSettings`] won't be respected and the [`Input<GamepadButton>`],
+/// [`Axis<GamepadAxis>`], and [`Axis<GamepadButton>`] resources won't be updated correctly.
+///
+/// An example for gamepad input mocking can be seen in the documentation of the [`GamepadEventRaw`].
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct GamepadEvent {
     pub gamepad: Gamepad,
@@ -70,7 +90,91 @@ impl GamepadEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// A raw event of a [`Gamepad`].
+///
+/// This event is the translated version of the `EventType` from the `GilRs` crate.
+/// It is available to the end user and can be used for game logic.
+///
+/// ## Differences
+///
+/// The difference between the `EventType` from the `GilRs` crate and the [`GamepadEventRaw`]
+/// is that the latter has less events, because the button pressing logic is handled through the generic
+/// [`Input<T>`] instead of through events.
+///
+/// The difference between the [`GamepadEventRaw`] and the [`GamepadEvent`] can be seen in the documentation
+/// of the [`GamepadEvent`].
+///
+/// ## Gamepad input mocking
+///
+/// The following example showcases how to mock gamepad input by manually sending [`GamepadEventRaw`]s.
+///
+/// ```
+/// # use bevy_input::prelude::*;
+/// # use bevy_input::InputPlugin;
+/// # use bevy_input::gamepad::GamepadEventRaw;
+/// # use bevy_app::prelude::*;
+/// # use bevy_ecs::prelude::*;
+/// #[derive(Resource)]
+/// struct MyResource(bool);
+///
+/// // This system sets the bool inside `MyResource` to `true` if the `South` button of the first gamepad is pressed.
+/// fn change_resource_on_gamepad_button_press(
+///     mut my_resource: ResMut<MyResource>,
+///     gamepads: Res<Gamepads>,
+///     button_inputs: ResMut<Input<GamepadButton>>,
+/// ) {
+///     let gamepad = gamepads.iter().next().unwrap();
+///     let gamepad_button= GamepadButton::new(gamepad, GamepadButtonType::South);
+///
+///     my_resource.0 = button_inputs.pressed(gamepad_button);
+/// }
+///
+/// // Create our app.
+/// let mut app = App::new();
+///
+/// // Add the input plugin and the system/resource we want to test.
+/// app.add_plugin(InputPlugin)
+///     .insert_resource(MyResource(false))
+///     .add_system(change_resource_on_gamepad_button_press);
+///
+/// // Define our dummy gamepad input data.
+/// let gamepad = Gamepad::new(0);
+/// let button_type = GamepadButtonType::South;
+///
+/// // Send the gamepad connected event to mark our gamepad as connected.
+/// // This updates the `Gamepads` resource accordingly.
+/// app.world.send_event(GamepadEventRaw::new(gamepad, GamepadEventType::Connected));
+///
+/// // Send the gamepad input event to mark the `South` gamepad button as pressed.
+/// // This updates the `Input<GamepadButton>` resource accordingly.
+/// app.world.send_event(GamepadEventRaw::new(
+///     gamepad,
+///     GamepadEventType::ButtonChanged(button_type, 1.0)
+/// ));
+///
+/// // Advance the execution of the schedule by a single cycle.
+/// app.update();
+///
+/// // At this point you can check if your game logic corresponded correctly to the gamepad input.
+/// // In this example we are checking if the bool in `MyResource` was updated from `false` to `true`.
+/// assert!(app.world.resource::<MyResource>().0);
+///
+/// // Send the gamepad input event to mark the `South` gamepad button as released.
+/// // This updates the `Input<GamepadButton>` resource accordingly.
+/// app.world.send_event(GamepadEventRaw::new(
+///     gamepad,
+///     GamepadEventType::ButtonChanged(button_type, 0.0)
+/// ));
+///
+/// // Advance the execution of the schedule by another cycle.
+/// app.update();
+///
+/// // Check if the bool in `MyResource` was updated from `true` to `false`.
+/// assert!(!app.world.resource::<MyResource>().0);
+/// #
+/// # bevy_ecs::system::assert_is_system(change_resource_on_gamepad_button_press);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct GamepadEventRaw {
     pub gamepad: Gamepad,
@@ -328,7 +432,7 @@ pub fn gamepad_event_system(
     for event in raw_events.iter() {
         match event.event_type {
             GamepadEventType::Connected => {
-                events.send(GamepadEvent::new(event.gamepad, event.event_type.clone()));
+                events.send(GamepadEvent::new(event.gamepad, event.event_type));
                 for button_type in &ALL_BUTTON_TYPES {
                     let gamepad_button = GamepadButton::new(event.gamepad, *button_type);
                     button_input.reset(gamepad_button);
@@ -339,7 +443,7 @@ pub fn gamepad_event_system(
                 }
             }
             GamepadEventType::Disconnected => {
-                events.send(GamepadEvent::new(event.gamepad, event.event_type.clone()));
+                events.send(GamepadEvent::new(event.gamepad, event.event_type));
                 for button_type in &ALL_BUTTON_TYPES {
                     let gamepad_button = GamepadButton::new(event.gamepad, *button_type);
                     button_input.reset(gamepad_button);
