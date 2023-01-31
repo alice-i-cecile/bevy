@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use bevy_tasks::{ComputeTaskPool, Scope, TaskPool, ThreadExecutor};
 use bevy_utils::default;
@@ -186,7 +186,7 @@ impl SystemExecutor for MultiThreadedExecutor {
                                 .receiver
                                 .recv()
                                 .await
-                                .unwrap_or_else(|error| unreachable!("{}", error));
+                                .expect("a system has panicked and closed the channel");
 
                             self.finish_system_and_signal_dependents(index);
 
@@ -433,14 +433,23 @@ impl MultiThreadedExecutor {
         let task = async move {
             #[cfg(feature = "trace")]
             let system_guard = system_span.enter();
-            // SAFETY: access is compatible
-            unsafe { system.run_unsafe((), world) };
+            let res = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                // SAFETY: access is compatible
+                unsafe { system.run_unsafe((), world) };
+            }));
             #[cfg(feature = "trace")]
             drop(system_guard);
-            sender
-                .send(system_index)
-                .await
-                .unwrap_or_else(|error| unreachable!("{}", error));
+
+            if res.is_err() {
+                // close the channel to propagate the error to the
+                // multithreaded executor
+                sender.close();
+            } else {
+                sender
+                    .send(system_index)
+                    .await
+                    .unwrap_or_else(|error| unreachable!("{}", error));
+            }
         };
 
         #[cfg(feature = "trace")]
