@@ -344,6 +344,7 @@ impl App {
             .add_systems(
                 StateTransition,
                 (
+                    // We need to run the enter schedule of the initial state upon startup
                     run_enter_schedule::<S>.run_if(run_once_condition()),
                     apply_state_transition::<S>,
                 )

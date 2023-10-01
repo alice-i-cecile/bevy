@@ -140,6 +140,8 @@ pub fn run_enter_schedule<S: States>(world: &mut World) {
 /// - Runs the [`OnExit(exited_state)`] schedule, if it exists.
 /// - Runs the [`OnTransition { from: exited_state, to: entered_state }`](OnTransition), if it exists.
 /// - Runs the [`OnEnter(entered_state)`] schedule, if it exists.
+///
+/// These schedules are run in the order listed above: [`OnExit`] is always run first, then [`OnTransition`], then [`OnEnter`].
 pub fn apply_state_transition<S: States>(world: &mut World) {
     // We want to take the `NextState` resource,
     // but only mark it as changed if it wasn't empty.
