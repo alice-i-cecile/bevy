@@ -26,7 +26,9 @@ pub use bevy_ecs_macros::States;
 /// State transitions typically occur in the [`OnEnter<T::Variant>`] and [`OnExit<T:Variant>`] schedules,
 /// which can be run via the [`apply_state_transition::<T>`] system.
 ///
-/// # Example
+/// # Examples
+///
+/// States are commonly defined as enums, with the [`States`] derive macro.
 ///
 /// ```rust
 /// use bevy_ecs::prelude::States;
@@ -39,6 +41,15 @@ pub use bevy_ecs_macros::States;
 ///   InGame,
 /// }
 ///
+/// // You can have multiple states for the same world / app:
+/// // each state is independent of the others and stored in its own resources.
+/// #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, States)]
+/// enum GameMode {
+///     #[default]
+///     SinglePlayer,
+///     Tutorial,
+///     MultiPlayer,
+/// }
 /// ```
 pub trait States: 'static + Send + Sync + Clone + PartialEq + Eq + Hash + Debug + Default {}
 
