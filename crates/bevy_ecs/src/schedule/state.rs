@@ -90,15 +90,79 @@ pub use bevy_ecs_macros::States;
 /// ```
 pub trait States: 'static + Send + Sync + Clone + PartialEq + Eq + Hash + Debug + Default {}
 
+/// A state or set of states that can be matched against.
+///
+/// This is used to determine if a schedule such as [`OnEnter`], [`OnExit`] or [`OnTransition`] should run when a state is entered or exited.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum MatchedState<S: States> {
+    /// Only the exact state is matched.
+    Exact(S),
+    /// Any state that matches the given predicate is matched.
+    Pattern(StatePredicate<S>),
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub struct StatePredicate<S: States> {
+    func: Box<dyn Fn(&S) -> bool>,
+}
+
+impl<S: States> MatchedState<S> {
+    /// Returns `true` if the given state matches this state.
+    pub fn matches(&self, state: &S) -> bool {
+        match self {
+            MatchedState::Exact(s) => s == state,
+            MatchedState::Pattern(predicate) => (predicate.func)(state),
+        }
+    }
+}
+
 /// The label of a [`Schedule`](super::Schedule) that runs whenever [`State<S>`]
 /// enters this state.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct OnEnter<S: States>(pub S);
+pub struct OnEnter<S: States>(pub MatchedState<S>);
+
+impl<S: States> OnEnter<S> {
+    /// A schedule that runs whenever [`State<S>`] enters a new state that is equal to `state`.
+    pub fn exact(state: S) -> Self {
+        OnEnter(MatchedState::Exact(state))
+    }
+
+    /// A schedule that runs whenever [`State<S>`] enters a new state that matches `predicate`.
+    pub fn pattern(predicate: impl Fn(&S) -> bool + 'static) -> Self {
+        OnEnter(MatchedState::Pattern(StatePredicate {
+            func: Box::new(predicate),
+        }))
+    }
+
+    /// Returns `true` if the new state matches this state.
+    pub fn matches(&self, new_state: &S) -> bool {
+        self.0.matches(new_state)
+    }
+}
 
 /// The label of a [`Schedule`](super::Schedule) that runs whenever [`State<S>`]
 /// exits this state.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct OnExit<S: States>(pub S);
+pub struct OnExit<S: States>(pub MatchedState<S>);
+
+impl<S: States> OnExit<S> {
+    /// A schedule that runs whenever [`State<S>`] leaves a state that is equal to `state`.
+    pub fn exact(state: S) -> Self {
+        OnExit(MatchedState::Exact(state))
+    }
+
+    /// A schedule that runs whenever [`State<S>`] leaves a new state that matches `predicate`.
+    pub fn pattern(predicate: impl Fn(&S) -> bool + 'static) -> Self {
+        OnExit(MatchedState::Pattern(StatePredicate {
+            func: Box::new(predicate),
+        }))
+    }
+
+    /// Returns `true` if the previous state matches this state.
+    pub fn matches(&self, old_state: &S) -> bool {
+        self.0.matches(old_state)
+    }
+}
 
 /// The label of a [`Schedule`](super::Schedule) that **only** runs whenever [`State<S>`]
 /// exits the `from` state, AND enters the `to` state.
@@ -107,9 +171,39 @@ pub struct OnExit<S: States>(pub S);
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OnTransition<S: States> {
     /// The state being exited.
-    pub from: S,
+    pub from: MatchedState<S>,
     /// The state being entered.
-    pub to: S,
+    pub to: MatchedState<S>,
+}
+
+impl<S: States> OnTransition<S> {
+    /// A schedule that runs whenever [`State<S>`] leaves a state that is equal to `state`.
+    pub fn exact(old_state: S, new_state: S) -> Self {
+        OnTransition {
+            from: MatchedState::Exact(old_state),
+            to: MatchedState::Exact(new_state),
+        }
+    }
+
+    /// A schedule that runs whenever [`State<S>`] leaves a new state that matches `predicate`.
+    pub fn pattern(
+        from_predicate: impl Fn(&S) -> bool + 'static,
+        to_predicate: impl Fn(&S) -> bool + 'static,
+    ) -> Self {
+        OnTransition {
+            from: MatchedState::Pattern(StatePredicate {
+                func: Box::new(from_predicate),
+            }),
+            to: MatchedState::Pattern(StatePredicate {
+                func: Box::new(to_predicate),
+            }),
+        }
+    }
+
+    /// Returns `true` if the previous state matches this state.
+    pub fn matches(&self, old_state: &S, new_state: &S) -> bool {
+        self.from.matches(old_state) && self.to.matches(new_state)
+    }
 }
 
 /// A finite-state machine whose transitions have associated schedules
