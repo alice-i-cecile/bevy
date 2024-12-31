@@ -32,7 +32,13 @@ use core::fmt::Debug;
 /// Resource representing which entity has input focus, if any. Keyboard events will be
 /// dispatched to the current focus entity, or to the primary window if no entity has focus.
 ///
-/// Changing the input focus is as easy as modifying this resource.
+/// Changing the input focus is as easy as modifying this resource using [`InputFocus::set`].
+///
+/// This resource stores the current and previous focused entities, to allow for reliable backtracking.
+/// To access the current focused entity, use [`InputFocus::get`].
+/// To access the previously focused entity, use [`InputFocus::previous`].
+/// The previous entity is automatically updated when calling [`InputFocus::set`],
+/// [`InputFocus::clear`], or [`InputFocus::set_or_clear`].
 ///
 /// # Examples
 ///
@@ -67,29 +73,58 @@ use core::fmt::Debug;
 /// }
 /// ```
 #[derive(Clone, Debug, Default, Resource)]
-pub struct InputFocus(pub Option<Entity>);
+pub struct InputFocus {
+    current: Option<Entity>,
+    previous: Option<Entity>,
+}
 
 impl InputFocus {
     /// Create a new [`InputFocus`] resource with the given entity.
     ///
     /// This is mostly useful for tests.
     pub const fn from_entity(entity: Entity) -> Self {
-        Self(Some(entity))
+        Self {
+            current: Some(entity),
+            previous: None,
+        }
     }
 
     /// Set the entity with input focus.
+    ///
+    /// The previous entity will be recorded as [`InputFocus::previous`].
+    /// See [`set_or_clear`](Self::set_or_clear) if you want to provide an [`Option<Entity>`].
     pub const fn set(&mut self, entity: Entity) {
-        self.0 = Some(entity);
+        self.previous = self.current;
+        self.current = Some(entity);
+    }
+
+    /// Sets the current input focus to the given entity if `Some`, otherwise clears the focus.
+    ///
+    /// The previous entity will be recorded as [`InputFocus::previous`].
+    /// See [`set`](Self::set) if your [`Option`] is always `Some`.
+    pub fn set_or_clear(&mut self, maybe_entity: Option<Entity>) {
+        self.previous = self.current;
+        self.current = maybe_entity;
     }
 
     /// Returns the entity with input focus, if any.
     pub const fn get(&self) -> Option<Entity> {
-        self.0
+        self.current
+    }
+
+    /// Gets the entity that previously had input focus, if any.
+    ///
+    /// This is automatically updated when calling [`set`](Self::set).
+    pub const fn previous(&self) -> Option<Entity> {
+        self.previous
     }
 
     /// Clears input focus.
+    ///
+    /// The previous entity will be recorded as [`InputFocus::previous`].
     pub const fn clear(&mut self) {
-        self.0 = None;
+        self.previous = self.current;
+        self.current = None;
     }
 }
 
@@ -163,7 +198,7 @@ pub struct InputDispatchPlugin;
 impl Plugin for InputDispatchPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, set_initial_focus)
-            .insert_resource(InputFocus(None))
+            .init_resource::<InputFocus>()
             .insert_resource(InputFocusVisible(false))
             .add_systems(
                 PreUpdate,
@@ -191,7 +226,7 @@ pub fn set_initial_focus(
     mut input_focus: ResMut<InputFocus>,
     window: Single<Entity, With<PrimaryWindow>>,
 ) {
-    input_focus.0 = Some(*window);
+    input_focus.set(*window);
 }
 
 /// System which dispatches bubbled input events to the focused entity, or to the primary window
@@ -204,7 +239,7 @@ pub fn dispatch_focused_input<E: Event + Clone>(
 ) {
     if let Ok(window) = windows.get_single() {
         // If an element has keyboard focus, then dispatch the input event to that element.
-        if let Some(focused_entity) = focus.0 {
+        if let Some(focused_entity) = focus.get() {
             for ev in key_events.read() {
                 commands.trigger_targets(
                     FocusedInput {
@@ -271,12 +306,12 @@ impl IsFocused for IsFocusedHelper<'_, '_> {
     fn is_focused(&self, entity: Entity) -> bool {
         self.input_focus
             .as_deref()
-            .and_then(|f| f.0)
+            .and_then(|f| f.current)
             .is_some_and(|e| e == entity)
     }
 
     fn is_focus_within(&self, entity: Entity) -> bool {
-        let Some(focus) = self.input_focus.as_deref().and_then(|f| f.0) else {
+        let Some(focus) = self.input_focus.as_deref().and_then(|f| f.current) else {
             return false;
         };
         if focus == entity {
@@ -297,12 +332,12 @@ impl IsFocused for IsFocusedHelper<'_, '_> {
 impl IsFocused for World {
     fn is_focused(&self, entity: Entity) -> bool {
         self.get_resource::<InputFocus>()
-            .and_then(|f| f.0)
+            .and_then(|f| f.current)
             .is_some_and(|f| f == entity)
     }
 
     fn is_focus_within(&self, entity: Entity) -> bool {
-        let Some(focus) = self.get_resource::<InputFocus>().and_then(|f| f.0) else {
+        let Some(focus) = self.get_resource::<InputFocus>().and_then(|f| f.current) else {
             return false;
         };
         let mut e = focus;
@@ -462,7 +497,7 @@ mod tests {
         assert_eq!(get_gathered(&app, entity_b), "");
         assert_eq!(get_gathered(&app, child_of_b), "");
 
-        app.world_mut().insert_resource(InputFocus(None));
+        app.world_mut().init_resource::<InputFocus>();
 
         assert!(!app.world().is_focused(entity_a));
         assert!(!app.world().is_focus_visible(entity_a));

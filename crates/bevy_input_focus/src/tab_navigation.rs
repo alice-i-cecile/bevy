@@ -133,7 +133,7 @@ impl TabNavigation<'_, '_> {
 
         // Start by identifying which tab group we are in. Mainly what we want to know is if
         // we're in a modal group.
-        let tabgroup = focus.0.and_then(|focus_ent| {
+        let tabgroup = focus.current.and_then(|focus_ent| {
             self.parent_query
                 .iter_ancestors(focus_ent)
                 .find_map(|entity| {
@@ -144,7 +144,7 @@ impl TabNavigation<'_, '_> {
                 })
         });
 
-        if focus.0.is_some() && tabgroup.is_none() {
+        if focus.current.is_some() && tabgroup.is_none() {
             warn!("No tab group found for focus entity. Users will not be able to navigate back to this entity.");
         }
 
@@ -196,7 +196,7 @@ impl TabNavigation<'_, '_> {
         // Stable sort by tabindex
         focusable.sort_by_key(|(_, idx)| *idx);
 
-        let index = focusable.iter().position(|e| Some(e.0) == focus.0);
+        let index = focusable.iter().position(|e| Some(e.0) == focus.current);
         let count = focusable.len();
         let next = match (index, action) {
             (Some(idx), NavAction::Next) => (idx + 1).rem_euclid(count),
@@ -265,7 +265,7 @@ pub fn handle_tab_navigation(
         && key_event.state == ButtonState::Pressed
         && !key_event.repeat
     {
-        let next = nav.navigate(
+        let maybe_next = nav.navigate(
             &focus,
             if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
                 NavAction::Previous
@@ -273,9 +273,9 @@ pub fn handle_tab_navigation(
                 NavAction::Next
             },
         );
-        if next.is_some() {
+        if let Some(next) = maybe_next {
             trigger.propagate(false);
-            focus.0 = next;
+            focus.set(next);
             visible.0 = true;
         }
     }
