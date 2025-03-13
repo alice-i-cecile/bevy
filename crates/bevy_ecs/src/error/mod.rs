@@ -25,10 +25,10 @@
 //! signature:
 //!
 //! ```rust,ignore
-//! fn(BevyError, SystemErrorContext)
+//! fn(BevyError, EcsErrorContext)
 //! ```
 //!
-//! The [`SystemErrorContext`] allows you to access additional details relevant to providing
+//! The [`EcsErrorContext`] allows you to access additional details relevant to providing
 //! context surrounding the system error – such as the system's [`name`] – in your error messages.
 //!
 //! For example:
