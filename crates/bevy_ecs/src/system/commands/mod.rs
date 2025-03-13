@@ -20,7 +20,7 @@ use crate::{
     change_detection::{MaybeLocation, Mut},
     component::{Component, ComponentId, Mutable},
     entity::{Entities, Entity, EntityClonerBuilder, EntityDoesNotExistError},
-    error::{command_error_handler, BevyError, CommandWithEntity, HandleError},
+    error::{command_error_handler, BevyError, CommandWithEntity, EcsErrorContext, HandleError},
     event::Event,
     observer::{Observer, TriggerTargets},
     resource::Resource,
@@ -634,7 +634,7 @@ impl<'w, 's> Commands<'w, 's> {
     pub fn queue_handled<C: Command<T> + HandleError<T>, T>(
         &mut self,
         command: C,
-        error_handler: fn(&mut World, BevyError),
+        error_handler: fn(&mut World, BevyError, EcsErrorContext),
     ) {
         self.queue_internal(command.handle_error_with(error_handler));
     }
@@ -1859,7 +1859,7 @@ impl<'a> EntityCommands<'a> {
     pub fn queue_handled<C: EntityCommand<T> + CommandWithEntity<M>, T, M>(
         &mut self,
         command: C,
-        error_handler: fn(&mut World, BevyError),
+        error_handler: fn(&mut World, BevyError, EcsErrorContext),
     ) -> &mut Self {
         self.commands
             .queue_handled(command.with_entity(self.entity), error_handler);
