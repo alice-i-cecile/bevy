@@ -50,7 +50,7 @@ impl SystemExecutor for SingleThreadedExecutor {
         schedule: &mut SystemSchedule,
         world: &mut World,
         _skip_systems: Option<&FixedBitSet>,
-        error_handler: fn(&mut World, BevyError, EcsErrorContext),
+        error_handler: fn(BevyError, EcsErrorContext),
     ) {
         // If stepping is enabled, make sure we skip those systems that should
         // not be run.
@@ -116,7 +116,6 @@ impl SystemExecutor for SingleThreadedExecutor {
                 if system.is_exclusive() {
                     if let Err(err) = __rust_begin_short_backtrace::run(system, world) {
                         error_handler(
-                            world,
                             err,
                             EcsErrorContext::System {
                                 name: system.name(),
@@ -133,7 +132,6 @@ impl SystemExecutor for SingleThreadedExecutor {
                     unsafe {
                         if let Err(err) = __rust_begin_short_backtrace::run_unsafe(system, world) {
                             error_handler(
-                                todo!(),
                                 err,
                                 EcsErrorContext::System {
                                     name: system.name(),

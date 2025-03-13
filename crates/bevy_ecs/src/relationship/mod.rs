@@ -13,7 +13,7 @@ pub use relationship_source_collection::*;
 use crate::{
     component::{Component, HookContext, Mutable},
     entity::{ComponentCloneCtx, Entity, SourceComponent},
-    error::{command_error_handler, ignore, CommandWithEntity, HandleError},
+    error::{ignore, CommandWithEntity, HandleError},
     system::{
         entity_command::{self},
         Commands,

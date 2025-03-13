@@ -13,10 +13,7 @@ use super::{command_error_handler, BevyError, EcsErrorContext};
 pub trait HandleError<Out = ()> {
     /// Takes a [`Command`] that returns a Result and uses a given error handler function to convert it into
     /// a [`Command`] that internally handles an error if it occurs and returns `()`.
-    fn handle_error_with(
-        self,
-        error_handler: fn(&mut World, BevyError, EcsErrorContext),
-    ) -> impl Command;
+    fn handle_error_with(self, error_handler: fn(BevyError, EcsErrorContext)) -> impl Command;
     /// Takes a [`Command`] that returns a Result and uses the default error handler function to convert it into
     /// a [`Command`] that internally handles an error if it occurs and returns `()`.
     fn handle_error(self) -> impl Command
@@ -32,14 +29,10 @@ where
     C: Command<Result<T, E>>,
     E: Into<BevyError>,
 {
-    fn handle_error_with(
-        self,
-        error_handler: fn(&mut World, BevyError, EcsErrorContext),
-    ) -> impl Command {
+    fn handle_error_with(self, error_handler: fn(BevyError, EcsErrorContext)) -> impl Command {
         move |world: &mut World| match self.apply(world) {
             Ok(_) => {}
             Err(err) => (error_handler)(
-                world,
                 err.into(),
                 EcsErrorContext::Command {
                     name: type_name::<C>().into(),
@@ -54,10 +47,7 @@ where
     C: Command,
 {
     #[inline]
-    fn handle_error_with(
-        self,
-        _error_handler: fn(&mut World, BevyError, EcsErrorContext),
-    ) -> impl Command {
+    fn handle_error_with(self, _error_handler: fn(BevyError, EcsErrorContext)) -> impl Command {
         self
     }
     #[inline]
