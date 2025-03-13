@@ -2,30 +2,8 @@
 //! for use with [`Commands::queue_handled`](super::Commands::queue_handled) and [`EntityCommands::queue_handled`](super::EntityCommands::queue_handled).
 
 use crate::{error::BevyError, world::World};
-use log::{error, warn};
 
-use super::EcsErrorContext;
-
-/// An error handler that does nothing.
-pub fn silent() -> fn(&mut World, BevyError, EcsErrorContext) {
-    |_, _, _| {}
-}
-
-/// An error handler that accepts an error and logs it with [`warn!`].
-pub fn warn() -> fn(&mut World, BevyError, EcsErrorContext) {
-    |_, error, _| warn!("{error}")
-}
-
-/// An error handler that accepts an error and logs it with [`error!`].
-pub fn error() -> fn(&mut World, BevyError, EcsErrorContext) {
-    |_, error, _| error!("{error}")
-}
-
-/// An error handler that accepts an error and panics with the error in
-/// the panic message.
-pub fn panic() -> fn(&mut World, BevyError, EcsErrorContext) {
-    |_, error, _| panic!("{error}")
-}
+use super::{panic, EcsErrorContext};
 
 /// A global error handler. This can be set at startup, as long as it is set before
 /// any uses. This should generally be configured _before_ initializing the app.
@@ -44,5 +22,5 @@ pub static GLOBAL_ERROR_HANDLER: std::sync::OnceLock<fn(&mut World, BevyError, E
 /// but if set, the [`GLOBAL_ERROR_HANDLER`] will be used instead, enabling error handler customization.
 #[inline]
 pub fn default_error_handler() -> fn(&mut World, BevyError, EcsErrorContext) {
-    *GLOBAL_ERROR_HANDLER.get_or_init(|| panic())
+    *GLOBAL_ERROR_HANDLER.get_or_init(|| panic)
 }
