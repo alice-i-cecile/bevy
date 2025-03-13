@@ -1,4 +1,4 @@
-use crate::{component::Tick, entity::Entity, error::BevyError, resource::Resource};
+use crate::{component::Tick, entity::Entity, error::BevyError, resource::Resource, world::World};
 use alloc::borrow::Cow;
 
 /// Additional context for an ECS operation that failed.
@@ -61,7 +61,7 @@ impl EcsErrorContext {
 ///
 /// See [`bevy_ecs::error`] for more information on error handling,
 /// and [`bevy_ecs::error::handler`] for an assortment of built-in error handlers.
-pub struct FallbackErrorHandler(pub fn(BevyError, EcsErrorContext));
+pub struct FallbackErrorHandler(pub fn(&mut World, BevyError, EcsErrorContext));
 
 impl Resource for FallbackErrorHandler {}
 
@@ -85,46 +85,46 @@ macro_rules! inner {
 /// Error handler that panics with the system error.
 #[track_caller]
 #[inline]
-pub fn panic(error: BevyError, ctx: EcsErrorContext) {
+pub fn panic(_world: &mut World, error: BevyError, ctx: EcsErrorContext) {
     inner!(panic, error, ctx);
 }
 
 /// Error handler that logs the system error at the `error` level.
 #[track_caller]
 #[inline]
-pub fn error(error: BevyError, ctx: EcsErrorContext) {
+pub fn error(_world: &mut World, error: BevyError, ctx: EcsErrorContext) {
     inner!(log::error, error, ctx);
 }
 
 /// Error handler that logs the system error at the `warn` level.
 #[track_caller]
 #[inline]
-pub fn warn(error: BevyError, ctx: EcsErrorContext) {
+pub fn warn(_world: &mut World, error: BevyError, ctx: EcsErrorContext) {
     inner!(log::warn, error, ctx);
 }
 
 /// Error handler that logs the system error at the `info` level.
 #[track_caller]
 #[inline]
-pub fn info(error: BevyError, ctx: EcsErrorContext) {
+pub fn info(_world: &mut World, error: BevyError, ctx: EcsErrorContext) {
     inner!(log::info, error, ctx);
 }
 
 /// Error handler that logs the system error at the `debug` level.
 #[track_caller]
 #[inline]
-pub fn debug(error: BevyError, ctx: EcsErrorContext) {
+pub fn debug(_world: &mut World, error: BevyError, ctx: EcsErrorContext) {
     inner!(log::debug, error, ctx);
 }
 
 /// Error handler that logs the system error at the `trace` level.
 #[track_caller]
 #[inline]
-pub fn trace(error: BevyError, ctx: EcsErrorContext) {
+pub fn trace(_world: &mut World, error: BevyError, ctx: EcsErrorContext) {
     inner!(log::trace, error, ctx);
 }
 
 /// Error handler that ignores the system error.
 #[track_caller]
 #[inline]
-pub fn ignore(_: BevyError, _: EcsErrorContext) {}
+pub fn ignore(_world: &mut World, _error: BevyError, _ctx: EcsErrorContext) {}

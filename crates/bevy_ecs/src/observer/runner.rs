@@ -273,7 +273,7 @@ pub struct Observer {
     system: Box<dyn Any + Send + Sync + 'static>,
     descriptor: ObserverDescriptor,
     hook_on_add: ComponentHook,
-    error_handler: Option<fn(BevyError, EcsErrorContext)>,
+    error_handler: Option<fn(&mut World, BevyError, EcsErrorContext)>,
 }
 
 impl Observer {
@@ -322,7 +322,10 @@ impl Observer {
     /// Set the error handler to use for this observer.
     ///
     /// See the [`error` module-level documentation](crate::error) for more information.
-    pub fn with_error_handler(mut self, error_handler: fn(BevyError, EcsErrorContext)) -> Self {
+    pub fn with_error_handler(
+        mut self,
+        error_handler: fn(&mut World, BevyError, EcsErrorContext),
+    ) -> Self {
         self.error_handler = Some(error_handler);
         self
     }
@@ -408,6 +411,7 @@ fn observer_system_runner<E: Event, B: Bundle, S: ObserverSystem<E, B>>(
         if (*system).validate_param_unsafe(world) {
             if let Err(err) = (*system).run_unsafe(trigger, world) {
                 error_handler(
+                    todo!(),
                     err,
                     EcsErrorContext::Observer {
                         name: (*system).name(),

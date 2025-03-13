@@ -33,7 +33,7 @@ pub(super) trait SystemExecutor: Send + Sync {
         schedule: &mut SystemSchedule,
         world: &mut World,
         skip_systems: Option<&FixedBitSet>,
-        error_handler: fn(BevyError, EcsErrorContext),
+        error_handler: fn(&mut World, BevyError, EcsErrorContext)
     );
     fn set_apply_final_deferred(&mut self, value: bool);
 }

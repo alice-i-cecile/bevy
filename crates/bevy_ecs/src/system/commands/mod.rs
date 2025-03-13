@@ -28,7 +28,7 @@ use crate::{
     system::{Deferred, IntoObserverSystem, IntoSystem, RegisteredSystem, SystemId, SystemInput},
     world::{
         command_queue::RawCommandQueue, unsafe_world_cell::UnsafeWorldCell, CommandQueue,
-        EntityWorldMut, FromWorld, World,
+        DeferredWorld, EntityWorldMut, FromWorld, World,
     },
 };
 
@@ -165,7 +165,7 @@ const _: () = {
         fn queue(
             state: &mut Self::State,
             system_meta: &bevy_ecs::system::SystemMeta,
-            world: bevy_ecs::world::DeferredWorld,
+            world: DeferredWorld,
         ) {
             <__StructFieldsAlias<'_, '_> as bevy_ecs::system::SystemParam>::queue(
                 &mut state.state,

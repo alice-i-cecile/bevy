@@ -131,7 +131,7 @@ pub struct ExecutorState {
 struct Context<'scope, 'env, 'sys> {
     environment: &'env Environment<'env, 'sys>,
     scope: &'scope Scope<'scope, 'env, ()>,
-    error_handler: fn(BevyError, EcsErrorContext),
+    error_handler: fn(&mut World, BevyError, EcsErrorContext),
 }
 
 impl Default for MultiThreadedExecutor {
@@ -182,7 +182,7 @@ impl SystemExecutor for MultiThreadedExecutor {
         schedule: &mut SystemSchedule,
         world: &mut World,
         _skip_systems: Option<&FixedBitSet>,
-        error_handler: fn(BevyError, EcsErrorContext),
+        error_handler: fn(&mut World, BevyError, EcsErrorContext),
     ) {
         let state = self.state.get_mut().unwrap();
         // reset counts
@@ -616,6 +616,7 @@ impl ExecutorState {
                         context.environment.world_cell,
                     ) {
                         (context.error_handler)(
+                            todo!(),
                             err,
                             EcsErrorContext::System {
                                 name: system.name(),
@@ -668,6 +669,7 @@ impl ExecutorState {
                 let res = std::panic::catch_unwind(AssertUnwindSafe(|| {
                     if let Err(err) = __rust_begin_short_backtrace::run(system, world) {
                         (context.error_handler)(
+                            world,
                             err,
                             EcsErrorContext::System {
                                 name: system.name(),
