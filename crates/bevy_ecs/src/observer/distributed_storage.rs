@@ -13,7 +13,6 @@ use core::any::Any;
 
 use crate::{
     component::{ComponentId, Mutable, StorageType},
-    entity::EntityHashSet,
     error::{ErrorContext, ErrorHandler},
     lifecycle::{ComponentHook, HookContext},
     observer::{observer_system_runner, ObserverRunner},
@@ -439,52 +438,6 @@ pub(crate) trait AnyNamedSystem: Any + Send + Sync + 'static {
 impl<T: Any + System> AnyNamedSystem for T {
     fn system_name(&self) -> DebugName {
         self.name()
-    }
-}
-
-/// A [`Component`] that tracks which entities are being watched by an [`Observer`].
-///
-/// For bespoke observers, this will only ever contain a single entity.
-/// Universal observers may watch multiple entities,
-/// but if the set of watched entities is empty, they will instead match all entities.
-#[derive(Component, Default, Debug)]
-#[component(immutable)]
-#[cfg_attr(feature = "bevy_reflect", derive(bevy_reflect::Reflect))]
-#[cfg_attr(feature = "bevy_reflect", reflect(Component, Debug))]
-pub struct Watching(EntityHashSet);
-
-impl Watching {
-    /// Creates a new, empty [`Watching`] component.
-    pub fn new() -> Self {
-        Self(EntityHashSet::default())
-    }
-
-    /// Returns `true` if this observer is watching all entities.
-    ///
-    /// This is the case when the list of watched entities is empty.
-    pub fn watches_all(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Returns a read-only reference to the list of entities being watched by this observer.
-    pub fn watching(&self) -> &EntityHashSet {
-        &self.0
-    }
-
-    /// Watch a new entity.
-    ///
-    /// If the entity is already being watched, it will not be added again.
-    pub fn watch(&mut self, entity: Entity) {
-        self.0.insert(entity);
-    }
-
-    /// Unwatch the specified entity.
-    ///
-    /// If the entity is not being watched, this will have no effect.
-    /// Returns `true` if the entity was being watched,
-    /// `false` if it was not.
-    pub fn unwatch(&mut self, entity: Entity) -> bool {
-        self.0.remove(&entity)
     }
 }
 

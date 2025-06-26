@@ -55,8 +55,8 @@ or handling some complex, low-throughput combat event.
 
 While we could add a `Watching(Vec<Entity>)` / `WatchedBy(Entity)` relationship pair to handle this,
 that would only allow one universal observer per entity, regardless of the kind!
-Instead, we've opted for a simpler design, with only a `Watching<Vec<Entity>>` component,
-and handle cleanup and invalidation manually.
+Instead, we've opted for a simpler design, tracking the watched entities inside of the `Observer`'s `ObserverDescriptor` field,
+and handle cleanup and invalidation manually with the help of immutable components.
 Because users don't *care* about spawning universal observers inside of a nested `spawn` call, this is a fine compromise!
 
 The other common pattern is something we're calling "bespoke observers": something that tracks exactly one entity
