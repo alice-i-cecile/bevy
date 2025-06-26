@@ -318,7 +318,7 @@ impl Observer {
 }
 
 impl Component for Observer {
-    const STORAGE_TYPE: StorageType = StorageType::SparseSet;
+    const STORAGE_TYPE: StorageType = StorageType::Table;
     type Mutability = Mutable;
     fn on_add() -> Option<ComponentHook> {
         Some(|world, context| {
