@@ -12,13 +12,11 @@
 use core::any::Any;
 
 use crate::{
-    component::{ComponentId, Mutable, StorageType},
+    component::ComponentId,
     error::{ErrorContext, ErrorHandler},
-    lifecycle::{ComponentHook, HookContext},
     observer::{observer_system_runner, ObserverRunner},
     prelude::*,
-    system::{IntoObserverSystem, ObserverSystem},
-    world::DeferredWorld,
+    system::IntoObserverSystem,
 };
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -201,13 +199,12 @@ use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 /// serves as the "source of truth" of the observer.
 ///
 /// [`SystemParam`]: crate::system::SystemParam
+#[derive(Component)]
 pub struct Observer {
-    hook_on_add: ComponentHook,
     pub(crate) error_handler: Option<ErrorHandler>,
     pub(crate) system: Box<dyn AnyNamedSystem>,
     pub(crate) descriptor: ObserverDescriptor,
     pub(crate) last_trigger_id: u32,
-    pub(crate) despawned_watched_entities: u32,
     pub(crate) runner: ObserverRunner,
 }
 
@@ -231,10 +228,8 @@ impl Observer {
         Self {
             system,
             descriptor: Default::default(),
-            hook_on_add: hook_on_add::<E, B, I::System>,
             error_handler: None,
             runner: observer_system_runner::<E, B, I::System>,
-            despawned_watched_entities: 0,
             last_trigger_id: 0,
         }
     }
@@ -244,24 +239,8 @@ impl Observer {
         Self {
             system: Box::new(IntoSystem::into_system(|| {})),
             descriptor: Default::default(),
-            hook_on_add: |mut world, hook_context| {
-                let default_error_handler = world.default_error_handler();
-                world.commands().queue(move |world: &mut World| {
-                    let entity = hook_context.entity;
-                    if let Some(mut observe) = world.get_mut::<Observer>(entity) {
-                        if observe.descriptor.events.is_empty() {
-                            return;
-                        }
-                        if observe.error_handler.is_none() {
-                            observe.error_handler = Some(default_error_handler);
-                        }
-                        world.register_observer(entity);
-                    }
-                });
-            },
             error_handler: None,
             runner,
-            despawned_watched_entities: 0,
             last_trigger_id: 0,
         }
     }
@@ -316,35 +295,6 @@ impl Observer {
     }
 }
 
-impl Component for Observer {
-    const STORAGE_TYPE: StorageType = StorageType::Table;
-    type Mutability = Mutable;
-    fn on_add() -> Option<ComponentHook> {
-        Some(|world, context| {
-            let Some(observe) = world.get::<Self>(context.entity) else {
-                return;
-            };
-            let hook = observe.hook_on_add;
-            hook(world, context);
-        })
-    }
-    fn on_remove() -> Option<ComponentHook> {
-        Some(|mut world, HookContext { entity, .. }| {
-            let descriptor = core::mem::take(
-                &mut world
-                    .entity_mut(entity)
-                    .get_mut::<Self>()
-                    .unwrap()
-                    .as_mut()
-                    .descriptor,
-            );
-            world.commands().queue(move |world: &mut World| {
-                world.unregister_observer(entity, descriptor);
-            });
-        })
-    }
-}
-
 /// Store information about what an [`Observer`] observes.
 ///
 /// This information is stored inside of the [`Observer`] component,
@@ -396,39 +346,6 @@ impl ObserverDescriptor {
     pub fn entities(&self) -> &[Entity] {
         &self.entities
     }
-}
-
-/// A [`ComponentHook`] used by [`Observer`] to handle its [`on-add`](`crate::lifecycle::ComponentHooks::on_add`).
-///
-/// This function exists separate from [`Observer`] to allow [`Observer`] to have its type parameters
-/// erased.
-///
-/// The type parameters of this function _must_ match those used to create the [`Observer`].
-/// As such, it is recommended to only use this function within the [`Observer::new`] method to
-/// ensure type parameters match.
-fn hook_on_add<E: Event, B: Bundle, S: ObserverSystem<E, B>>(
-    mut world: DeferredWorld<'_>,
-    HookContext { entity, .. }: HookContext,
-) {
-    world.commands().queue(move |world: &mut World| {
-        let event_id = E::register_component_id(world);
-        let mut components = alloc::vec![];
-        B::component_ids(&mut world.components_registrator(), &mut |id| {
-            components.push(id);
-        });
-        if let Some(mut observer) = world.get_mut::<Observer>(entity) {
-            observer.descriptor.events.push(event_id);
-            observer.descriptor.components.extend(components);
-
-            let system: &mut dyn Any = observer.system.as_mut();
-            let system: *mut dyn ObserverSystem<E, B> = system.downcast_mut::<S>().unwrap();
-            // SAFETY: World reference is exclusive and initialize does not touch system, so references do not alias
-            unsafe {
-                (*system).initialize(world);
-            }
-            world.register_observer(entity);
-        }
-    });
 }
 
 pub(crate) trait AnyNamedSystem: Any + Send + Sync + 'static {

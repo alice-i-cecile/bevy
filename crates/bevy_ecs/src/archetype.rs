@@ -932,24 +932,6 @@ impl Archetypes {
     pub(crate) fn component_index(&self) -> &ComponentIndex {
         &self.by_component
     }
-
-    pub(crate) fn update_flags(
-        &mut self,
-        component_id: ComponentId,
-        flags: ArchetypeFlags,
-        set: bool,
-    ) {
-        if let Some(archetypes) = self.by_component.get(&component_id) {
-            for archetype_id in archetypes.keys() {
-                // SAFETY: the component index only contains valid archetype ids
-                self.archetypes
-                    .get_mut(archetype_id.index())
-                    .unwrap()
-                    .flags
-                    .set(flags, set);
-            }
-        }
-    }
 }
 
 impl Index<RangeFrom<ArchetypeGeneration>> for Archetypes {

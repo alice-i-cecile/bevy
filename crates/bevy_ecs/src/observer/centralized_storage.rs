@@ -41,19 +41,6 @@ pub struct Observers {
 }
 
 impl Observers {
-    pub(crate) fn get_observers_mut(&mut self, event_type: ComponentId) -> &mut CachedObservers {
-        use crate::lifecycle::*;
-
-        match event_type {
-            ADD => &mut self.add,
-            INSERT => &mut self.insert,
-            REPLACE => &mut self.replace,
-            REMOVE => &mut self.remove,
-            DESPAWN => &mut self.despawn,
-            _ => self.cache.entry(event_type).or_default(),
-        }
-    }
-
     /// Attempts to get the observers for the given `event_type`.
     ///
     /// When accessing the observers for lifecycle events, such as [`Add`], [`Insert`], [`Replace`], [`Remove`], and [`Despawn`],
@@ -143,19 +130,6 @@ impl Observers {
                 }
             }
         });
-    }
-
-    pub(crate) fn is_archetype_cached(event_type: ComponentId) -> Option<ArchetypeFlags> {
-        use crate::lifecycle::*;
-
-        match event_type {
-            ADD => Some(ArchetypeFlags::ON_ADD_OBSERVER),
-            INSERT => Some(ArchetypeFlags::ON_INSERT_OBSERVER),
-            REPLACE => Some(ArchetypeFlags::ON_REPLACE_OBSERVER),
-            REMOVE => Some(ArchetypeFlags::ON_REMOVE_OBSERVER),
-            DESPAWN => Some(ArchetypeFlags::ON_DESPAWN_OBSERVER),
-            _ => None,
-        }
     }
 
     pub(crate) fn update_archetype_flags(
