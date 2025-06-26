@@ -204,6 +204,9 @@ pub struct Observer {
     pub(crate) error_handler: Option<ErrorHandler>,
     pub(crate) system: Box<dyn AnyNamedSystem>,
     pub(crate) descriptor: ObserverDescriptor,
+    /// The ID of the event that was last triggered for this observer.
+    ///
+    /// Used to ensure that observers are not run multiple times for the same event trigger.
     pub(crate) last_trigger_id: u32,
     pub(crate) runner: ObserverRunner,
 }

@@ -31,6 +31,7 @@ pub(super) fn observer_system_runner<E: Event, B: Bundle, S: ObserverSystem<E, B
     let mut state = unsafe { observer_cell.get_mut::<Observer>().debug_checked_unwrap() };
 
     // TODO: Move this check into the observer cache to avoid dynamic dispatch
+    // Ensure that observers aren't triggered multiple times by the same event
     let last_trigger = world.last_trigger_id();
     if state.last_trigger_id == last_trigger {
         return;
