@@ -12,8 +12,8 @@
 use core::any::Any;
 
 use crate::{
-    component::{ComponentCloneBehavior, ComponentId, Mutable, StorageType},
-    entity::Entity,
+    component::{ComponentId, Mutable, StorageType},
+    entity::EntityHashSet,
     error::{ErrorContext, ErrorHandler},
     lifecycle::{ComponentHook, HookContext},
     observer::{observer_system_runner, ObserverRunner},
@@ -26,7 +26,9 @@ use alloc::vec::Vec;
 use bevy_utils::prelude::DebugName;
 
 #[cfg(feature = "bevy_reflect")]
-use crate::prelude::ReflectComponent;
+use crate::reflect::{ReflectComponent, ReflectFromWorld};
+#[cfg(all(feature = "serialize", feature = "bevy_reflect"))]
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 
 /// An [`Observer`] system. Add this [`Component`] to an [`Entity`] to turn it into an "observer".
 ///
@@ -430,57 +432,6 @@ fn hook_on_add<E: Event, B: Bundle, S: ObserverSystem<E, B>>(
     });
 }
 
-/// Tracks a list of entity observers for the [`Entity`] [`ObservedBy`] is added to.
-#[derive(Default, Debug)]
-#[cfg_attr(feature = "bevy_reflect", derive(bevy_reflect::Reflect))]
-#[cfg_attr(feature = "bevy_reflect", reflect(Component, Debug))]
-pub struct ObservedBy(pub(crate) Vec<Entity>);
-
-impl ObservedBy {
-    /// Provides a read-only reference to the list of entities observing this entity.
-    pub fn get(&self) -> &[Entity] {
-        &self.0
-    }
-}
-
-impl Component for ObservedBy {
-    const STORAGE_TYPE: StorageType = StorageType::SparseSet;
-    type Mutability = Mutable;
-
-    fn on_remove() -> Option<ComponentHook> {
-        Some(|mut world, HookContext { entity, .. }| {
-            let observed_by = {
-                let mut component = world.get_mut::<ObservedBy>(entity).unwrap();
-                core::mem::take(&mut component.0)
-            };
-            for e in observed_by {
-                let (total_entities, despawned_watched_entities) = {
-                    let Ok(mut entity_mut) = world.get_entity_mut(e) else {
-                        continue;
-                    };
-                    let Some(mut state) = entity_mut.get_mut::<Observer>() else {
-                        continue;
-                    };
-                    state.despawned_watched_entities += 1;
-                    (
-                        state.descriptor.entities.len(),
-                        state.despawned_watched_entities as usize,
-                    )
-                };
-
-                // Despawn Observer if it has no more active sources.
-                if total_entities == despawned_watched_entities {
-                    world.commands().entity(e).despawn();
-                }
-            }
-        })
-    }
-
-    fn clone_behavior() -> ComponentCloneBehavior {
-        ComponentCloneBehavior::Ignore
-    }
-}
-
 pub(crate) trait AnyNamedSystem: Any + Send + Sync + 'static {
     fn system_name(&self) -> DebugName;
 }
@@ -488,5 +439,95 @@ pub(crate) trait AnyNamedSystem: Any + Send + Sync + 'static {
 impl<T: Any + System> AnyNamedSystem for T {
     fn system_name(&self) -> DebugName {
         self.name()
+    }
+}
+
+/// A [`Component`] that tracks which entities are being watched by an [`Observer`].
+///
+/// For bespoke observers, this will only ever contain a single entity.
+/// Universal observers may watch multiple entities,
+/// but if the set of watched entities is empty, they will instead match all entities.
+#[derive(Component, Default, Debug)]
+#[component(immutable)]
+#[cfg_attr(feature = "bevy_reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "bevy_reflect", reflect(Component, Debug))]
+pub struct Watching(EntityHashSet);
+
+impl Watching {
+    /// Creates a new, empty [`Watching`] component.
+    pub fn new() -> Self {
+        Self(EntityHashSet::default())
+    }
+
+    /// Returns `true` if this observer is watching all entities.
+    ///
+    /// This is the case when the list of watched entities is empty.
+    pub fn watches_all(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns a read-only reference to the list of entities being watched by this observer.
+    pub fn watching(&self) -> &EntityHashSet {
+        &self.0
+    }
+
+    /// Watch a new entity.
+    ///
+    /// If the entity is already being watched, it will not be added again.
+    pub fn watch(&mut self, entity: Entity) {
+        self.0.insert(entity);
+    }
+
+    /// Unwatch the specified entity.
+    ///
+    /// If the entity is not being watched, this will have no effect.
+    /// Returns `true` if the entity was being watched,
+    /// `false` if it was not.
+    pub fn unwatch(&mut self, entity: Entity) -> bool {
+        self.0.remove(&entity)
+    }
+}
+
+/// A [`Relation`] that tracks the single entity that this bespoke observer is watching.
+///
+/// This is used to link the observer to the entity it is observing, allowing for easier cleanup and inspection.
+///
+/// Its counterpart is [`ObservedBy`], which tracks the observers that are observing a given entity.
+#[derive(Component, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "bevy_reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(
+    feature = "bevy_reflect",
+    reflect(Component, PartialEq, Debug, FromWorld, Clone)
+)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    all(feature = "serialize", feature = "bevy_reflect"),
+    reflect(Serialize, Deserialize)
+)]
+#[relationship(relationship_target = ObservedBy)]
+pub struct ObserverOf(pub Entity);
+
+// TODO: We need to impl either FromWorld or Default so ObserverOf can be registered as Reflect.
+// This is because Reflect deserialize by creating an instance and apply a patch on top.
+// However ObserverOf should only ever be set with a real user-defined entity.  Its worth looking into
+// better ways to handle cases like this.
+impl FromWorld for ObserverOf {
+    #[inline(always)]
+    fn from_world(_world: &mut World) -> Self {
+        ObserverOf(Entity::PLACEHOLDER)
+    }
+}
+
+/// Tracks a list of entity observers for the [`Entity`] [`ObservedBy`] is added to.
+#[derive(Component, Default, Debug)]
+#[relationship_target(relationship = ObserverOf)]
+#[cfg_attr(feature = "bevy_reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "bevy_reflect", reflect(Component, Debug))]
+pub struct ObservedBy(Vec<Entity>);
+
+impl ObservedBy {
+    /// Provides a read-only reference to the list of entities observing this entity.
+    pub fn get(&self) -> &[Entity] {
+        &self.0
     }
 }

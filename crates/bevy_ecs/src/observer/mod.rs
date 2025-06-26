@@ -131,7 +131,6 @@
 
 mod centralized_storage;
 mod distributed_storage;
-mod entity_cloning;
 mod runner;
 mod system_param;
 mod trigger_targets;
@@ -373,7 +372,9 @@ impl World {
             for watched_entity in (*observer_state).descriptor.entities.iter().copied() {
                 let mut entity_mut = self.entity_mut(watched_entity);
                 let mut observed_by = entity_mut.entry::<ObservedBy>().or_default().into_mut();
-                observed_by.0.push(observer_entity);
+                // observed_by.0.push(observer_entity);
+
+                todo!("swap to relations");
             }
             (&*observer_state, &mut self.archetypes, &mut self.observers)
         };
