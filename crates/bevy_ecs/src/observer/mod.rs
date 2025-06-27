@@ -608,7 +608,7 @@ mod tests {
         world.init_resource::<Order>();
         let on_remove = Remove::register_component_id(&mut world);
         // SAFETY: Add and Remove are both unit types, so this is safe
-        let observer_descriptor = unsafe { ObserverDescriptor::new().with_event(on_remove) };
+        let observer_descriptor = unsafe { ObserverDescriptor::from_event(on_remove) };
 
         world.spawn((
             Observer::new(|_: On<Add, A>, mut res: ResMut<Order>| {
@@ -861,7 +861,7 @@ mod tests {
         let component_id = world.register_component::<A>();
         world.spawn((
             Observer::new(|_: On<Add>, mut res: ResMut<Order>| res.observed("event_a")),
-            ObserverDescriptor::new().with_component(component_id),
+            ObserverDescriptor::from_component(component_id),
         ));
 
         let mut entity = world.spawn_empty();
@@ -887,7 +887,7 @@ mod tests {
                 world.resource_mut::<Order>().observed("event_a");
             }),
             // SAFETY: we registered `event_a` above and it matches the type of EventA
-            unsafe { ObserverDescriptor::new().with_event(event_a) },
+            unsafe { ObserverDescriptor::from_event(event_a) },
         );
         world.spawn(observe);
 

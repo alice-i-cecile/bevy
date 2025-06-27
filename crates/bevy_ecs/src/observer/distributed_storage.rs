@@ -9,6 +9,7 @@
 //! When we watch entities, we add the [`ObservedBy`] component to those entities,
 //! which links back to the observer entity.
 
+use alloc::vec;
 use core::any::Any;
 
 use crate::{
@@ -284,11 +285,42 @@ pub struct ObserverDescriptor {
 
 impl ObserverDescriptor {
     /// Create a new [`ObserverDescriptor`] that watches no events, components, or entities.
-    pub fn new() -> Self {
+    pub const fn universal() -> Self {
         Self {
             events: Vec::new(),
             components: Vec::new(),
             entities: Vec::new(),
+        }
+    }
+
+    /// Creates a new [`ObserverDescriptor`] that watches the given `event`.
+    ///
+    /// # Safety
+    /// The type of the `event` _must_ match the actual value
+    /// of the event passed into the observer.
+    pub unsafe fn from_event(event: ComponentId) -> Self {
+        Self {
+            events: vec![event],
+            components: Vec::new(),
+            entities: Vec::new(),
+        }
+    }
+
+    /// Creates a new [`ObserverDescriptor`] that watches the given `component`.
+    pub fn from_component(component: ComponentId) -> Self {
+        Self {
+            events: Vec::new(),
+            components: vec![component],
+            entities: Vec::new(),
+        }
+    }
+
+    /// Creates a new [`ObserverDescriptor`] that watches the given `entity`.
+    pub fn from_entity(entity: Entity) -> Self {
+        Self {
+            events: Vec::new(),
+            components: Vec::new(),
+            entities: vec![entity],
         }
     }
 

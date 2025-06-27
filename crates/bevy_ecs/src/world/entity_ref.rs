@@ -2665,7 +2665,7 @@ impl<'w> EntityWorldMut<'w> {
         self.world.spawn_with_caller(
             (
                 Observer::new(observer),
-                ObserverDescriptor::new().with_entity(self.entity),
+                ObserverDescriptor::from_entity(self.entity),
             ),
             caller,
         );
