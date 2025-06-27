@@ -265,6 +265,10 @@ impl Observer {
 
 /// Store information about what an [`Observer`] observes.
 ///
+/// If the set of entities watched is empty, this is a "universal" observer,
+/// and all matching events will trigger the observer,
+/// regardless of the target entity.
+///
 /// This component is required by the [`Observer`] component to track what it is observing.
 #[derive(Default, Clone, Component)]
 pub struct ObserverDescriptor {
