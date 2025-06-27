@@ -12,3 +12,6 @@ In order to make this synchronization reliable, `ObserverDescriptor` has been sp
 This component is automatically added with `Observer` via required components: its value can be set on component insertion.
 
 To watch or unwatch entities *after* an observer has been spawned, TODO.
+
+As part of this work, `ObserverDescriptor::with_entities`, `ObserverDescriptor::with_events` and `ObserverDescriptor::with_components`
+have been renamed to `set_entities`/`set_events`/`set_components`. Contrary to their names and documentation, these overwrote the set of watched objects, rather than appending to them.

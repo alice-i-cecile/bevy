@@ -298,12 +298,12 @@ impl ObserverDescriptor {
         self
     }
 
-    /// Add the given `events` to the descriptor.
+    /// Sets the list of watched `events`.
     ///
     /// # Safety
     /// The type of each [`ComponentId`] in `events` _must_ match the actual value
     /// of the event passed into the observer.
-    pub unsafe fn with_events(mut self, events: Vec<ComponentId>) -> Self {
+    pub unsafe fn set_events(mut self, events: Vec<ComponentId>) -> Self {
         self.events = events;
         self
     }
@@ -314,8 +314,8 @@ impl ObserverDescriptor {
         self
     }
 
-    /// Add the given `components` to the descriptor.
-    pub fn with_components(mut self, components: Vec<ComponentId>) -> Self {
+    /// Sets the list of watched `components`.
+    pub fn set_components(mut self, components: Vec<ComponentId>) -> Self {
         self.components = components;
         self
     }
@@ -326,8 +326,8 @@ impl ObserverDescriptor {
         self
     }
 
-    /// Add the given `entities` to the descriptor.
-    pub fn with_entities(mut self, entities: Vec<Entity>) -> Self {
+    /// Sets the list of watched `entities`.
+    pub fn set_entities(mut self, entities: Vec<Entity>) -> Self {
         self.entities = entities;
         self
     }
