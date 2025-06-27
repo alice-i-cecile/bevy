@@ -15,7 +15,7 @@ use crate::{
     },
     event::EntityEvent,
     lifecycle::{DESPAWN, REMOVE, REPLACE},
-    observer::Observer,
+    observer::{Observer, ObserverDescriptor},
     query::{Access, DebugCheckedUnwrap, ReadOnlyQueryData, ReleaseStateQueryData},
     relationship::RelationshipHookMode,
     resource::Resource,
@@ -2662,8 +2662,13 @@ impl<'w> EntityWorldMut<'w> {
         caller: MaybeLocation,
     ) -> &mut Self {
         self.assert_not_despawned();
-        self.world
-            .spawn_with_caller(Observer::new(observer).with_entity(self.entity), caller);
+        self.world.spawn_with_caller(
+            (
+                Observer::new(observer),
+                ObserverDescriptor::new().with_entity(self.entity),
+            ),
+            caller,
+        );
         self.world.flush();
         self.update_location();
         self

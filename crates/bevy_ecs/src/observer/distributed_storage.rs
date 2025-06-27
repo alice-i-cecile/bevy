@@ -207,7 +207,6 @@ use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 pub struct Observer {
     pub(crate) error_handler: Option<ErrorHandler>,
     pub(crate) system: Box<dyn AnyNamedSystem>,
-    pub(crate) descriptor: ObserverDescriptor,
     /// The ID of the event that was last triggered for this observer.
     ///
     /// Used to ensure that observers are not run multiple times for the same event trigger.
@@ -234,7 +233,6 @@ impl Observer {
         );
         Self {
             system,
-            descriptor: Default::default(),
             error_handler: None,
             runner: observer_system_runner::<E, B, I::System>,
             last_trigger_id: 0,
@@ -245,42 +243,10 @@ impl Observer {
     pub fn with_dynamic_runner(runner: ObserverRunner) -> Self {
         Self {
             system: Box::new(IntoSystem::into_system(|| {})),
-            descriptor: Default::default(),
             error_handler: None,
             runner,
             last_trigger_id: 0,
         }
-    }
-
-    /// Observe the given `entity`. This will cause the [`Observer`] to run whenever the [`Event`] is triggered
-    /// for the `entity`.
-    pub fn with_entity(mut self, entity: Entity) -> Self {
-        self.descriptor.entities.push(entity);
-        self
-    }
-
-    /// Observe the given `entity`. This will cause the [`Observer`] to run whenever the [`Event`] is triggered
-    /// for the `entity`.
-    /// Note that if this is called _after_ an [`Observer`] is spawned, it will produce no effects.
-    pub fn watch_entity(&mut self, entity: Entity) {
-        self.descriptor.entities.push(entity);
-    }
-
-    /// Observe the given `component`. This will cause the [`Observer`] to run whenever the [`Event`] is triggered
-    /// with the given component target.
-    pub fn with_component(mut self, component: ComponentId) -> Self {
-        self.descriptor.components.push(component);
-        self
-    }
-
-    /// Observe the given `event`. This will cause the [`Observer`] to run whenever an event with the given [`ComponentId`]
-    /// is triggered.
-    /// # Safety
-    /// The type of the `event` [`ComponentId`] _must_ match the actual value
-    /// of the event passed into the observer system.
-    pub unsafe fn with_event(mut self, event: ComponentId) -> Self {
-        self.descriptor.events.push(event);
-        self
     }
 
     /// Set the error handler to use for this observer.
@@ -289,11 +255,6 @@ impl Observer {
     pub fn with_error_handler(mut self, error_handler: fn(BevyError, ErrorContext)) -> Self {
         self.error_handler = Some(error_handler);
         self
-    }
-
-    /// Returns the [`ObserverDescriptor`] for this [`Observer`].
-    pub fn descriptor(&self) -> &ObserverDescriptor {
-        &self.descriptor
     }
 
     /// Returns the name of the [`Observer`]'s system .
@@ -318,7 +279,27 @@ pub struct ObserverDescriptor {
 }
 
 impl ObserverDescriptor {
+    /// Create a new [`ObserverDescriptor`] that watches no events, components, or entities.
+    pub fn new() -> Self {
+        Self {
+            events: Vec::new(),
+            components: Vec::new(),
+            entities: Vec::new(),
+        }
+    }
+
+    /// Adds the given `event` to the descriptor.
+    ///
+    /// # Safety
+    /// The type of the `event` _must_ match the actual value
+    /// of the event passed into the observer.
+    pub unsafe fn with_event(mut self, event: ComponentId) -> Self {
+        self.events.push(event);
+        self
+    }
+
     /// Add the given `events` to the descriptor.
+    ///
     /// # Safety
     /// The type of each [`ComponentId`] in `events` _must_ match the actual value
     /// of the event passed into the observer.
@@ -327,9 +308,21 @@ impl ObserverDescriptor {
         self
     }
 
+    /// Adds the given `component` to the descriptor.
+    pub fn with_component(mut self, component: ComponentId) -> Self {
+        self.components.push(component);
+        self
+    }
+
     /// Add the given `components` to the descriptor.
     pub fn with_components(mut self, components: Vec<ComponentId>) -> Self {
         self.components = components;
+        self
+    }
+
+    /// Adds the given `entity` to the descriptor.
+    pub fn with_entity(mut self, entity: Entity) -> Self {
+        self.entities.push(entity);
         self
     }
 
