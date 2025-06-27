@@ -4,6 +4,7 @@ use bevy::{
     platform::collections::{HashMap, HashSet},
     prelude::*,
 };
+use bevy_ecs::observer::ObserverDescriptor;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
@@ -100,16 +101,22 @@ fn setup(mut commands: Commands) {
     //
     // First, observers are actually just entities with the Observer component! The `observe()` functions
     // you've seen so far in this example are just shorthand for manually spawning an observer.
-    let mut observer = Observer::new(explode_mine);
+    let observer = Observer::new(explode_mine);
+
+    // The set of entities that each observer is watching is defined by the `ObserverDescriptor` component.
+    let mut descriptor = ObserverDescriptor::default();
 
     // As we spawn entities, we can make this observer watch each of them:
     for _ in 0..1000 {
         let entity = commands.spawn(Mine::random(&mut rng)).id();
-        observer.watch_entity(entity);
+        descriptor.watch_entity(entity);
     }
 
-    // By spawning the Observer component, it becomes active!
-    commands.spawn(observer);
+    // By spawning an entity with the Observer component, it becomes active!
+    // By default, observers will watch *all* entities,
+    // but we're also adding a `ObserverDescriptor` component to define which entities
+    // this observer should watch.
+    commands.spawn((observer, descriptor));
 }
 
 fn on_add_mine(trigger: On<Add, Mine>, query: Query<&Mine>, mut index: ResMut<SpatialIndex>) {

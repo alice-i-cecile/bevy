@@ -329,9 +329,8 @@ impl ObserverDescriptor {
     /// # Safety
     /// The type of the `event` _must_ match the actual value
     /// of the event passed into the observer.
-    pub unsafe fn with_event(mut self, event: ComponentId) -> Self {
+    pub unsafe fn watch_event(&mut self, event: ComponentId) {
         self.events.push(event);
-        self
     }
 
     /// Sets the list of watched `events`.
@@ -345,9 +344,8 @@ impl ObserverDescriptor {
     }
 
     /// Adds the given `component` to the descriptor.
-    pub fn with_component(mut self, component: ComponentId) -> Self {
+    pub fn watch_component(&mut self, component: ComponentId) {
         self.components.push(component);
-        self
     }
 
     /// Sets the list of watched `components`.
@@ -357,9 +355,8 @@ impl ObserverDescriptor {
     }
 
     /// Adds the given `entity` to the descriptor.
-    pub fn with_entity(mut self, entity: Entity) -> Self {
+    pub fn watch_entity(&mut self, entity: Entity) {
         self.entities.push(entity);
-        self
     }
 
     /// Sets the list of watched `entities`.
