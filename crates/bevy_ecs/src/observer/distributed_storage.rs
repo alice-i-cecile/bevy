@@ -176,6 +176,9 @@ use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 /// });
 /// ```
 ///
+/// Information about which entities / components / events an observer is observing is stored in the [`ObserverDescriptor`] component,
+/// which is added to the [`Observer`] entity via required components.
+///
 /// If all entities watched by a given [`Observer`] are despawned, the [`Observer`] entity will also be despawned.
 /// This protects against observer "garbage" building up over time.
 ///
@@ -200,6 +203,7 @@ use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 ///
 /// [`SystemParam`]: crate::system::SystemParam
 #[derive(Component)]
+#[require(ObserverDescriptor)]
 pub struct Observer {
     pub(crate) error_handler: Option<ErrorHandler>,
     pub(crate) system: Box<dyn AnyNamedSystem>,
@@ -300,8 +304,8 @@ impl Observer {
 
 /// Store information about what an [`Observer`] observes.
 ///
-/// This information is stored inside of the [`Observer`] component,
-#[derive(Default, Clone)]
+/// This component is required by the [`Observer`] component to track what it is observing.
+#[derive(Default, Clone, Component)]
 pub struct ObserverDescriptor {
     /// The events the observer is watching.
     pub(super) events: Vec<ComponentId>,
