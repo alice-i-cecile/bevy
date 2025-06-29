@@ -13,7 +13,7 @@ use alloc::vec;
 use core::any::Any;
 
 use crate::{
-    component::ComponentId,
+    component::{ComponentId, Immutable, StorageType},
     error::{ErrorContext, ErrorHandler},
     observer::{observer_system_runner, ObserverRunner},
     prelude::*,
@@ -271,7 +271,7 @@ impl Observer {
 /// regardless of the target entity.
 ///
 /// This component is required by the [`Observer`] component to track what it is observing.
-#[derive(Default, Clone, Component)]
+#[derive(Default, Clone)]
 pub struct ObserverDescriptor {
     /// The events the observer is watching.
     pub(super) events: Vec<ComponentId>,
@@ -281,6 +281,14 @@ pub struct ObserverDescriptor {
 
     /// The entities the observer is watching.
     pub(super) entities: Vec<Entity>,
+}
+
+// Manual implementation to avoid putting too much complexity
+// into the derive macro with custom hooks
+impl Component for ObserverDescriptor {
+    const STORAGE_TYPE: StorageType = StorageType::Table;
+
+    type Mutability = Immutable;
 }
 
 impl ObserverDescriptor {
