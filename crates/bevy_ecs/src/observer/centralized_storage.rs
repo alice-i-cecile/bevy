@@ -132,6 +132,8 @@ impl Observers {
         });
     }
 
+    /// Updates the [`ArchetypeFlags`] based on the presence of observers watching the given `component_id`.
+    // TODO: these flags are never unset, even if the observer is removed.
     pub(crate) fn update_archetype_flags(
         &self,
         component_id: ComponentId,

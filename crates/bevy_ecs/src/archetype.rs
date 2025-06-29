@@ -359,7 +359,7 @@ struct ArchetypeComponentInfo {
 bitflags::bitflags! {
     /// Flags used to keep track of metadata about the component in this [`Archetype`]
     ///
-    /// Used primarily to early-out when there are no [`ComponentHook`] registered for any contained components.
+    /// Used primarily to early-out when there are no [lifecycle hooks or observers](crate::lifecycle) registered for any contained components.
     #[derive(Clone, Copy)]
     pub(crate) struct ArchetypeFlags: u32 {
         const ON_ADD_HOOK    = (1 << 0);
