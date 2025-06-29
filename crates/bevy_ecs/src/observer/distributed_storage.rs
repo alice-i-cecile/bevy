@@ -15,6 +15,7 @@ use core::any::Any;
 use crate::{
     component::{ComponentId, Immutable, StorageType},
     error::{ErrorContext, ErrorHandler},
+    lifecycle::{ADD, DESPAWN, INSERT, REMOVE, REPLACE},
     observer::{observer_system_runner, ObserverRunner},
     prelude::*,
     system::IntoObserverSystem,
@@ -387,6 +388,38 @@ impl ObserverDescriptor {
     pub fn entities(&self) -> &[Entity] {
         &self.entities
     }
+
+    /// Returns the set of lifecycle events that this observer is watching.
+    fn lifecycle_events(&self) -> WatchedLifeCycleEvents {
+        let mut watched = WatchedLifeCycleEvents {
+            on_add: false,
+            on_insert: false,
+            on_remove: false,
+            on_replace: false,
+            on_despawn: false,
+        };
+        for &event in &self.events {
+            match event {
+                ADD => watched.on_add = true,
+                INSERT => watched.on_insert = true,
+                REMOVE => watched.on_remove = true,
+                REPLACE => watched.on_replace = true,
+                DESPAWN => watched.on_despawn = true,
+                _ => {}
+            }
+        }
+
+        watched
+    }
+}
+
+/// A helper struct to make it easier to keep track of which lifecycle events an observer is watching.
+struct WatchedLifeCycleEvents {
+    on_add: bool,
+    on_insert: bool,
+    on_remove: bool,
+    on_replace: bool,
+    on_despawn: bool,
 }
 
 pub(crate) trait AnyNamedSystem: Any + Send + Sync + 'static {
