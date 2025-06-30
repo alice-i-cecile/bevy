@@ -16,7 +16,8 @@ use crate::{
     change_detection::MaybeLocation,
     component::ComponentId,
     entity::EntityHashMap,
-    observer::{ObserverRunner, ObserverTrigger},
+    lifecycle::ADD,
+    observer::{ObserverDescriptor, ObserverRunner, ObserverTrigger},
     prelude::*,
     world::DeferredWorld,
 };
@@ -41,6 +42,79 @@ pub struct Observers {
 }
 
 impl Observers {
+    /// Registers a new observer.
+    ///
+    /// This is driven by hooks on the [`ObserverDescriptor`] component,
+    /// which serves as the source of truth for observers.
+    pub(super) fn register_observer(
+        &mut self,
+        observer_entity: Entity,
+        observer_runner: ObserverRunner,
+        descriptor: &ObserverDescriptor,
+    ) {
+        for &event_id in descriptor.events() {
+            // Special case the lifecycle events, which have their own fields for perf
+            if event_id == ADD {
+                self.add
+                    .register_observer(observer_entity, observer_runner, descriptor);
+            } else if event_id == crate::lifecycle::INSERT {
+                self.insert
+                    .register_observer(observer_entity, observer_runner, descriptor);
+            } else if event_id == crate::lifecycle::REPLACE {
+                self.replace
+                    .register_observer(observer_entity, observer_runner, descriptor);
+            } else if event_id == crate::lifecycle::REMOVE {
+                self.remove
+                    .register_observer(observer_entity, observer_runner, descriptor);
+            } else if event_id == crate::lifecycle::DESPAWN {
+                self.despawn
+                    .register_observer(observer_entity, observer_runner, descriptor);
+            } else {
+                // For all other events, use the cache
+                self.cache.entry(event_id).or_default().register_observer(
+                    observer_entity,
+                    observer_runner,
+                    descriptor,
+                );
+            }
+        }
+    }
+
+    /// Unregisters an observer.
+    ///
+    /// This is driven by hooks on the [`ObserverDescriptor`] component,
+    /// which serves as the source of truth for observers.
+    ///
+    /// This method will fail silently if the observer is not found.
+    pub(super) fn unregister_observer(
+        &mut self,
+        observer_entity: Entity,
+        descriptor: &ObserverDescriptor,
+    ) {
+        for &event_id in descriptor.events() {
+            // Special case the lifecycle events, which have their own fields for perf
+            if event_id == ADD {
+                self.add.unregister_observer(observer_entity, descriptor);
+            } else if event_id == crate::lifecycle::INSERT {
+                self.insert.unregister_observer(observer_entity, descriptor);
+            } else if event_id == crate::lifecycle::REPLACE {
+                self.replace
+                    .unregister_observer(observer_entity, descriptor);
+            } else if event_id == crate::lifecycle::REMOVE {
+                self.remove.unregister_observer(observer_entity, descriptor);
+            } else if event_id == crate::lifecycle::DESPAWN {
+                self.despawn
+                    .unregister_observer(observer_entity, descriptor);
+            } else {
+                // For all other events, use the cache
+                self.cache
+                    .entry(event_id)
+                    .or_default()
+                    .unregister_observer(observer_entity, descriptor);
+            }
+        }
+    }
+
     /// Attempts to get the observers for the given `event_type`.
     ///
     /// When accessing the observers for lifecycle events, such as [`Add`], [`Insert`], [`Replace`], [`Remove`], and [`Despawn`],
@@ -101,7 +175,7 @@ impl Observers {
         };
         // Trigger observers listening for any kind of this trigger
         observers
-            .global_observers
+            .universal_observers
             .iter()
             .for_each(&mut trigger_observer);
 
@@ -116,7 +190,7 @@ impl Observers {
         trigger_for_components.for_each(|id| {
             if let Some(component_observers) = observers.component_observers.get(&id) {
                 component_observers
-                    .global_observers
+                    .universal_observers
                     .iter()
                     .for_each(&mut trigger_observer);
 
@@ -168,7 +242,7 @@ impl Observers {
 pub struct CachedObservers {
     // Observers listening for any time this event is fired, regardless of target
     // This will also respond to events targeting specific components or entities
-    pub(super) global_observers: ObserverMap,
+    pub(super) universal_observers: ObserverMap,
     // Observers listening for this trigger fired at a specific component
     pub(super) component_observers: HashMap<ComponentId, CachedComponentObservers>,
     // Observers listening for this trigger fired at a specific entity
@@ -176,10 +250,92 @@ pub struct CachedObservers {
 }
 
 impl CachedObservers {
+    /// Registers an observer for this event type by parsing the [`ObserverDescriptor`].
+    fn register_observer(
+        &mut self,
+        observer_entity: Entity,
+        observer_runner: ObserverRunner,
+        descriptor: &ObserverDescriptor,
+    ) {
+        if descriptor.is_universal() {
+            // Universal observers
+            self.universal_observers
+                .insert(observer_entity, observer_runner.clone());
+
+            // Universal component observers
+            for &component_id in descriptor.components() {
+                let component_observers = self.component_observers.entry(component_id).or_default();
+                component_observers
+                    .universal_observers
+                    .insert(observer_entity, observer_runner.clone());
+            }
+        } else {
+            // Non-component entity observers
+            for &targeted_entity in descriptor.entities() {
+                let targeted_entity_observers =
+                    self.entity_observers.entry(targeted_entity).or_default();
+                targeted_entity_observers.insert(observer_entity, observer_runner.clone());
+            }
+
+            // Component-entity observers
+            for &component_id in descriptor.components() {
+                let component_observers = self.component_observers.entry(component_id).or_default();
+
+                for &targeted_entity in descriptor.entities() {
+                    let entity_component_observers = component_observers
+                        .entity_component_observers
+                        .entry(targeted_entity)
+                        .or_default();
+                    entity_component_observers.insert(observer_entity, observer_runner.clone());
+                }
+            }
+        }
+    }
+
+    /// Unregisters an observer for this event type by parsing the [`ObserverDescriptor`].
+    fn unregister_observer(&mut self, observer_entity: Entity, descriptor: &ObserverDescriptor) {
+        if descriptor.is_universal() {
+            // Universal observers
+            self.universal_observers.remove(&observer_entity);
+
+            // Universal component observers
+            for &component_id in descriptor.components() {
+                if let Some(component_observers) = self.component_observers.get_mut(&component_id) {
+                    component_observers
+                        .universal_observers
+                        .remove(&observer_entity);
+                }
+            }
+        } else {
+            // Non-component entity observers
+            for targeted_entity in descriptor.entities() {
+                if let Some(observers_for_targeted_entity) =
+                    self.entity_observers.get_mut(targeted_entity)
+                {
+                    observers_for_targeted_entity.remove(&observer_entity);
+                }
+            }
+
+            // Component-entity observers
+            for component_id in descriptor.components() {
+                if let Some(component_observers) = self.component_observers.get_mut(component_id) {
+                    for targeted_entity in descriptor.entities() {
+                        if let Some(targeted_entity_component_observers) = component_observers
+                            .entity_component_observers
+                            .get_mut(targeted_entity)
+                        {
+                            targeted_entity_component_observers.remove(&observer_entity);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Returns the observers listening for this trigger, regardless of target.
     /// These observers will also respond to events targeting specific components or entities.
-    pub fn global_observers(&self) -> &ObserverMap {
-        &self.global_observers
+    pub fn universal_observers(&self) -> &ObserverMap {
+        &self.universal_observers
     }
 
     /// Returns the observers listening for this trigger targeting components.
@@ -202,7 +358,7 @@ pub type ObserverMap = EntityHashMap<ObserverRunner>;
 #[derive(Default, Debug)]
 pub struct CachedComponentObservers {
     // Observers listening to events targeting this component, but not a specific entity
-    pub(super) global_observers: ObserverMap,
+    pub(super) universal_observers: ObserverMap,
     // Observers listening to events targeting this component on a specific entity
     pub(super) entity_component_observers: EntityHashMap<ObserverMap>,
 }
@@ -211,7 +367,7 @@ impl CachedComponentObservers {
     /// Returns the observers listening for this trigger, regardless of target.
     /// These observers will also respond to events targeting specific entities.
     pub fn global_observers(&self) -> &ObserverMap {
-        &self.global_observers
+        &self.universal_observers
     }
 
     /// Returns the observers listening for this trigger targeting this component on a specific entity.

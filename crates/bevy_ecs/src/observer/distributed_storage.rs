@@ -6,16 +6,22 @@
 //! The [`Observer`] component contains the system that will be run when the observer is triggered,
 //! and the [`ObserverDescriptor`] which contains information about what the observer is observing.
 //!
+//! The [`ObserverDescriptor`] acts as the ultimate source of truth for "what an observer observes",
+//! and is fed into the [centralized storage](crate::observer::centralized_storage) for fast indexes.
+//! This synchronization is done by the [`ObserverDescriptor::on_insert`] and [`ObserverDescriptor::on_replace`] hooks,
+//! which are called whenever the [`ObserverDescriptor`] is modified due the immutable components pattern.
+//!
 //! When we watch entities, we add the [`ObservedBy`] component to those entities,
 //! which links back to the observer entity.
 
 use alloc::vec;
 use core::any::Any;
+use log::warn;
 
 use crate::{
     component::{ComponentId, Immutable, StorageType},
     error::{ErrorContext, ErrorHandler},
-    lifecycle::{ADD, DESPAWN, INSERT, REMOVE, REPLACE},
+    lifecycle::ComponentHook,
     observer::{observer_system_runner, ObserverRunner},
     prelude::*,
     system::IntoObserverSystem,
@@ -289,7 +295,100 @@ pub struct ObserverDescriptor {
 impl Component for ObserverDescriptor {
     const STORAGE_TYPE: StorageType = StorageType::Table;
 
+    // We're using the immutable components pattern to ensure reliable data synchronization
+    // between the distributed storage and the centralized storage.
     type Mutability = Immutable;
+
+    // TODO: we're using Commands here to modify the centralized storage,
+    // because we cannot soundly mutate the centralized storage directly from DeferredWorld
+    // due to safety requriments in Observers::invoke.
+    // This introduces a small performance penalty, and more importantly, delays the evaluation
+    // of the synchronization.
+    fn on_insert() -> Option<ComponentHook> {
+        Some(|mut deferred_world, hook_context| {
+            let observer_entity = hook_context.entity;
+
+            deferred_world.commands().register_observer(observer_entity);
+        })
+    }
+
+    fn on_replace() -> Option<ComponentHook> {
+        Some(|mut deferred_world, hook_context| {
+            let observer_entity = hook_context.entity;
+
+            // We need to clone out the entity descriptor here / now,
+            // rather than fetching it from the world when the command is applied,
+            // because the ObserverDescriptor will have been removed by the time
+            // the command is applied.
+            let observer_descriptor = deferred_world
+                .get::<ObserverDescriptor>(observer_entity)
+                .unwrap()
+                .clone();
+
+            deferred_world
+                .commands()
+                .unregister_observer(observer_entity, observer_descriptor);
+        })
+    }
+}
+
+impl Commands<'_, '_> {
+    /// Registers the observer entity in the centralized [`Observers`] storage.
+    // The call signature does not match the unregister_observer variant,
+    // as we can simply fetch the `observer_descriptor` from the world
+    pub(crate) fn register_observer(&mut self, observer_entity: Entity) {
+        self.queue(move |world: &mut World| {
+            let Some(observer_descriptor) = world.get::<ObserverDescriptor>(observer_entity) else {
+                // Fail quietly if the observer descriptor is not present;
+                // we shouldn't register observers that have been somehow removed.
+                warn!(
+                    "Observer entity {} does not have an ObserverDescriptor component. \
+                     This observer will not be registered.",
+                    observer_entity
+                );
+
+                return;
+            };
+
+            let Some(observer) = world.get::<Observer>(observer_entity) else {
+                // Fail quietly if the observer is not present;
+                // we shouldn't register observers that have been somehow removed.
+                warn!(
+                    "Observer entity {} does not have an Observer component. \
+                     This observer will not be registered.",
+                    observer_entity
+                );
+
+                return;
+            };
+
+            // Clone to avoid aliasing borrows
+            let observer_descriptor = observer_descriptor.clone();
+            let observer_runner = observer.runner.clone();
+
+            world.observers.register_observer(
+                observer_entity,
+                observer_runner,
+                &observer_descriptor.clone(),
+            );
+        });
+    }
+
+    /// Unregisters the observer entity from the centralized [`Observers`] storage.
+    ///
+    /// The `observer_descriptor` should be gathered from a hook or observer
+    /// that runs at the time of the [`ObserverDescriptor`]'s removal.
+    pub(crate) fn unregister_observer(
+        &mut self,
+        observer_entity: Entity,
+        observer_descriptor: ObserverDescriptor,
+    ) {
+        self.queue(move |world: &mut World| {
+            world
+                .observers
+                .unregister_observer(observer_entity, &observer_descriptor);
+        });
+    }
 }
 
 impl ObserverDescriptor {
@@ -374,6 +473,12 @@ impl ObserverDescriptor {
         self
     }
 
+    /// Checks if this observer is a "universal" observer,
+    /// meaning it does not watch any specific entities.
+    pub fn is_universal(&self) -> bool {
+        self.entities.is_empty()
+    }
+
     /// Returns the `events` that the observer is watching.
     pub fn events(&self) -> &[ComponentId] {
         &self.events
@@ -388,38 +493,6 @@ impl ObserverDescriptor {
     pub fn entities(&self) -> &[Entity] {
         &self.entities
     }
-
-    /// Returns the set of lifecycle events that this observer is watching.
-    fn lifecycle_events(&self) -> WatchedLifeCycleEvents {
-        let mut watched = WatchedLifeCycleEvents {
-            on_add: false,
-            on_insert: false,
-            on_remove: false,
-            on_replace: false,
-            on_despawn: false,
-        };
-        for &event in &self.events {
-            match event {
-                ADD => watched.on_add = true,
-                INSERT => watched.on_insert = true,
-                REMOVE => watched.on_remove = true,
-                REPLACE => watched.on_replace = true,
-                DESPAWN => watched.on_despawn = true,
-                _ => {}
-            }
-        }
-
-        watched
-    }
-}
-
-/// A helper struct to make it easier to keep track of which lifecycle events an observer is watching.
-struct WatchedLifeCycleEvents {
-    on_add: bool,
-    on_insert: bool,
-    on_remove: bool,
-    on_replace: bool,
-    on_despawn: bool,
 }
 
 pub(crate) trait AnyNamedSystem: Any + Send + Sync + 'static {
