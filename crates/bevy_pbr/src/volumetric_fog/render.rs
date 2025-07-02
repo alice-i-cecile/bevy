@@ -2,7 +2,7 @@
 
 use core::array;
 
-use bevy_asset::{load_embedded_asset, weak_handle, AssetId, Handle};
+use bevy_asset::{load_embedded_asset, uuid_handle, AssetId, Handle};
 use bevy_color::ColorToComponents as _;
 use bevy_core_pipeline::{
     core_3d::Camera3d,
@@ -82,14 +82,14 @@ bitflags! {
 ///
 /// This mesh is simply stretched to the size of the framebuffer, as when the
 /// camera is inside a fog volume it's essentially a full-screen effect.
-pub const PLANE_MESH: Handle<Mesh> = weak_handle!("92523617-c708-4fd0-b42f-ceb4300c930b");
+pub const PLANE_MESH: Handle<Mesh> = uuid_handle!("92523617-c708-4fd0-b42f-ceb4300c930b");
 
 /// The cube mesh, which is used to render a fog volume that the camera is
 /// outside.
 ///
 /// Note that only the front faces of this cuboid will be rasterized in
 /// hardware. The back faces will be calculated in the shader via raytracing.
-pub const CUBE_MESH: Handle<Mesh> = weak_handle!("4a1dd661-2d91-4377-a17a-a914e21e277e");
+pub const CUBE_MESH: Handle<Mesh> = uuid_handle!("4a1dd661-2d91-4377-a17a-a914e21e277e");
 
 /// The total number of bind group layouts.
 ///
@@ -461,7 +461,7 @@ impl ViewNode for VolumetricFogNode {
             render_pass.set_pipeline(pipeline);
             render_pass.set_bind_group(
                 0,
-                &view_bind_group.value,
+                &view_bind_group.main,
                 &[
                     view_uniform_offset.offset,
                     view_lights_offset.offset,
@@ -511,10 +511,6 @@ impl SpecializedRenderPipeline for VolumetricFogPipeline {
     type Key = VolumetricFogPipelineKey;
 
     fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
-        let mesh_view_layout = self
-            .mesh_view_layouts
-            .get_view_layout(key.mesh_pipeline_view_key);
-
         // We always use hardware 2x2 filtering for sampling the shadow map; the
         // more accurate versions with percentage-closer filtering aren't worth
         // the overhead.
@@ -559,9 +555,17 @@ impl SpecializedRenderPipeline for VolumetricFogPipeline {
             shader_defs.push("DENSITY_TEXTURE".into());
         }
 
+        let layout = self
+            .mesh_view_layouts
+            .get_view_layout(key.mesh_pipeline_view_key);
+        let layout = vec![
+            layout.main_layout.clone(),
+            volumetric_view_bind_group_layout.clone(),
+        ];
+
         RenderPipelineDescriptor {
             label: Some("volumetric lighting pipeline".into()),
-            layout: vec![mesh_view_layout.clone(), volumetric_view_bind_group_layout],
+            layout,
             push_constant_ranges: vec![],
             vertex: VertexState {
                 shader: self.shader.clone(),

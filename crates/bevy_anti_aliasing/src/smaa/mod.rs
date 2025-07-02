@@ -32,7 +32,7 @@
 use bevy_app::{App, Plugin};
 #[cfg(feature = "smaa_luts")]
 use bevy_asset::load_internal_binary_asset;
-use bevy_asset::{embedded_asset, load_embedded_asset, weak_handle, Handle};
+use bevy_asset::{embedded_asset, load_embedded_asset, uuid_handle, Handle};
 #[cfg(not(feature = "smaa_luts"))]
 use bevy_core_pipeline::tonemapping::lut_placeholder;
 use bevy_core_pipeline::{
@@ -50,7 +50,7 @@ use bevy_ecs::{
     system::{lifetimeless::Read, Commands, Query, Res, ResMut},
     world::{FromWorld, World},
 };
-use bevy_image::{BevyDefault, Image};
+use bevy_image::{BevyDefault, Image, ToExtents};
 use bevy_math::{vec4, Vec4};
 use bevy_reflect::{std_traits::ReflectDefault, Reflect};
 use bevy_render::{
@@ -58,20 +58,19 @@ use bevy_render::{
     extract_component::{ExtractComponent, ExtractComponentPlugin},
     render_asset::RenderAssets,
     render_graph::{
-        NodeRunError, RenderGraphApp as _, RenderGraphContext, ViewNode, ViewNodeRunner,
+        NodeRunError, RenderGraphContext, RenderGraphExt as _, ViewNode, ViewNodeRunner,
     },
     render_resource::{
         binding_types::{sampler, texture_2d, uniform_buffer},
         AddressMode, BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries,
         CachedRenderPipelineId, ColorTargetState, ColorWrites, CompareFunction, DepthStencilState,
-        DynamicUniformBuffer, Extent3d, FilterMode, FragmentState, LoadOp, MultisampleState,
-        Operations, PipelineCache, PrimitiveState, RenderPassColorAttachment,
-        RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline,
-        RenderPipelineDescriptor, SamplerBindingType, SamplerDescriptor, Shader, ShaderDefVal,
-        ShaderStages, ShaderType, SpecializedRenderPipeline, SpecializedRenderPipelines,
-        StencilFaceState, StencilOperation, StencilState, StoreOp, TextureDescriptor,
-        TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
-        VertexState,
+        DynamicUniformBuffer, FilterMode, FragmentState, LoadOp, MultisampleState, Operations,
+        PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+        RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, SamplerBindingType,
+        SamplerDescriptor, Shader, ShaderDefVal, ShaderStages, ShaderType,
+        SpecializedRenderPipeline, SpecializedRenderPipelines, StencilFaceState, StencilOperation,
+        StencilState, StoreOp, TextureDescriptor, TextureDimension, TextureFormat,
+        TextureSampleType, TextureUsages, TextureView, VertexState,
     },
     renderer::{RenderContext, RenderDevice, RenderQueue},
     texture::{CachedTexture, GpuImage, TextureCache},
@@ -82,10 +81,10 @@ use bevy_utils::prelude::default;
 
 /// The handle of the area LUT, a KTX2 format texture that SMAA uses internally.
 const SMAA_AREA_LUT_TEXTURE_HANDLE: Handle<Image> =
-    weak_handle!("569c4d67-c7fa-4958-b1af-0836023603c0");
+    uuid_handle!("569c4d67-c7fa-4958-b1af-0836023603c0");
 /// The handle of the search LUT, a KTX2 format texture that SMAA uses internally.
 const SMAA_SEARCH_LUT_TEXTURE_HANDLE: Handle<Image> =
-    weak_handle!("43b97515-252e-4c8a-b9af-f2fc528a1c27");
+    uuid_handle!("43b97515-252e-4c8a-b9af-f2fc528a1c27");
 
 /// Adds support for subpixel morphological antialiasing, or SMAA.
 pub struct SmaaPlugin;
@@ -704,18 +703,12 @@ fn prepare_smaa_textures(
             continue;
         };
 
-        let texture_size = Extent3d {
-            width: texture_size.x,
-            height: texture_size.y,
-            depth_or_array_layers: 1,
-        };
-
         // Create the two-channel RG texture for phase 1 (edge detection).
         let edge_detection_color_texture = texture_cache.get(
             &render_device,
             TextureDescriptor {
                 label: Some("SMAA edge detection color texture"),
-                size: texture_size,
+                size: texture_size.to_extents(),
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
@@ -730,7 +723,7 @@ fn prepare_smaa_textures(
             &render_device,
             TextureDescriptor {
                 label: Some("SMAA edge detection stencil texture"),
-                size: texture_size,
+                size: texture_size.to_extents(),
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,
@@ -746,7 +739,7 @@ fn prepare_smaa_textures(
             &render_device,
             TextureDescriptor {
                 label: Some("SMAA blend texture"),
-                size: texture_size,
+                size: texture_size.to_extents(),
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,

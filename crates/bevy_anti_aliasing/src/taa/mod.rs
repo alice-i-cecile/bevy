@@ -15,18 +15,18 @@ use bevy_ecs::{
     system::{Commands, Query, Res, ResMut},
     world::{FromWorld, World},
 };
-use bevy_image::BevyDefault as _;
+use bevy_image::{BevyDefault as _, ToExtents};
 use bevy_math::vec2;
 use bevy_reflect::{std_traits::ReflectDefault, Reflect};
 use bevy_render::{
     camera::{ExtractedCamera, MipBias, TemporalJitter},
     prelude::{Camera, Projection},
-    render_graph::{NodeRunError, RenderGraphApp, RenderGraphContext, ViewNode, ViewNodeRunner},
+    render_graph::{NodeRunError, RenderGraphContext, RenderGraphExt, ViewNode, ViewNodeRunner},
     render_resource::{
         binding_types::{sampler, texture_2d, texture_depth_2d},
         BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, CachedRenderPipelineId,
-        ColorTargetState, ColorWrites, Extent3d, FilterMode, FragmentState, MultisampleState,
-        Operations, PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
+        ColorTargetState, ColorWrites, FilterMode, FragmentState, MultisampleState, Operations,
+        PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
         RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, Shader,
         ShaderStages, SpecializedRenderPipeline, SpecializedRenderPipelines, TextureDescriptor,
         TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
@@ -420,11 +420,7 @@ fn prepare_taa_history_textures(
         if let Some(physical_target_size) = camera.physical_target_size {
             let mut texture_descriptor = TextureDescriptor {
                 label: None,
-                size: Extent3d {
-                    depth_or_array_layers: 1,
-                    width: physical_target_size.x,
-                    height: physical_target_size.y,
-                },
+                size: physical_target_size.to_extents(),
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: TextureDimension::D2,

@@ -15,6 +15,7 @@ use bevy_ecs::{
     system::{Commands, Query, Res, ResMut},
     world::{FromWorld, World},
 };
+use bevy_image::ToExtents;
 use bevy_reflect::{std_traits::ReflectDefault, Reflect};
 use bevy_render::{
     camera::{ExtractedCamera, TemporalJitter},
@@ -22,7 +23,7 @@ use bevy_render::{
     globals::{GlobalsBuffer, GlobalsUniform},
     load_shader_library,
     prelude::Camera,
-    render_graph::{NodeRunError, RenderGraphApp, RenderGraphContext, ViewNode, ViewNodeRunner},
+    render_graph::{NodeRunError, RenderGraphContext, RenderGraphExt, ViewNode, ViewNodeRunner},
     render_resource::{
         binding_types::{
             sampler, texture_2d, texture_depth_2d, texture_storage_2d, uniform_buffer,
@@ -536,11 +537,7 @@ fn prepare_ssao_textures(
         let Some(physical_viewport_size) = camera.physical_viewport_size else {
             continue;
         };
-        let size = Extent3d {
-            width: physical_viewport_size.x,
-            height: physical_viewport_size.y,
-            depth_or_array_layers: 1,
-        };
+        let size = physical_viewport_size.to_extents();
 
         let preprocessed_depth_texture = texture_cache.get(
             &render_device,
