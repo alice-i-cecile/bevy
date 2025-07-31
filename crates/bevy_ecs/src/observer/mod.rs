@@ -506,6 +506,7 @@ mod tests {
         entity_disabling::Internal,
         observer::{Observer, Replace},
         prelude::*,
+        system::RunSystemOnce,
         traversal::Traversal,
     };
 
@@ -1267,35 +1268,37 @@ mod tests {
 
     // Regression test for https://github.com/bevyengine/bevy/issues/19623
     #[test]
-    fn on_replace_despawn() {
-        use crate::relationship::Relationship;
+    fn observers_for_despawned_entities() {
+        #[derive(EntityEvent)]
+        struct Kill;
+
+        #[derive(EntityEvent)]
+        struct FollowupEvent;
+
+        fn despawn(trigger: On<Kill>, mut commands: Commands) {
+            commands.entity(trigger.target()).despawn();
+        }
+
+        fn followup(trigger: On<Kill>, mut commands: Commands) {
+            commands.entity(trigger.target()).trigger(FollowupEvent);
+        }
 
         let mut world = World::new();
+        // At the time of creation,
+        // this test would pass if the order of these statements is swapped
+        world.add_observer(followup);
+        world.add_observer(despawn);
 
-        #[derive(Component)]
-        struct T;
-        #[derive(Component)]
-        #[relationship_target(relationship = Rel)]
-        struct RelTar(Vec<Entity>);
-        #[derive(Component)]
-        #[relationship(relationship_target = RelTar)]
-        struct Rel(Entity);
+        // Create an entity to test these observers with
+        world.spawn_empty();
 
-        world.spawn(Observer::new(
-            |trigger: On<Replace, T>, mut commands: Commands| {
-                commands
-                    .entity(trigger.target())
-                    .despawn_related::<RelTar>();
-            },
-        ));
-
-        let id = world.spawn(T).id();
-
-        world.spawn(<Rel as Relationship>::from(id));
-        world.spawn(<Rel as Relationship>::from(id));
-        world.spawn(<Rel as Relationship>::from(id));
-
-        world.despawn(id);
+        // Trigger a kill event on the entity
+        fn kill_everything(mut commands: Commands, query: Query<Entity>) {
+            for id in query.iter() {
+                commands.entity(id).trigger(Kill);
+            }
+        }
+        world.run_system_once(kill_everything).unwrap();
     }
 
     // Regression test for https://github.com/bevyengine/bevy/issues/14467
