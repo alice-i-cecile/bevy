@@ -1281,7 +1281,11 @@ mod tests {
         }
 
         fn followup(trigger: On<Kill>, mut commands: Commands) {
-            commands.entity(trigger.target()).trigger(FollowupEvent);
+            commands
+                .get_entity(trigger.target())
+                // This unwrap does not fail: the entity still exists at the time the command is issued
+                .unwrap()
+                .trigger(FollowupEvent);
         }
 
         let mut world = World::new();
