@@ -1265,6 +1265,39 @@ mod tests {
         world.spawn(A);
     }
 
+    // Regression test for https://github.com/bevyengine/bevy/issues/19623
+    #[test]
+    fn on_replace_despawn() {
+        use crate::relationship::Relationship;
+
+        let mut world = World::new();
+
+        #[derive(Component)]
+        struct T;
+        #[derive(Component)]
+        #[relationship_target(relationship = Rel)]
+        struct RelTar(Vec<Entity>);
+        #[derive(Component)]
+        #[relationship(relationship_target = RelTar)]
+        struct Rel(Entity);
+
+        world.spawn(Observer::new(
+            |trigger: On<Replace, T>, mut commands: Commands| {
+                commands
+                    .entity(trigger.target())
+                    .despawn_related::<RelTar>();
+            },
+        ));
+
+        let id = world.spawn(T).id();
+
+        world.spawn(<Rel as Relationship>::from(id));
+        world.spawn(<Rel as Relationship>::from(id));
+        world.spawn(<Rel as Relationship>::from(id));
+
+        world.despawn(id);
+    }
+
     // Regression test for https://github.com/bevyengine/bevy/issues/14467
     // Fails prior to https://github.com/bevyengine/bevy/pull/15398
     #[test]
