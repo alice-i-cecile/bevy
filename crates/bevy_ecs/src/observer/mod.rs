@@ -504,6 +504,7 @@ mod tests {
         change_detection::MaybeLocation,
         component::ComponentId,
         entity_disabling::Internal,
+        error::DefaultErrorHandler,
         observer::{Observer, Replace},
         prelude::*,
         system::RunSystemOnce,
@@ -1284,6 +1285,10 @@ mod tests {
         }
 
         let mut world = World::new();
+        // This test only fails when the default error handler is set to panic,
+        // which was the case at the time of the issue's creation.
+        world.insert_resource(DefaultErrorHandler(crate::error::panic));
+
         // At the time of creation,
         // this test would pass if the order of these statements is swapped
         world.add_observer(followup);
