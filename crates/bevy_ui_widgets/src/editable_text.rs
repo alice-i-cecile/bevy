@@ -152,7 +152,7 @@ impl EditableText {
     /// Get the current text input as a [`String`].
     ///
     /// This allocates, as we must combine the internal representation into a single string.
-    pub fn input(&self) -> String {
+    pub fn value(&self) -> String {
         let mut combined_string = String::new();
 
         for line in &self.buffer().lines {

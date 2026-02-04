@@ -84,7 +84,7 @@ fn text_submission(
     {
         if let Some(focused_entity) = input_focus.get() {
             if let Some(mut text_input) = text_input.get_mut(focused_entity).ok() {
-                text_output.0 = text_input.input().clone();
+                text_output.0 = text_input.value().clone();
                 text_input.clear(&mut font_system.0);
             }
         }
