@@ -13,7 +13,9 @@ use smallvec::SmallVec;
 use smol_str::SmolStr;
 use tracing::warn;
 
-/// Wrapper for [`cosmic_text::Buffer`]
+/// Wrapper for [`cosmic_text::Buffer`].
+///
+/// Stored inside of [`ComputedTextBlock`].
 #[derive(Deref, DerefMut, Debug, Clone)]
 pub struct CosmicBuffer(pub Buffer);
 
@@ -48,9 +50,10 @@ pub struct ComputedTextBlock {
     /// Buffer for managing text layout and creating [`TextLayoutInfo`].
     ///
     /// This is private because buffer contents are always refreshed from ECS state when writing glyphs to
-    /// `TextLayoutInfo`. If you want to control the buffer contents manually or use the `cosmic-text`
-    /// editor, then you need to not use `TextLayout` and instead manually implement the conversion to
-    /// `TextLayoutInfo`.
+    /// [`TextLayoutInfo`] in [`TextPipeline::update_buffer`](crate::TextPipeline::update_buffer).
+    /// If you want to control the buffer contents manually or use the `cosmic-text` [`Editor`](cosmic_text::Editor),
+    /// then you need to not use [`TextLayout`] and instead manually implement the conversion to
+    /// [`TextLayoutInfo`].
     #[reflect(ignore, clone)]
     pub(crate) buffer: CosmicBuffer,
     /// Entities for all text spans in the block, including the root-level text.
@@ -65,7 +68,7 @@ pub struct ComputedTextBlock {
     // TODO: This encompasses both structural changes like font size or justification and non-structural
     // changes like text color and font smoothing. This field currently causes UI to 'remeasure' text, even if
     // the actual changes are non-structural and can be handled by only rerendering and not remeasuring. A full
-    // solution would probably require splitting TextLayout and TextFont into structural/non-structural
+    // solution would probably require splitting [`TextLayout`] and [`TextFont`] into structural/non-structural
     // components for more granular change detection. A cost/benefit analysis is needed.
     pub(crate) needs_rerender: bool,
 }

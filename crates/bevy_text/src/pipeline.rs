@@ -147,7 +147,10 @@ pub struct TextPipeline {
 }
 
 impl TextPipeline {
-    /// Utilizes [`cosmic_text::Buffer`] to shape and layout text
+    /// Utilizes [`cosmic_text::Buffer`] to shape and layout text.
+    ///
+    /// Existing values will be updated in place, based on the provided parameters.
+    /// Typically, these values are sourced from ECS values, such as the [`TextLayout`] component.
     ///
     /// Negative or 0.0 font sizes will not be laid out.
     pub fn update_buffer<'a>(
