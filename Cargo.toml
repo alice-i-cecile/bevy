@@ -3761,6 +3761,19 @@ category = "UI (User Interface)"
 wasm = true
 
 [[example]]
+name = "editable_text"
+path = "examples/ui/text/editable_text.rs"
+# Causes an ICE on docs.rs
+doc-scrape-examples = false
+required-features = ["experimental_bevy_ui_widgets"]
+
+[package.metadata.example.editable_text]
+name = "Editable Text"
+description = "Demonstrates a simple, unstyled text input widget"
+category = "UI (User Interface)"
+wasm = true
+
+[[example]]
 name = "ui_drag_and_drop"
 path = "examples/ui/ui_drag_and_drop.rs"
 doc-scrape-examples = true
