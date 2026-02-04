@@ -8,6 +8,7 @@
 
 use bevy::input_focus::{InputDispatchPlugin, InputFocus};
 use bevy::prelude::*;
+use bevy::text::CosmicFontSystem;
 use bevy::ui_widgets::editable_text::{EditableText, EditableTextPlugin};
 
 fn main() {
@@ -39,7 +40,7 @@ fn setup(
     // Set up an EditableText widget
     let text_input = commands
         .spawn((
-            EditableText::new(),
+            EditableText::default(),
             TextFont {
                 font: asset_server.load("fonts/FiraMono-Medium.ttf").into(),
                 font_size: 70.0,
@@ -75,6 +76,7 @@ fn text_submission(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut text_input: Query<&mut EditableText>,
     mut text_output: Single<&mut Text>,
+    mut font_system: ResMut<CosmicFontSystem>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Enter)
         && (keyboard_input.pressed(KeyCode::ControlLeft)
@@ -82,8 +84,8 @@ fn text_submission(
     {
         if let Some(focused_entity) = input_focus.get() {
             if let Some(mut text_input) = text_input.get_mut(focused_entity).ok() {
-                text_output.0 = text_input.current_input.clone();
-                text_input.clear();
+                text_output.0 = text_input.input().clone();
+                text_input.clear(&mut font_system.0);
             }
         }
     }

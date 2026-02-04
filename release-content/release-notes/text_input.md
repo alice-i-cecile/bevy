@@ -11,10 +11,11 @@ In Bevy 0.19, we've added basic support for text entry, in the form of the `Edit
 Spawning an entity with this component will create a simple unstyled rectangle of editable text.
 Our initial text entry supports:
 
-- press keys on your keyboard, get text (wow!)
-- a cursor that can be moved forward and back in response to the left and right arrow keys
+- Press keys on your keyboard, get text (wow!)
+- A cursor that can be moved forward and back in response to the left and right arrow keys
 - Backspace and Delete
 - Unicode-aware navigation and editing: 1 byte/char != 1 character
+- Bidirectional text support, allowing both left-to-right and right-to-left scripts
 
 `EditableText` integrate with Bevy's `InputFocus` resource, accepting keyboard inputs only when the selected
 `EditableText` entity is focused.

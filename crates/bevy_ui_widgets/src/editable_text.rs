@@ -51,6 +51,7 @@
 //! - Input Method Editor (IME) support for complex scripts
 //! - Text validation (e.g., email format, numeric input, max length)
 //! - Password-style character masking
+//! - Soft-wrapping of long lines
 //! - Vertical scrolling for multi-line input
 //! - Horizontal scrolling for long lines
 //! - Mobile pop-up keyboard support
@@ -78,8 +79,9 @@ use bevy_input::keyboard::{Key, KeyboardInput};
 use bevy_input::InputSystems;
 use bevy_input_focus::{InputFocus, InputFocusSystems};
 use bevy_reflect::prelude::*;
-use bevy_text::{FontHinting, LineHeight, TextColor, TextFont, TextLayout};
+use bevy_text::{CosmicFontSystem, FontHinting, LineHeight, TextColor, TextFont, TextLayout};
 use bevy_ui::{widget::TextNodeFlags, ContentSize, Node, UiSystems};
+use cosmic_text::{Action, Buffer, BufferRef, Edit, Editor, FontSystem, Metrics, Motion};
 use smol_str::SmolStr;
 
 /// A plain-text text input field.
@@ -89,10 +91,11 @@ use smol_str::SmolStr;
 /// Note that text editing operations are trickier than they might first appear,
 /// due to the complexities of Unicode text handling.
 ///
-/// As a result, you should prefer to use the editing operations exposed by the methods on this type,
-/// rather than manipulating the `current_input` and `cursor_index` fields directly.
-#[derive(Component, Debug, Default, Reflect)]
-#[reflect(Component, Default)]
+/// As a result, we store an internal [`cosmic_text::Editor`] instance,
+/// which manages both the text content and the cursor position,
+/// and provides methods for applying text edits and cursor movements correctly
+/// according to Unicode rules.
+#[derive(Component, Debug)]
 #[require(
     Node,
     TextLayout,
@@ -104,79 +107,127 @@ use smol_str::SmolStr;
     FontHinting
 )]
 pub struct EditableText {
-    /// The text that has been input.
-    pub current_input: String,
-    /// The index of the cursor within the text.
+    /// A [cosmic_text::Editor], tracking both the text content and cursor position.
     ///
-    /// Note: this is a direct index into the [`String`], and does not correspond directly to a character position.
-    /// Unicode is complicated!
-    pub cursor_index: usize,
+    /// This stores an owned [`Buffer`] with a 'static` lifetime, as Bevy ECS components must be `'static`.
+    /// This also stores a [`Cursor`](cosmic_text::Cursor) internally.
+    pub editor: Editor<'static>,
     /// Text edit actions that have been requested but not yet applied.
     ///
     /// These edits are processed in first-in, first-out order.
     pub pending_edits: VecDeque<TextEdit>,
 }
 
-impl EditableText {
-    /// Creates a new [`EditableText`] component with default settings.
-    ///
-    /// Equivalent to [`EditableText::default()`].
-    pub const fn new() -> Self {
+impl Default for EditableText {
+    fn default() -> Self {
+        let buffer = Buffer::new(&mut FontSystem::new(), Metrics::new(20.0, 20.0));
+
         Self {
-            current_input: String::new(),
-            cursor_index: 0,
+            // Defaults selected to match `Text::default()`
+            editor: Editor::new(BufferRef::Owned(buffer)),
             pending_edits: VecDeque::new(),
         }
     }
+}
 
-    /// Inserts the given text at the current cursor position.
+impl EditableText {
+    /// Access the internal [`cosmic_text::Buffer`].
+    pub fn buffer(&self) -> &Buffer {
+        let buffer_ref = self.editor.buffer_ref();
+        let BufferRef::Owned(buffer) = buffer_ref else {
+            panic!("EditableText editor buffer_ref is not Owned");
+        };
+        buffer
+    }
+
+    /// Mutably access the internal [`cosmic_text::Buffer`].
+    pub fn buffer_mut(&mut self) -> &mut Buffer {
+        let buffer_ref = self.editor.buffer_ref_mut();
+        let BufferRef::Owned(buffer) = buffer_ref else {
+            panic!("EditableText editor buffer_ref is not Owned");
+        };
+        buffer
+    }
+
+    /// Get the current text input as a [`String`].
+    ///
+    /// This allocates, as we must combine the internal representation into a single string.
+    pub fn input(&self) -> String {
+        let mut combined_string = String::new();
+
+        for line in &self.buffer().lines {
+            // Combine the lines into a single string,
+            // adding line breaks between each line.
+            if !combined_string.is_empty() {
+                combined_string.push('\n');
+            }
+            combined_string.push_str(&line.text());
+        }
+
+        combined_string
+    }
+
+    /// Inserts the given string (usually one character) at the current cursor position.
     ///
     /// This is also used for [`TextEdit::Insert`], which does not assume that each keyboard input corresponds to a single [`char`] byte.
     pub fn insert_text(&mut self, text: &str) {
-        self.current_input.insert_str(self.cursor_index, text);
-        self.cursor_index += text.len();
+        let new_cursor = self.editor.insert_at(self.editor.cursor(), text, None);
+        self.editor.set_cursor(new_cursor);
+    }
+
+    /// Sets the entire text input to the given string, replacing any existing content.
+    pub fn set_input(&mut self, text: &str, font_system: &mut FontSystem) {
+        self.clear(font_system);
+        self.insert_text(text);
+    }
+
+    /// Applies a [`cosmic_text::Motion`] to the cursor.
+    ///
+    /// This includes operations such as moving left/right, to start/end of line, etc.
+    pub fn apply_motion(&mut self, motion: Motion, font_system: &mut FontSystem) {
+        let cursor = self.editor.cursor();
+
+        let output = self
+            .buffer_mut()
+            .cursor_motion(font_system, cursor, None, motion);
+        if let Some((new_cursor, _scroll_to)) = output {
+            self.editor.set_cursor(new_cursor);
+        }
+    }
+
+    /// Applies a [`cosmic_text::Action`] editing operation at the current cursor position.
+    ///
+    /// This includes operations such as backspace, delete, etc.
+    pub fn apply_edit(&mut self, edit: Action, font_system: &mut FontSystem) {
+        self.editor.action(font_system, edit);
     }
 
     /// Deletes the character before the cursor.
-    pub fn backspace(&mut self) {
-        if self.cursor_index > 0 {
-            let new_index = self.current_input.floor_char_boundary(self.cursor_index);
-
-            for i in new_index..self.cursor_index {
-                self.current_input.remove(i);
-            }
-
-            self.cursor_index = new_index;
-        }
+    pub fn backspace(&mut self, font_system: &mut FontSystem) {
+        self.apply_edit(Action::Backspace, font_system);
     }
 
     /// Deletes the character at the cursor.
-    pub fn delete(&mut self) {
-        if self.cursor_index < self.current_input.len() {
-            for i in self.cursor_index..self.current_input.ceil_char_boundary(self.cursor_index) {
-                self.current_input.remove(i);
-            }
-        }
+    pub fn delete(&mut self, font_system: &mut FontSystem) {
+        self.apply_edit(Action::Delete, font_system);
     }
 
     /// Moves the cursor one position to the right.
-    pub fn move_cursor_right(&mut self) {
-        if self.cursor_index < self.current_input.len() {
-            self.cursor_index = self.current_input.ceil_char_boundary(self.cursor_index);
-        }
+    pub fn move_cursor_right(&mut self, font_system: &mut FontSystem) {
+        self.apply_motion(Motion::Right, font_system);
     }
 
     /// Moves the cursor one position to the left.
-    pub fn move_cursor_left(&mut self) {
-        if self.cursor_index > 0 {
-            self.cursor_index = self.current_input.floor_char_boundary(self.cursor_index);
-        }
+    pub fn move_cursor_left(&mut self, font_system: &mut FontSystem) {
+        self.apply_motion(Motion::Left, font_system);
     }
 
     /// Clears the current input and resets the cursor position.
-    pub fn clear(&mut self) {
-        self.current_input.clear();
-        self.cursor_index = 0;
+    pub fn clear(&mut self, font_system: &mut FontSystem) {
+        self.editor = Editor::new(BufferRef::Owned(Buffer::new(
+            font_system,
+            Metrics::new(20.0, 20.0),
+        )));
     }
 }
 
@@ -298,16 +349,19 @@ pub fn process_text_inputs(
 }
 
 /// Applies pending text edit actions to all [`EditableText`] widgets.
-pub fn apply_text_edits(mut query: Query<&mut EditableText>) {
+pub fn apply_text_edits(
+    mut query: Query<&mut EditableText>,
+    mut font_system: ResMut<CosmicFontSystem>,
+) {
     for mut editable_text in query.iter_mut() {
         while let Some(edit) = editable_text.pending_edits.pop_front() {
             match edit {
                 TextEdit::Insert(str) => editable_text.insert_text(&str),
-                TextEdit::Backspace => editable_text.backspace(),
-                TextEdit::Delete => editable_text.delete(),
-                TextEdit::Clear => editable_text.clear(),
-                TextEdit::MoveCursorRight => editable_text.move_cursor_right(),
-                TextEdit::MoveCursorLeft => editable_text.move_cursor_left(),
+                TextEdit::Backspace => editable_text.backspace(&mut font_system.0),
+                TextEdit::Delete => editable_text.delete(&mut font_system.0),
+                TextEdit::Clear => editable_text.clear(&mut font_system.0),
+                TextEdit::MoveCursorRight => editable_text.move_cursor_right(&mut font_system.0),
+                TextEdit::MoveCursorLeft => editable_text.move_cursor_left(&mut font_system.0),
             }
         }
     }
