@@ -175,6 +175,11 @@ impl EditableText {
         self.editor.set_cursor(new_cursor);
     }
 
+    /// Queue a [`TextEdit`] action to be applied later by the [`apply_text_edits`] system.
+    pub fn queue_edit(&mut self, edit: TextEdit) {
+        self.pending_edits.push_back(edit);
+    }
+
     /// Sets the entire text input to the given string, replacing any existing content.
     pub fn set_input(&mut self, text: &str, font_system: &mut FontSystem) {
         self.clear(font_system);
@@ -323,41 +328,35 @@ pub fn process_text_inputs(
                 state: bevy_input::ButtonState::Pressed,
                 ..
             } => {
-                editable_text
-                    .pending_edits
-                    .push_back(TextEdit::Insert(c.clone()));
+                editable_text.queue_edit(TextEdit::Insert(c.clone()));
             }
             KeyboardInput {
                 logical_key: Key::Backspace,
                 state: bevy_input::ButtonState::Pressed,
                 ..
             } => {
-                editable_text.pending_edits.push_back(TextEdit::Backspace);
+                editable_text.queue_edit(TextEdit::Backspace);
             }
             KeyboardInput {
                 logical_key: Key::Delete,
                 state: bevy_input::ButtonState::Pressed,
                 ..
             } => {
-                editable_text.pending_edits.push_back(TextEdit::Delete);
+                editable_text.queue_edit(TextEdit::Delete);
             }
             KeyboardInput {
                 logical_key: Key::ArrowRight,
                 state: bevy_input::ButtonState::Pressed,
                 ..
             } => {
-                editable_text
-                    .pending_edits
-                    .push_back(TextEdit::MoveCursorRight);
+                editable_text.queue_edit(TextEdit::MoveCursorRight);
             }
             KeyboardInput {
                 logical_key: Key::ArrowLeft,
                 state: bevy_input::ButtonState::Pressed,
                 ..
             } => {
-                editable_text
-                    .pending_edits
-                    .push_back(TextEdit::MoveCursorLeft);
+                editable_text.queue_edit(TextEdit::MoveCursorLeft);
             }
             _ => {}
         }
