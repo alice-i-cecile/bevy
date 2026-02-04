@@ -275,6 +275,22 @@ pub enum TextEdit {
     MoveCursorLeft,
 }
 
+impl TextEdit {
+    /// Should relayout be performed after applying this edit?
+    ///
+    /// This is true for edits which may affect the text layout,
+    /// such as inserting or deleting characters.
+    ///
+    /// It is false for cursor movements, which do not affect layout.
+    pub fn requires_relayout(&self) -> bool {
+        match self {
+            TextEdit::Insert(_) => true,
+            TextEdit::Backspace | TextEdit::Delete | TextEdit::Clear => true,
+            TextEdit::MoveCursorRight | TextEdit::MoveCursorLeft => false,
+        }
+    }
+}
+
 /// System that processes keyboard input events into text edit actions for focused [`EditableText`] widgets.
 ///
 /// See [`EditableText`] for more details on the standard mapping from keyboard events to text edit actions
@@ -349,12 +365,20 @@ pub fn process_text_inputs(
 }
 
 /// Applies pending text edit actions to all [`EditableText`] widgets.
+///
+/// Note that relayout is performed between each operation (for operations which may affect layout),
+/// ensuring that inputs stay responsive even when multiple edits are queued up.
+/// This is particularly important when the application is running at a low frame rate.
 pub fn apply_text_edits(
     mut query: Query<&mut EditableText>,
     mut font_system: ResMut<CosmicFontSystem>,
 ) {
     for mut editable_text in query.iter_mut() {
         while let Some(edit) = editable_text.pending_edits.pop_front() {
+            // Determine if relayout is needed before we apply the edit,
+            // as values are moved out of `edit` below.
+            let requires_relayout = edit.requires_relayout();
+
             match edit {
                 TextEdit::Insert(str) => editable_text.insert_text(&str),
                 TextEdit::Backspace => editable_text.backspace(&mut font_system.0),
@@ -362,6 +386,10 @@ pub fn apply_text_edits(
                 TextEdit::Clear => editable_text.clear(&mut font_system.0),
                 TextEdit::MoveCursorRight => editable_text.move_cursor_right(&mut font_system.0),
                 TextEdit::MoveCursorLeft => editable_text.move_cursor_left(&mut font_system.0),
+            }
+
+            if requires_relayout {
+                todo!("Perform relayout after text edit"); // @Ickshonpe how do I do this?
             }
         }
     }
