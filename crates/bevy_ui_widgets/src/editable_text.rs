@@ -184,7 +184,7 @@ impl EditableText {
     /// Applies a [`cosmic_text::Motion`] to the cursor.
     ///
     /// This includes operations such as moving left/right, to start/end of line, etc.
-    pub fn apply_motion(&mut self, motion: Motion, font_system: &mut FontSystem) {
+    pub fn apply_cursor_motion(&mut self, motion: Motion, font_system: &mut FontSystem) {
         let cursor = self.editor.cursor();
 
         let output = self
@@ -214,12 +214,12 @@ impl EditableText {
 
     /// Moves the cursor one position to the right.
     pub fn move_cursor_right(&mut self, font_system: &mut FontSystem) {
-        self.apply_motion(Motion::Right, font_system);
+        self.apply_cursor_motion(Motion::Right, font_system);
     }
 
     /// Moves the cursor one position to the left.
     pub fn move_cursor_left(&mut self, font_system: &mut FontSystem) {
-        self.apply_motion(Motion::Left, font_system);
+        self.apply_cursor_motion(Motion::Left, font_system);
     }
 
     /// Clears the current input and resets the cursor position.
