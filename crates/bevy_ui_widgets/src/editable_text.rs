@@ -111,6 +111,8 @@ pub struct EditableText {
     ///
     /// This stores an owned [`Buffer`] with a 'static` lifetime, as Bevy ECS components must be `'static`.
     /// This also stores a [`Cursor`](cosmic_text::Cursor) internally.
+    // This cannot hold a BufferRef::Borrowed pointing to the `Buffer`
+    // inside of `ComputedTextBlock`, because that would require a non-'static lifetime.
     pub editor: Editor<'static>,
     /// Text edit actions that have been requested but not yet applied.
     ///
