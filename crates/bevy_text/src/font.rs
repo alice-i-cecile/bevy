@@ -15,6 +15,7 @@ use smol_str::SmolStr;
 
 use crate::ComputedTextBlock;
 use crate::CosmicFontSystem;
+use crate::EditableText;
 
 /// An [`Asset`] that contains the data for a loaded font, if loaded as an asset.
 ///
@@ -57,6 +58,7 @@ pub fn load_font_assets_into_fontdb_system(
     mut events: MessageReader<AssetEvent<Font>>,
     mut cosmic_font_system: ResMut<CosmicFontSystem>,
     mut text_block_query: Query<&mut ComputedTextBlock>,
+    mut editable_text_query: Query<&mut EditableText>,
 ) {
     let mut new_fonts_added = false;
     let font_system = &mut cosmic_font_system.0;
@@ -87,6 +89,10 @@ pub fn load_font_assets_into_fontdb_system(
     if new_fonts_added {
         for mut block in text_block_query.iter_mut() {
             block.needs_rerender = true;
+        }
+
+        for mut editable_text in editable_text_query.iter_mut() {
+            editable_text.needs_rerender = true;
         }
     }
 }

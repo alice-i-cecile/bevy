@@ -100,13 +100,20 @@ pub struct EditableText {
     ///
     /// This stores an owned [`Buffer`] with a 'static` lifetime, as Bevy ECS components must be `'static`.
     /// This also stores a [`Cursor`](cosmic_text::Cursor) internally.
-    // This cannot hold a BufferRef::Borrowed pointing to the `Buffer`
-    // inside of `ComputedTextBlock`, because that would require a non-'static lifetime.
+    ///
+    /// This serves as an analogue to [`ComputedTextBlock`](crate::ComputedTextBlock) for editable text,
+    /// We cannot simply hold a BufferRef::Borrowed pointing to the [`Buffer`] inside of
+    /// that component, because that would require a non-'static lifetime,
+    /// making this type unusable as a component.
     pub editor: Editor<'static>,
     /// Text edit actions that have been requested but not yet applied.
     ///
     /// These edits are processed in first-in, first-out order.
     pub pending_edits: VecDeque<TextEdit>,
+    /// Does the contained text buffer need rerendering / relayout?
+    ///
+    /// Analogous to [`ComputedTextBlock::needs_rerender`](crate::ComputedTextBlock::needs_rerender).
+    pub needs_rerender: bool,
 }
 
 impl Default for EditableText {
@@ -117,6 +124,7 @@ impl Default for EditableText {
             // Defaults selected to match `Text::default()`
             editor: Editor::new(BufferRef::Owned(buffer)),
             pending_edits: VecDeque::new(),
+            needs_rerender: true,
         }
     }
 }
