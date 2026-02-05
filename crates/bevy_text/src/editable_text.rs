@@ -113,7 +113,11 @@ pub struct EditableText {
     /// Does the contained text buffer need rerendering / relayout?
     ///
     /// Analogous to [`ComputedTextBlock::needs_rerender`](crate::ComputedTextBlock::needs_rerender).
-    pub needs_rerender: bool,
+    pub(crate) needs_rerender: bool,
+    /// Does the text use `rem` sizes that depend on the base font size?
+    pub(crate) uses_rem_sizes: bool,
+    /// Does the text use `vw` / `vh` sizes that depend on the viewport size?
+    pub(crate) uses_viewport_sizes: bool,
 }
 
 impl Default for EditableText {
@@ -125,6 +129,8 @@ impl Default for EditableText {
             editor: Editor::new(BufferRef::Owned(buffer)),
             pending_edits: VecDeque::new(),
             needs_rerender: true,
+            uses_rem_sizes: false,
+            uses_viewport_sizes: false,
         }
     }
 }

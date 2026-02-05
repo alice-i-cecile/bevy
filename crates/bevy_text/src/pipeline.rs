@@ -11,9 +11,10 @@ use bevy_math::{Rect, UVec2, Vec2};
 use bevy_reflect::{std_traits::ReflectDefault, Reflect};
 
 use crate::{
-    add_glyph_to_atlas, error::TextError, get_glyph_atlas_info, ComputedTextBlock, Font,
-    FontAtlasKey, FontAtlasSet, FontHinting, FontSmoothing, FontSource, FontStyle, FontWeight,
-    Justify, LineBreak, LineHeight, PositionedGlyph, TextBounds, TextEntity, TextFont, TextLayout,
+    add_glyph_to_atlas, error::TextError, get_glyph_atlas_info, ComputedTextBlock, EditableText,
+    Font, FontAtlasKey, FontAtlasSet, FontHinting, FontSmoothing, FontSource, FontStyle,
+    FontWeight, Justify, LineBreak, LineHeight, PositionedGlyph, TextBounds, TextEntity, TextFont,
+    TextLayout,
 };
 use cosmic_text::{Attrs, Buffer, Family, Metrics, Shaping, Wrap};
 
@@ -155,6 +156,8 @@ impl TextPipeline {
     /// Typically, these values are sourced from ECS values, such as the [`TextLayout`] component.
     ///
     /// Negative or 0.0 font sizes will not be laid out.
+    ///
+    /// See [`TextPipeline::update_editable_buffer`] for an [`EditableText`] specific version of this method.
     pub fn update_buffer<'a>(
         &mut self,
         fonts: &Assets<Font>,
@@ -305,10 +308,156 @@ impl TextPipeline {
         result
     }
 
+    /// An [`EditableText`] specific version of [`update_buffer`](Self::update_buffer).
+    pub fn update_editable_buffer<'a>(
+        &mut self,
+        fonts: &Assets<Font>,
+        text_spans: impl Iterator<Item = (Entity, usize, &'a str, &'a TextFont, Color, LineHeight)>,
+        linebreak: LineBreak,
+        justify: Justify,
+        bounds: TextBounds,
+        scale_factor: f32,
+        editable: &mut EditableText,
+        font_system: &mut CosmicFontSystem,
+        hinting: FontHinting,
+        logical_viewport_size: Vec2,
+        base_rem_size: f32,
+    ) -> Result<(), TextError> {
+        editable.needs_rerender = false;
+        editable.uses_rem_sizes = false;
+        editable.uses_viewport_sizes = false;
+
+        if scale_factor <= 0.0 {
+            warn_once!("Text scale factor is <= 0.0. No text will be displayed.",);
+
+            return Err(TextError::DegenerateScaleFactor);
+        }
+
+        let font_system = &mut font_system.0;
+
+        // Collect section information into a vec. This is necessary because font loading requires mut access
+        // to FontSystem, which the cosmic-text Buffer also needs.
+        let mut sections: Vec<(&str, Attrs)> =
+            core::mem::take(&mut self.editable_text_sections_buffer)
+                .into_iter()
+                .map(|_| -> (&str, Attrs) { unreachable!() })
+                .collect();
+
+        let result = {
+            for (span_index, (entity, _depth, span, text_font, _color, line_height)) in
+                text_spans.enumerate()
+            {
+                match text_font.font_size {
+                    crate::FontSize::Vw(_)
+                    | crate::FontSize::Vh(_)
+                    | crate::FontSize::VMin(_)
+                    | crate::FontSize::VMax(_) => editable.uses_viewport_sizes = true,
+                    crate::FontSize::Rem(_) => editable.uses_rem_sizes = true,
+                    _ => (),
+                };
+
+                if span.is_empty() {
+                    continue;
+                }
+
+                let family: Family = match &text_font.font {
+                    FontSource::Handle(handle) => {
+                        let font = fonts.get(handle.id()).ok_or(TextError::NoSuchFont)?;
+                        Family::Name(font.family_name.as_str())
+                    }
+                    FontSource::Family(family) => Family::Name(family.as_str()),
+                    FontSource::Serif => Family::Serif,
+                    FontSource::SansSerif => Family::SansSerif,
+                    FontSource::Cursive => Family::Cursive,
+                    FontSource::Fantasy => Family::Fantasy,
+                    FontSource::Monospace => Family::Monospace,
+                };
+
+                let font_size = text_font
+                    .font_size
+                    .eval(logical_viewport_size, base_rem_size);
+
+                // Save spans that aren't zero-sized.
+                if font_size <= 0.0 {
+                    warn_once!(
+                        "Text span {entity} has a font size <= 0.0. Nothing will be displayed.",
+                    );
+
+                    continue;
+                }
+
+                const WARN_FONT_SIZE: f32 = 1000.0;
+                if font_size > WARN_FONT_SIZE {
+                    warn_once!(
+                        "Text span {entity} has an excessively large font size ({} with scale factor {}). \
+                        Extremely large font sizes will cause performance issues with font atlas \
+                        generation and high memory usage.",
+                        font_size,
+                        scale_factor,
+                    );
+                }
+
+                let attrs = get_attrs(
+                    span_index,
+                    text_font,
+                    font_size,
+                    line_height,
+                    family,
+                    scale_factor,
+                );
+
+                sections.push((span, attrs));
+            }
+
+            // Update the Cosmic Text buffer.
+            let cosmic_buffer = editable.buffer_mut();
+
+            // Set the metrics hinting strategy
+            cosmic_buffer.set_hinting(font_system, hinting.into());
+
+            cosmic_buffer.set_wrap(
+                font_system,
+                match linebreak {
+                    LineBreak::WordBoundary => Wrap::Word,
+                    LineBreak::AnyCharacter => Wrap::Glyph,
+                    LineBreak::WordOrCharacter => Wrap::WordOrGlyph,
+                    LineBreak::NoWrap => Wrap::None,
+                },
+            );
+
+            cosmic_buffer.set_rich_text(
+                font_system,
+                sections.drain(..),
+                &Attrs::new(),
+                Shaping::Advanced,
+                Some(justify.into()),
+            );
+
+            // Workaround for alignment not working for unbounded text.
+            // See https://github.com/pop-os/cosmic-text/issues/343
+            let width = (bounds.width.is_none() && justify != Justify::Left)
+                .then(|| buffer_dimensions(cosmic_buffer).x)
+                .or(bounds.width);
+            cosmic_buffer.set_size(font_system, width, bounds.height);
+            Ok(())
+        };
+
+        // Recover the sections buffer.
+        sections.clear();
+        self.editable_text_sections_buffer = sections
+            .into_iter()
+            .map(|_| -> (&'static str, Attrs<'static>) { unreachable!() })
+            .collect();
+
+        result
+    }
+
     /// Queues text for measurement
     ///
     /// Produces a [`TextMeasureInfo`] which can be used by a layout system
     /// to measure the text area on demand.
+    ///
+    /// See [`TextPipeline::create_editable_text_measure`] for an [`EditableText`] specific version of this method.
     pub fn create_text_measure<'a>(
         &mut self,
         entity: Entity,
@@ -343,6 +492,56 @@ impl TextPipeline {
         )?;
 
         let buffer = &mut computed.buffer;
+        let min_width_content_size = buffer_dimensions(buffer);
+
+        let max_width_content_size = {
+            let font_system = &mut font_system.0;
+            buffer.set_size(font_system, None, None);
+            buffer_dimensions(buffer)
+        };
+
+        Ok(TextMeasureInfo {
+            min: min_width_content_size,
+            max: max_width_content_size,
+            entity,
+        })
+    }
+
+    /// An [`EditableText`] specific version of [`create_text_measure`](Self::create_text_measure).
+    pub fn create_editable_text_measure<'a>(
+        &mut self,
+        entity: Entity,
+        fonts: &Assets<Font>,
+        text_spans: impl Iterator<Item = (Entity, usize, &'a str, &'a TextFont, Color, LineHeight)>,
+        scale_factor: f32,
+        layout: &TextLayout,
+        editable: &mut EditableText,
+        font_system: &mut CosmicFontSystem,
+        hinting: FontHinting,
+        logical_viewport_size: Vec2,
+        base_rem_size: f32,
+    ) -> Result<TextMeasureInfo, TextError> {
+        const MIN_WIDTH_CONTENT_BOUNDS: TextBounds = TextBounds::new_horizontal(0.0);
+
+        // Clear this here at the focal point of measured text rendering to ensure the field's lifecycle has
+        // strong boundaries.
+        editable.needs_rerender = false;
+
+        self.update_editable_buffer(
+            fonts,
+            text_spans,
+            layout.linebreak,
+            layout.justify,
+            MIN_WIDTH_CONTENT_BOUNDS,
+            scale_factor,
+            editable,
+            font_system,
+            hinting,
+            logical_viewport_size,
+            base_rem_size,
+        )?;
+
+        let buffer = editable.buffer_mut();
         let min_width_content_size = buffer_dimensions(buffer);
 
         let max_width_content_size = {
@@ -470,6 +669,141 @@ impl TextPipeline {
                             &mut swash_cache.0,
                             layout_glyph,
                             font_smoothing,
+                        )
+                    })?;
+
+                let texture_atlas = texture_atlases.get(atlas_info.texture_atlas).unwrap();
+                let location = atlas_info.location;
+                let glyph_rect = texture_atlas.textures[location.glyph_index];
+                let left = location.offset.x as f32;
+                let top = location.offset.y as f32;
+                let glyph_size = UVec2::new(glyph_rect.width(), glyph_rect.height());
+
+                // offset by half the size because the origin is center
+                let x = glyph_size.x as f32 / 2.0 + left + physical_glyph.x as f32;
+                let y =
+                    run.line_y.round() + physical_glyph.y as f32 - top + glyph_size.y as f32 / 2.0;
+
+                let position = Vec2::new(x, y);
+
+                let pos_glyph = PositionedGlyph {
+                    position,
+                    size: glyph_size.as_vec2(),
+                    atlas_info,
+                    span_index,
+                    byte_index: layout_glyph.start,
+                    byte_length: layout_glyph.end - layout_glyph.start,
+                    line_index: run.line_i,
+                };
+                layout_info.glyphs.push(pos_glyph);
+            }
+
+            if let Some(run_geometry) = maybe_run_geometry.take() {
+                layout_info.run_geometry.push(run_geometry);
+            }
+        }
+
+        layout_info.size = box_size.ceil();
+        Ok(())
+    }
+
+    /// An [`EditableText`] specific version of [`update_text_layout_info`](Self::update_text_layout_info).
+    pub fn update_editable_text_layout_info<'a>(
+        &mut self,
+        layout_info: &mut TextLayoutInfo,
+        font_atlas_set: &mut FontAtlasSet,
+        texture_atlases: &mut Assets<TextureAtlasLayout>,
+        textures: &mut Assets<Image>,
+        editable: &mut EditableText,
+        font_system: &mut CosmicFontSystem,
+        swash_cache: &mut SwashCache,
+        bounds: TextBounds,
+        justify: Justify,
+    ) -> Result<(), TextError> {
+        editable.needs_rerender = false;
+
+        layout_info.clear();
+
+        let buffer = editable.buffer_mut();
+
+        // Workaround for alignment not working for unbounded text.
+        // See https://github.com/pop-os/cosmic-text/issues/343
+        let width = (bounds.width.is_none() && justify != Justify::Left)
+            .then(|| buffer_dimensions(buffer).x)
+            .or(bounds.width);
+        buffer.set_size(font_system, width, bounds.height);
+        let mut box_size = Vec2::ZERO;
+
+        for run in buffer.layout_runs() {
+            box_size.x = box_size.x.max(run.line_w);
+            box_size.y += run.line_height;
+            let mut maybe_run_geometry: Option<RunGeometry> = None;
+            let mut end: f32 = 0.;
+
+            for layout_glyph in run.glyphs {
+                if maybe_run_geometry
+                    .as_ref()
+                    .is_some_and(|run_geometry| run_geometry.span_index != layout_glyph.metadata)
+                {
+                    layout_info
+                        .run_geometry
+                        .push(maybe_run_geometry.take().unwrap());
+                }
+
+                if maybe_run_geometry.is_none() {
+                    let metrics = font_system
+                        .get_font(layout_glyph.font_id, layout_glyph.font_weight)
+                        .ok_or(TextError::NoSuchFont)?
+                        .as_swash()
+                        .metrics(&[]);
+
+                    let scalar = layout_glyph.font_size / metrics.units_per_em as f32;
+                    let stroke_size = (metrics.stroke_size * scalar).round().max(1.);
+                    let start = end.max(layout_glyph.x);
+
+                    maybe_run_geometry = Some(RunGeometry {
+                        span_index: layout_glyph.metadata,
+                        bounds: Rect::new(
+                            start,
+                            run.line_top,
+                            start,
+                            run.line_top + run.line_height,
+                        ),
+                        strikethrough_y: (run.line_y - metrics.strikeout_offset * scalar).round(),
+                        strikethrough_thickness: stroke_size,
+                        underline_y: (run.line_y - metrics.underline_offset * scalar).round(),
+                        underline_thickness: stroke_size,
+                    });
+                }
+
+                end = layout_glyph.x + layout_glyph.w;
+                maybe_run_geometry.as_mut().unwrap().bounds.max.x = end;
+
+                let span_index = layout_glyph.metadata;
+
+                let physical_glyph = layout_glyph.physical((0., 0.), 1.);
+
+                let font_atlases = font_atlas_set
+                    .entry(FontAtlasKey {
+                        id: physical_glyph.cache_key.font_id,
+                        font_size_bits: physical_glyph.cache_key.font_size_bits,
+                        // TODO: EditableText is currently always anti-aliased, as `EditableText` does
+                        // not support multiple entities currently
+                        font_smoothing: FontSmoothing::AntiAliased,
+                    })
+                    .or_default();
+
+                let atlas_info = get_glyph_atlas_info(font_atlases, physical_glyph.cache_key)
+                    .map(Ok)
+                    .unwrap_or_else(|| {
+                        add_glyph_to_atlas(
+                            font_atlases,
+                            texture_atlases,
+                            textures,
+                            &mut font_system.0,
+                            &mut swash_cache.0,
+                            layout_glyph,
+                            FontSmoothing::AntiAliased,
                         )
                     })?;
 
