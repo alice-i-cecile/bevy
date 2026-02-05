@@ -135,7 +135,7 @@ impl Default for SwashCache {
     }
 }
 
-/// The `TextPipeline` is used to layout and render text blocks (see `Text`/`Text2d`).
+/// The [`TextPipeline`] is used to layout and render text blocks (see `Text`/`Text2d`).
 ///
 /// See the [crate-level documentation](crate) for more information.
 #[derive(Default, Resource)]
@@ -143,7 +143,9 @@ pub struct TextPipeline {
     /// Buffered vec for collecting text sections.
     ///
     /// See [this dark magic](https://users.rust-lang.org/t/how-to-cache-a-vectors-capacity/94478/10).
-    sections_buffer: Vec<(&'static str, Attrs<'static>)>,
+    text_sections_buffer: Vec<(&'static str, Attrs<'static>)>,
+    /// Buffer vec for collecting editable text sections.
+    editable_text_sections_buffer: Vec<(&'static str, Attrs<'static>)>,
 }
 
 impl TextPipeline {
@@ -182,7 +184,7 @@ impl TextPipeline {
 
         // Collect section information into a vec. This is necessary because font loading requires mut access
         // to FontSystem, which the cosmic-text Buffer also needs.
-        let mut sections: Vec<(&str, Attrs)> = core::mem::take(&mut self.sections_buffer)
+        let mut sections: Vec<(&str, Attrs)> = core::mem::take(&mut self.text_sections_buffer)
             .into_iter()
             .map(|_| -> (&str, Attrs) { unreachable!() })
             .collect();
@@ -295,7 +297,7 @@ impl TextPipeline {
 
         // Recover the sections buffer.
         sections.clear();
-        self.sections_buffer = sections
+        self.text_sections_buffer = sections
             .into_iter()
             .map(|_| -> (&'static str, Attrs<'static>) { unreachable!() })
             .collect();
