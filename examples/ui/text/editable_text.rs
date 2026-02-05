@@ -9,14 +9,14 @@
 use bevy::input_focus::{InputDispatchPlugin, InputFocus};
 use bevy::prelude::*;
 use bevy::text::CosmicFontSystem;
-use bevy::ui_widgets::editable_text::{EditableText, EditableTextPlugin};
+use bevy::ui_widgets::editable_text::{EditableText, EditableTextInputPlugin};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins((
             // This is also part of UiWidgetsPlugins, but we only need EditableText for this example
-            EditableTextPlugin,
+            EditableTextInputPlugin,
             // Input focus is required to direct keyboard input to the correct EditableText
             InputDispatchPlugin,
         ))
