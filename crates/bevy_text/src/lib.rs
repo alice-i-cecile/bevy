@@ -32,6 +32,7 @@
 extern crate alloc;
 
 mod bounds;
+mod editable_text;
 mod error;
 mod font;
 mod font_atlas;
@@ -45,6 +46,7 @@ mod text_access;
 
 use bevy_asset::AssetEventSystems;
 pub use bounds::*;
+pub use editable_text::*;
 pub use error::*;
 pub use font::*;
 pub use font_atlas::*;
@@ -87,6 +89,10 @@ pub struct TextPlugin;
 #[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub struct Text2dUpdateSystems;
 
+/// System set where [`EditableText::pending_edits`] are applied.
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
+pub struct EditableTextSystems;
+
 impl Plugin for TextPlugin {
     fn build(&self, app: &mut App) {
         app.init_asset::<Font>()
@@ -102,7 +108,8 @@ impl Plugin for TextPlugin {
                 PostUpdate,
                 load_font_assets_into_font_collection.after(AssetEventSystems),
             )
-            .add_systems(Last, trim_source_cache);
+            .add_systems(Last, trim_source_cache)
+            .add_systems(PostUpdate, apply_text_edits.in_set(EditableTextSystems));
 
         #[cfg(feature = "default_font")]
         {

@@ -35,6 +35,7 @@ mod layout;
 mod stack;
 mod ui_node;
 
+use bevy_text::EditableTextSystems;
 pub use focus::*;
 pub use geometry::*;
 pub use gradients::*;
@@ -271,4 +272,7 @@ fn build_text_interop(app: &mut App) {
         PostUpdate,
         AmbiguousWithUpdateText2dLayout.ambiguous_with(bevy_sprite::update_text2d_layout),
     );
+
+    // We cannot set this up in bevy_text as this would create a circular dependency between bevy_ui and bevy_text
+    app.configure_sets(PostUpdate, EditableTextSystems.in_set(UiSystems::Prepare));
 }
