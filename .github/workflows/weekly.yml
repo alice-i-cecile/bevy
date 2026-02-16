@@ -18,7 +18,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@beta
       - name: Install Linux dependencies
         uses: ./.github/actions/install-linux-deps
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@beta
         with:
           components: rustfmt, clippy
@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 30
     needs: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@beta
       - name: Install Linux dependencies
         uses: ./.github/actions/install-linux-deps
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@beta
       - name: Install Linux dependencies
         uses: ./.github/actions/install-linux-deps
