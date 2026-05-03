@@ -407,7 +407,7 @@ bevy_ui_widgets = ["bevy_internal/bevy_ui_widgets"]
 bevy_settings = ["bevy_internal/bevy_settings"]
 
 # Feathers widget collection.
-experimental_bevy_feathers = ["bevy_internal/bevy_feathers", "bevy_ui_widgets"]
+bevy_feathers = ["bevy_internal/bevy_feathers", "bevy_ui_widgets"]
 
 # Enable passthrough loading for SPIR-V shaders (Only supported on Vulkan, shader capabilities and extensions must agree with the platform implementation)
 spirv_shader_passthrough = ["bevy_internal/spirv_shader_passthrough"]
@@ -4092,7 +4092,7 @@ doc-scrape-examples = true
 name = "UI Scaling"
 description = "Illustrates how to scale the UI"
 category = "UI (User Interface)"
-wasm = true
+wasm = truebevy_feathers
 
 [[example]]
 name = "ui_texture_atlas"
@@ -5428,7 +5428,7 @@ required-features = ["experimental_bevy_feathers"]
 [package.metadata.example.feathers_gallery]
 name = "Feathers Widgets"
 description = "Gallery of Feathers Widgets"
-category = "UI (User Interface)"
+category = "UI (User Ibevy_feathers
 wasm = true
 
 [[example]]
@@ -5440,7 +5440,7 @@ doc-scrape-examples = true
 name = "Render Depth to Texture"
 description = "Demonstrates how to use depth-only cameras"
 category = "Shaders"
-wasm = true
+wasm = truebevy_feathers
 
 [[example]]
 name = "pan_camera_controller"
