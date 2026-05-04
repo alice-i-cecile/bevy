@@ -1954,4 +1954,29 @@ mod tests {
 
         b();
     }
+
+    // Regression test for https://github.com/bevyengine/bevy/issues/24050
+    // Bug is rust-analyzer specific?! An "Expected Expr" error is flagged in the IDE
+    #[test]
+    fn negative_numbers_in_bsn() {
+        let mut app = test_app();
+        let world = app.world_mut();
+
+        #[derive(Component, FromTemplate, PartialEq, Eq, Debug)]
+        struct Foo {
+            x: i32,
+        }
+
+        fn scene() -> impl Scene {
+            bsn! {
+                Foo { x: -42 }
+            }
+        }
+
+        let id = world.spawn_scene(scene()).unwrap().id();
+        let root = world.entity(id);
+
+        let foo = root.get::<Foo>().unwrap();
+        assert_eq!(Foo { x: -42 }, *foo);
+    }
 }
