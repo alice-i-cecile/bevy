@@ -1077,12 +1077,22 @@ impl<'w> EntityWorldMut<'w> {
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
     ) -> &mut Self {
-        if let Err(error) =
-            self.try_insert_with_caller(bundle, mode, caller, relationship_hook_mode)
-        {
-            self.world
-                .report_required_template_error(error, DebugName::type_name::<T>());
-        }
+        self.insert_with(
+            bundle,
+            mode,
+            caller,
+            relationship_hook_mode,
+            (),
+            |entity, bundle_id, bundle| {
+                entity.insert_with_required_templates_or_report(
+                    bundle_id,
+                    bundle,
+                    mode,
+                    caller,
+                    relationship_hook_mode,
+                );
+            },
+        );
         self
     }
 
@@ -1097,6 +1107,37 @@ impl<'w> EntityWorldMut<'w> {
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
     ) -> Result {
+        self.insert_with(
+            bundle,
+            mode,
+            caller,
+            relationship_hook_mode,
+            Ok(()),
+            |entity, bundle_id, bundle| {
+                entity.insert_with_required_templates(
+                    bundle_id,
+                    bundle,
+                    mode,
+                    caller,
+                    relationship_hook_mode,
+                )
+            },
+        )
+    }
+
+    /// Inserts `bundle` and returns `inserted`, or calls `with_required_templates` if it needs required templates.
+    ///
+    /// This lets [`Self::insert_with_caller`] skip building and checking a [`Result`] when nothing can fail.
+    #[inline(always)]
+    fn insert_with<T: Bundle, R>(
+        &mut self,
+        bundle: MovingPtr<'_, T>,
+        mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+        inserted: R,
+        with_required_templates: impl FnOnce(&mut Self, BundleId, MovingPtr<'_, T>) -> R,
+    ) -> R {
         let location = self.location();
         let change_tick = self.world.change_tick();
         let bundle_id = self.world.register_bundle_info::<T>();
@@ -1106,13 +1147,7 @@ impl<'w> EntityWorldMut<'w> {
         let Ok(mut bundle_inserter) = (unsafe {
             BundleInserter::new_with_id(self.world, location.archetype_id, bundle_id, change_tick)
         }) else {
-            return self.insert_with_required_templates(
-                bundle_id,
-                bundle,
-                mode,
-                caller,
-                relationship_hook_mode,
-            );
+            return with_required_templates(self, bundle_id, bundle);
         };
         // SAFETY:
         // - `location` matches current entity and thus must currently exist in the source
@@ -1139,7 +1174,7 @@ impl<'w> EntityWorldMut<'w> {
         // - This is called exactly once after the `BundleInsert::insert` call before returning to safe code.
         // - `bundle` points to the same `B` that `BundleInsert::insert` was called on.
         unsafe { T::apply_effect(bundle, self) };
-        Ok(())
+        inserted
     }
 
     /// Inserts a dynamic [`Component`] into the entity.
@@ -1429,6 +1464,29 @@ impl<'w> EntityWorldMut<'w> {
             unsafe { T::apply_effect(bundle, self) };
         }
         result
+    }
+
+    /// Like [`Self::insert_with_required_templates`], but reports errors to the world's fallback error handler.
+    #[cold]
+    #[inline(never)]
+    fn insert_with_required_templates_or_report<T: Bundle>(
+        &mut self,
+        bundle_id: BundleId,
+        bundle: MovingPtr<'_, T>,
+        mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) {
+        if let Err(error) = self.insert_with_required_templates(
+            bundle_id,
+            bundle,
+            mode,
+            caller,
+            relationship_hook_mode,
+        ) {
+            self.world
+                .report_required_template_error(error, DebugName::type_name::<T>());
+        }
     }
 
     /// Like [`Self::insert_with_required_templates`], for components that are passed by pointer.
