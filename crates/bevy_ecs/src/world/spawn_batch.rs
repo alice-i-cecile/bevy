@@ -1,4 +1,4 @@
-use bevy_ptr::move_as_ptr;
+use bevy_ptr::{move_as_ptr, MovingPtr};
 
 use crate::{
     bundle::{Bundle, BundleSpawner, NoBundleEffect},
@@ -93,6 +93,21 @@ where
     }
 }
 
+impl<I> SpawnBatchIter<'_, I>
+where
+    I: Iterator,
+    I::Item: Bundle<Effect: NoBundleEffect>,
+{
+    #[cold]
+    #[inline(never)]
+    fn spawn_with_required_templates(&mut self, bundle: MovingPtr<'_, I::Item>) -> Entity {
+        let SpawnBatchMode::RequiredTemplates(world) = &mut self.mode else {
+            unreachable!();
+        };
+        world.spawn_with_caller(bundle, self.caller).id()
+    }
+}
+
 impl<I> Iterator for SpawnBatchIter<'_, I>
 where
     I: Iterator,
@@ -103,11 +118,8 @@ where
     fn next(&mut self) -> Option<Entity> {
         let bundle = self.inner.next()?;
         move_as_ptr!(bundle);
-        let (spawner, allocator) = match &mut self.mode {
-            SpawnBatchMode::Batched { spawner, allocator } => (spawner, allocator),
-            SpawnBatchMode::RequiredTemplates(world) => {
-                return Some(world.spawn_with_caller(bundle, self.caller).id());
-            }
+        let SpawnBatchMode::Batched { spawner, allocator } = &mut self.mode else {
+            return Some(self.spawn_with_required_templates(bundle));
         };
         Some(if let Some(bulk) = allocator.next() {
             // SAFETY:

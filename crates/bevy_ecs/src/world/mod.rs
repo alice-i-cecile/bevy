@@ -1196,6 +1196,8 @@ impl World {
 
     /// Spawns an empty entity, then inserts `bundle`, building its required templates first.
     /// If that fails, the entity is despawned.
+    #[cold]
+    #[inline(never)]
     fn spawn_at_with_required_templates<B: Bundle>(
         &mut self,
         entity: Entity,
@@ -2662,18 +2664,7 @@ impl World {
 
         // SAFETY: the bundle was just registered
         if unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
-            for (entity, bundle) in batch {
-                if let Err(err) = self.entities().get_spawned(entity) {
-                    panic!("error[B0003]: Could not insert a bundle (of type `{}`) for entity {entity} because: {err}. See: https://bevyengine.org/learn/errors/b0003", core::any::type_name::<B>());
-                }
-                move_as_ptr!(bundle);
-                self.entity_mut(entity).insert_with_caller(
-                    bundle,
-                    insert_mode,
-                    caller,
-                    RelationshipHookMode::Run,
-                );
-            }
+            self.insert_batch_with_required_templates(batch, insert_mode, caller, true);
             return;
         }
 
@@ -2797,6 +2788,44 @@ impl World {
         self.try_insert_batch_with_caller(batch, InsertMode::Keep, MaybeLocation::caller())
     }
 
+    /// The slow path of the batch inserts, used when the bundle has required templates.
+    /// Inserts one entity at a time, and returns the entities that do not exist.
+    ///
+    /// # Panics
+    ///
+    /// If `panic_on_invalid` is set, panics on the first entity that does not exist.
+    #[cold]
+    #[inline(never)]
+    fn insert_batch_with_required_templates<I, B>(
+        &mut self,
+        batch: I,
+        insert_mode: InsertMode,
+        caller: MaybeLocation,
+        panic_on_invalid: bool,
+    ) -> Vec<Entity>
+    where
+        I: IntoIterator,
+        I::IntoIter: Iterator<Item = (Entity, B)>,
+        B: Bundle<Effect: NoBundleEffect>,
+    {
+        let mut invalid_entities = Vec::new();
+        for (entity, bundle) in batch {
+            let mut entity_mut = match self.get_entity_mut(entity) {
+                Ok(entity_mut) => entity_mut,
+                Err(err) if panic_on_invalid => {
+                    panic!("error[B0003]: Could not insert a bundle (of type `{}`) for entity {entity} because: {err}. See: https://bevyengine.org/learn/errors/b0003", core::any::type_name::<B>());
+                }
+                Err(_) => {
+                    invalid_entities.push(entity);
+                    continue;
+                }
+            };
+            move_as_ptr!(bundle);
+            entity_mut.insert_with_caller(bundle, insert_mode, caller, RelationshipHookMode::Run);
+        }
+        invalid_entities
+    }
+
     /// Split into a new function so we can differentiate the calling location.
     ///
     /// This can be called by:
@@ -2830,19 +2859,8 @@ impl World {
 
         // SAFETY: the bundle was just registered
         if unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
-            for (entity, bundle) in batch {
-                let Ok(mut entity_mut) = self.get_entity_mut(entity) else {
-                    invalid_entities.push(entity);
-                    continue;
-                };
-                move_as_ptr!(bundle);
-                entity_mut.insert_with_caller(
-                    bundle,
-                    insert_mode,
-                    caller,
-                    RelationshipHookMode::Run,
-                );
-            }
+            invalid_entities =
+                self.insert_batch_with_required_templates(batch, insert_mode, caller, false);
             return if invalid_entities.is_empty() {
                 Ok(())
             } else {

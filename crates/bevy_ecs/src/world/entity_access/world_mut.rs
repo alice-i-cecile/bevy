@@ -1367,6 +1367,8 @@ impl<'w> EntityWorldMut<'w> {
     /// The bundle's components are moved into scratch storage first, so the templates can read them
     /// through [`TemplateContext::inserting`]. If building fails, the bundle's effect is leaked,
     /// as it cannot be dropped without being applied.
+    #[cold]
+    #[inline(never)]
     fn insert_with_required_templates<T: Bundle>(
         &mut self,
         bundle_id: BundleId,
@@ -1433,6 +1435,8 @@ impl<'w> EntityWorldMut<'w> {
     /// # Safety
     /// - `bundle_id` must be the bundle of `component_ids`, in the same world as this entity
     /// - each pointer must own a valid value of the matching component, which is moved into the world or dropped
+    #[cold]
+    #[inline(never)]
     unsafe fn insert_ptrs_with_required_templates<'a>(
         &mut self,
         bundle_id: BundleId,
