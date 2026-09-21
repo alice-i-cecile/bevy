@@ -5,7 +5,7 @@ use bevy_ecs::{
     component::{Component, ComponentsRegistrator},
     entity::Entity,
     error::{BevyError, Result},
-    relationship::{Relationship, RelationshipTarget},
+    relationship::{Relationship, RelationshipHookMode, RelationshipTarget},
     template::{
         FromTemplate, SceneEntityReference, SceneEntityReferences, Template, TemplateContext,
     },
@@ -72,16 +72,9 @@ impl ResolvedSceneRoot {
         self.apply_with_mode(entity, bundle_scratch, InsertMode::Replace)
     }
 
-    /// Like [`Self::apply`], but components that the entity already has keep their current values.
-    pub fn apply_if_new(
-        &self,
-        entity: &mut EntityWorldMut,
-        bundle_scratch: &mut BundleScratch,
-    ) -> Result<(), ApplySceneError> {
-        self.apply_with_mode(entity, bundle_scratch, InsertMode::Keep)
-    }
-
-    fn apply_with_mode(
+    /// Like [`Self::apply`], but `insert_mode` decides whether components that the entity already has are
+    /// replaced or keep their current values.
+    pub fn apply_with_mode(
         &self,
         entity: &mut EntityWorldMut,
         bundle_scratch: &mut BundleScratch,
@@ -302,11 +295,9 @@ impl ResolvedScene {
 
                 (writer_ops)(context, &mut bundle_writer);
 
-                match insert_mode {
-                    InsertMode::Replace => bundle_writer.write(context.entity),
-                    InsertMode::Keep => bundle_writer.write_if_new(context.entity),
-                }
-                .map_err(ApplySceneError::TemplateBuildError)?;
+                bundle_writer
+                    .write_with_mode(context.entity, insert_mode, RelationshipHookMode::Run)
+                    .map_err(ApplySceneError::TemplateBuildError)?;
 
                 resolved_cached
                     .scene
@@ -330,11 +321,9 @@ impl ResolvedScene {
                     );
                 }
                 (writer_ops)(context, &mut bundle_writer);
-                match insert_mode {
-                    InsertMode::Replace => bundle_writer.write(context.entity),
-                    InsertMode::Keep => bundle_writer.write_if_new(context.entity),
-                }
-                .map_err(ApplySceneError::TemplateBuildError)?;
+                bundle_writer
+                    .write_with_mode(context.entity, insert_mode, RelationshipHookMode::Run)
+                    .map_err(ApplySceneError::TemplateBuildError)?;
                 self.apply_related(context, bundle_scratch)?;
             }
         };

@@ -1,10 +1,11 @@
 use bevy_asset::{AssetServer, Assets};
 use bevy_ecs::{
+    bundle::InsertMode,
     component::Component,
     error::Result,
     template::{FromTemplate, Template, TemplateContext},
 };
-use core::{any::TypeId, fmt, marker::PhantomData};
+use core::{any::TypeId, marker::PhantomData};
 
 use crate::{ResolvedSceneRoot, Scene, ScenePatch};
 
@@ -42,14 +43,6 @@ impl<C: SceneComponent> Clone for SceneApplied<C> {
     }
 }
 
-impl<C: SceneComponent> fmt::Debug for SceneApplied<C> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("SceneApplied")
-            .field(&core::any::type_name::<C>())
-            .finish()
-    }
-}
-
 /// A [`Template`] that applies the [`Scene`] of the [`SceneComponent`] `C` to the entity it is built for,
 /// using the default [`SceneComponent::Props`].
 ///
@@ -84,7 +77,7 @@ impl<C: SceneComponent> Template for ApplySceneComponent<C> {
             ResolvedSceneRoot::resolve(Box::new(C::scene(C::Props::default())), assets, patches)?
         };
         resolved.scene.remove_template(TypeId::of::<C::Template>());
-        resolved.apply_if_new(context.entity, &mut Default::default())?;
+        resolved.apply_with_mode(context.entity, &mut Default::default(), InsertMode::Keep)?;
         Ok(SceneApplied::default())
     }
 

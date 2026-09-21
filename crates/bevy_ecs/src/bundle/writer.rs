@@ -166,10 +166,11 @@ impl<'a> BundleWriter<'a> {
         relationship_hook_insert_mode: RelationshipHookMode,
     ) -> Result {
         // SAFETY: Same preconditions
-        unsafe { self.write_with(entity, InsertMode::Replace, relationship_hook_insert_mode) }
+        unsafe { self.write_with_mode(entity, InsertMode::Replace, relationship_hook_insert_mode) }
     }
 
-    /// Like [`Self::write`], but components that `entity` already has keep their current values.
+    /// Like [`Self::write_with_relationship_hook_insert_mode`], but also accepts an [`InsertMode`], which decides
+    /// whether components that `entity` already has are replaced or keep their current values.
     ///
     /// # Safety
     ///
@@ -179,16 +180,7 @@ impl<'a> BundleWriter<'a> {
     ///
     /// Same as [`Self::write`].
     #[track_caller]
-    pub unsafe fn write_if_new(self, entity: &mut EntityWorldMut) -> Result {
-        // SAFETY: Same preconditions
-        unsafe { self.write_with(entity, InsertMode::Keep, RelationshipHookMode::Run) }
-    }
-
-    /// # Safety
-    ///
-    /// Same as [`Self::write`].
-    #[track_caller]
-    unsafe fn write_with(
+    pub unsafe fn write_with_mode(
         self,
         entity: &mut EntityWorldMut,
         mode: InsertMode,
