@@ -45,7 +45,7 @@ pub(crate) fn derive_scene_component(ast: &mut DeriveInput) -> TokenStream {
     let (_, type_generics, _) = &ast.generics.split_for_impl();
     derive_component.additional_requires.push(quote! {
         required_components.register_required_template(
-            <#bevy_scene::ApplySceneComponent::<#struct_name #type_generics> as #FQDefault>::default(),
+            <#bevy_scene::ApplySceneComponent::<#struct_name #type_generics> as #FQDefault>::default,
         );
     });
     let component_impl = match derive_component.impl_component(ast, &bevy_ecs, StorageTy::Table) {

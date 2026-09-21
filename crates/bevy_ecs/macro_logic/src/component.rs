@@ -305,7 +305,7 @@ impl DeriveComponent {
                 (RequireKind::Template(entry), _) => {
                     let template = required_template_tokens(entry, bevy_ecs)?;
                     quote! {
-                        required_components.register_required_template(#template);
+                        required_components.register_required_template(|| #template);
                     }
                 }
                 (_, None) => unreachable!("default and value requires always have a path"),

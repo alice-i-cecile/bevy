@@ -63,23 +63,24 @@ impl RequiredComponentConstructor {
         RequiredComponentConstructor(RequiredConstructorKind::Value(Arc::from(boxed)))
     }
 
-    /// Creates a new [`RequiredComponentConstructor`] that builds `C` from a [`Template`] before the entity
-    /// is moved to its new archetype, giving it access to the [`World`](crate::world::World) via [`TemplateContext`].
+    /// Creates a new [`RequiredComponentConstructor`] that builds `C` from the [`Template`] returned by `template`,
+    /// before the entity is moved to its new archetype, giving it access to the [`World`](crate::world::World)
+    /// via [`TemplateContext`]. `template` is called again each time `C` is required.
     ///
-    /// If `T` is `C` itself, the template needs no context, so this creates a constructor that clones it instead.
+    /// If `T` is `C` itself, the template needs no context, so this creates a plain constructor instead.
     ///
     /// # Safety
     ///
     /// - `component_id` must be a valid component for type `C`.
-    pub unsafe fn new_template<C: Component, T: Template<Output = C> + Send + Sync + 'static>(
+    pub unsafe fn new_template<C: Component, T: Template<Output = C> + 'static>(
         component_id: ComponentId,
-        template: T,
+        template: impl Fn() -> T + Send + Sync + 'static,
     ) -> Self {
         if TypeId::of::<T>() == TypeId::of::<C>() {
             // SAFETY: the caller ensures `component_id` is valid for `C`
             return unsafe {
                 Self::new(component_id, move || {
-                    let mut value = Some(template.clone_template());
+                    let mut value = Some(template());
                     (&mut value as &mut dyn Any)
                         .downcast_mut::<Option<C>>()
                         .and_then(Option::take)
@@ -87,10 +88,10 @@ impl RequiredComponentConstructor {
                 })
             };
         }
-        let boxed: Box<dyn ErasedRequiredTemplate> = Box::new(RequiredTemplate::<C, T> {
+        let boxed: Box<dyn ErasedRequiredTemplate> = Box::new(RequiredTemplate {
             component_id,
             template,
-            marker: PhantomData,
+            marker: PhantomData::<fn() -> C>,
         });
         RequiredComponentConstructor(RequiredConstructorKind::Template(Arc::from(boxed)))
     }
@@ -227,21 +228,21 @@ trait ErasedRequiredTemplate: Send + Sync + 'static {
     fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>>;
 }
 
-struct RequiredTemplate<C, T> {
+struct RequiredTemplate<C, F> {
     component_id: ComponentId,
-    template: T,
+    template: F,
     marker: PhantomData<fn() -> C>,
 }
 
-impl<C: Component, T: Template<Output = C> + Send + Sync + 'static> ErasedRequiredTemplate
-    for RequiredTemplate<C, T>
+impl<C: Component, T: Template<Output = C>, F: Fn() -> T + Send + Sync + 'static>
+    ErasedRequiredTemplate for RequiredTemplate<C, F>
 {
     fn component_id(&self) -> ComponentId {
         self.component_id
     }
 
     fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>> {
-        let value = self.template.build_template(context)?;
+        let value = (self.template)().build_template(context)?;
         Ok(NonNull::from(alloc.alloc(value)).cast())
     }
 }
@@ -775,7 +776,8 @@ impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
         }
     }
 
-    /// Registers the [`Component`] `C` as an explicitly required component, built from the given [`Template`].
+    /// Registers the [`Component`] `C` as an explicitly required component, built from the [`Template`] returned by
+    /// `template`. `template` is called each time `C` is required, like the constructor of [`Self::register_required`].
     ///
     /// Unlike [`register_required`](Self::register_required), the template is built with a [`TemplateContext`]
     /// before the component is inserted, so it can read from and write to the [`World`](crate::world::World).
@@ -783,9 +785,9 @@ impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
     ///
     /// If the component was not already registered as an explicit required component then it is added
     /// as one, potentially overriding the constructor of an inherited required component, otherwise panics.
-    pub fn register_required_template<C: Component>(
+    pub fn register_required_template<C: Component, T: Template<Output = C> + 'static>(
         &mut self,
-        template: impl Template<Output = C> + Send + Sync + 'static,
+        template: impl Fn() -> T + Send + Sync + 'static,
     ) {
         let component_id = self.components.register_component::<C>();
         // SAFETY:
@@ -794,7 +796,7 @@ impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
         unsafe {
             self.required_components
                 .register_dynamic_with(component_id, self.components, || {
-                    RequiredComponentConstructor::new_template::<C, _>(component_id, template)
+                    RequiredComponentConstructor::new_template::<C, T>(component_id, template)
                 });
         }
     }
@@ -1905,6 +1907,27 @@ mod tests {
         let inherited = world.spawn(Enemy).id();
         assert_eq!(world.get::<Health>(explicit), Some(&Health(20)));
         assert_eq!(world.get::<Health>(inherited), Some(&Health(30)));
+    }
+
+    #[test]
+    fn required_templates_evaluate_arguments_per_insert() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+        fn next_id() -> usize {
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        }
+
+        #[derive(Component, Clone, Default, Debug, PartialEq)]
+        struct Id(usize);
+
+        #[derive(Component)]
+        #[require(Id(next_id()))]
+        struct Player;
+
+        let mut world = World::new();
+        let first = world.spawn(Player).id();
+        let second = world.spawn(Player).id();
+        assert_ne!(world.get::<Id>(first), world.get::<Id>(second));
     }
 
     #[test]
