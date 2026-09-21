@@ -142,7 +142,7 @@ impl DeriveComponent {
                 let punctuated =
                     attr.parse_args_with(Punctuated::<Require, Comma>::parse_terminated)?;
                 for require in punctuated.iter() {
-                    let Some(path) = &require.path else {
+                    let Some(path) = require.path() else {
                         continue;
                     };
                     if !require_paths.insert(path.to_token_stream().to_string()) {
@@ -283,7 +283,7 @@ impl DeriveComponent {
         let required_component_docs = self.requires.as_ref().map(|r| {
             let paths = r
                 .iter()
-                .filter_map(|r| r.path.as_ref())
+                .filter_map(Require::path)
                 .map(|path| format!("[`{}`]", path.to_token_stream()))
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -295,20 +295,19 @@ impl DeriveComponent {
 
         let mut register_required = Vec::with_capacity(self.requires.iter().len());
         for require in self.requires.into_iter().flatten() {
-            register_required.push(match (require.kind, require.path) {
-                (RequireKind::Default, Some(path)) => quote! {
+            register_required.push(match require {
+                Require::Default(path) => quote! {
                     required_components.register_required::<#path>(<#path as #FQDefault>::default);
                 },
-                (RequireKind::Value(expr), Some(path)) => quote! {
+                Require::Value(path, expr) => quote! {
                     required_components.register_required::<#path>(|| { let x: #path = (#expr).into(); x });
                 },
-                (RequireKind::Template(entry), _) => {
+                Require::Template(entry) => {
                     let template = required_template_tokens(entry, bevy_ecs)?;
                     quote! {
                         required_components.register_required_template(|| #template);
                     }
                 }
-                (_, None) => unreachable!("default and value requires always have a path"),
             });
         }
         let additional_requires = &self.additional_requires;
@@ -617,19 +616,27 @@ pub enum StorageTy {
 }
 
 /// Derived required component from the `#[require]` attribute.
-pub struct Require {
-    /// The required component's type, if the entry names it.
-    path: Option<Path>,
-    kind: RequireKind,
-}
-
-enum RequireKind {
+pub enum Require {
     /// `B`: built with [`Default`].
-    Default,
+    Default(Path),
     /// `B = expr`: `expr` is evaluated each time `B` is required, then converted with `Into`.
-    Value(Expr),
+    Value(Path, Expr),
     /// Any other entry, which means the same thing it does in `bsn!`, and is built as a template.
     Template(BsnEntry),
+}
+
+impl Require {
+    /// The required component's type, if the entry names it.
+    fn path(&self) -> Option<&Path> {
+        match self {
+            Require::Default(path) | Require::Value(path, _) => Some(path),
+            Require::Template(BsnEntry::FromTemplatePatch(ty)) => Some(&ty.path),
+            Require::Template(BsnEntry::FromTemplateConstructor { constructor, .. }) => {
+                Some(&constructor.type_path)
+            }
+            Require::Template(_) => None,
+        }
+    }
 }
 
 impl Parse for Require {
@@ -639,35 +646,18 @@ impl Parse for Require {
             if fork.peek(Token![=]) && !fork.peek(Token![==]) {
                 input.parse::<Path>()?;
                 input.parse::<Token![=]>()?;
-                return Ok(Require {
-                    path: Some(path),
-                    kind: RequireKind::Value(input.parse()?),
-                });
+                return Ok(Require::Value(path, input.parse()?));
             }
             if (fork.is_empty() || fork.peek(Token![,]))
                 // Short all-caps names like `X` look like consts, but a lone path here is always a component
                 && matches!(PathType::new(&path), PathType::Type | PathType::Const)
             {
                 input.parse::<Path>()?;
-                return Ok(Require {
-                    path: Some(path),
-                    kind: RequireKind::Default,
-                });
+                return Ok(Require::Default(path));
             }
         }
 
-        let entry = BsnEntry::parse(input)?;
-        let path = match &entry {
-            BsnEntry::FromTemplatePatch(ty) => Some(ty.path.clone()),
-            BsnEntry::FromTemplateConstructor { constructor, .. } => {
-                Some(constructor.type_path.clone())
-            }
-            _ => None,
-        };
-        Ok(Require {
-            path,
-            kind: RequireKind::Template(entry),
-        })
+        Ok(Require::Template(BsnEntry::parse(input)?))
     }
 }
 
