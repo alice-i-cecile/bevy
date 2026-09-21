@@ -3,7 +3,6 @@ use bevy_platform::{hash::FixedHasher, sync::Arc};
 use bevy_ptr::OwningPtr;
 use bumpalo::Bump;
 use core::{
-    alloc::Layout,
     any::{Any, TypeId},
     fmt::Debug,
     marker::PhantomData,
@@ -263,28 +262,22 @@ impl<C: Component, T: Template<Output = C>, F: Fn() -> T + Send + Sync + 'static
 pub(crate) struct RequiredComponentsScratch {
     /// Holds the explicit components of typed bundles, and every built required component.
     pub(crate) alloc: Bump,
-    pub(crate) explicit_ids: Vec<ComponentId>,
-    pub(crate) explicit_ptrs: Vec<NonNull<u8>>,
-    pub(crate) layouts: Vec<Layout>,
-    pub(crate) built_ids: Vec<ComponentId>,
-    pub(crate) built_ptrs: Vec<NonNull<u8>>,
-    /// The required components missing from the entity, in the order they are written.
+    /// The components of the insert: first the explicit ones, then the required ones built for it.
+    pub(crate) ids: Vec<ComponentId>,
+    pub(crate) ptrs: Vec<NonNull<u8>>,
+    /// The number of explicit components at the start of `ids`.
+    pub(crate) explicit_len: usize,
+    /// The required components missing from the entity.
     pub(crate) missing: Vec<RequiredComponentConstructor>,
-    pub(crate) write_ids: Vec<ComponentId>,
-    pub(crate) write_ptrs: Vec<NonNull<u8>>,
 }
 
 impl RequiredComponentsScratch {
     /// Resets this scratch for reuse. Every value it points to must already have been moved out or dropped.
     pub(crate) fn clear(&mut self) {
-        self.explicit_ids.clear();
-        self.explicit_ptrs.clear();
-        self.layouts.clear();
-        self.built_ids.clear();
-        self.built_ptrs.clear();
+        self.ids.clear();
+        self.ptrs.clear();
+        self.explicit_len = 0;
         self.missing.clear();
-        self.write_ids.clear();
-        self.write_ptrs.clear();
         self.alloc.reset();
     }
 }

@@ -53,10 +53,11 @@ pub struct TemplateContext<'a, 'w> {
 /// The components an insert is adding, visible to the required templates built for that insert.
 #[derive(Clone, Copy, Default)]
 pub(crate) struct InsertingComponents<'a> {
-    pub(crate) explicit_ids: &'a [ComponentId],
-    pub(crate) explicit_ptrs: &'a [NonNull<u8>],
-    pub(crate) built_ids: &'a [ComponentId],
-    pub(crate) built_ptrs: &'a [NonNull<u8>],
+    /// The components of the insert: first the explicit ones, then the required ones built so far.
+    pub(crate) ids: &'a [ComponentId],
+    pub(crate) ptrs: &'a [NonNull<u8>],
+    /// The number of explicit components at the start of `ids`.
+    pub(crate) explicit_len: usize,
     /// Whether explicit components that the entity already has keep their current values.
     pub(crate) keep_existing: bool,
 }
@@ -95,25 +96,20 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
     pub fn inserting<C: Component>(&self) -> Option<&C> {
         let id = self.entity.world().components().get_id(TypeId::of::<C>())?;
         let InsertingComponents {
-            explicit_ids,
-            explicit_ptrs,
-            built_ids,
-            built_ptrs,
+            ids,
+            ptrs,
+            explicit_len,
             keep_existing,
         } = self.inserting;
+        let index = ids.iter().position(|&inserting| inserting == id)?;
         if keep_existing
-            && explicit_ids.contains(&id)
+            && index < explicit_len
             && let Some(existing) = self.entity.get::<C>()
         {
             return Some(existing);
         }
-        let ptr = explicit_ids
-            .iter()
-            .zip(explicit_ptrs)
-            .chain(built_ids.iter().zip(built_ptrs))
-            .find_map(|(&inserting, ptr)| (inserting == id).then_some(*ptr))?;
-        // SAFETY: `ptr` points to a valid value of the component with id `id`, which is `C`, and stays valid for `'a`
-        Some(unsafe { ptr.cast::<C>().as_ref() })
+        // SAFETY: `ptrs[index]` points to a valid value of the component with id `id`, which is `C`, and stays valid for `'a`
+        Some(unsafe { ptrs[index].cast::<C>().as_ref() })
     }
 
     /// Get the entity associated with the [`SceneEntityReference`], spawning a new one

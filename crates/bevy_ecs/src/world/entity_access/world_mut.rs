@@ -1387,29 +1387,25 @@ impl<'w> EntityWorldMut<'w> {
             .unwrap_or_default();
         let RequiredComponentsScratch {
             alloc,
-            explicit_ids,
-            explicit_ptrs,
-            layouts,
+            ids,
+            ptrs,
+            explicit_len,
             ..
         } = &mut scratch;
         // SAFETY: the caller registered `bundle_id` for `T`
         let bundle_info = unsafe { self.world.bundles.get_unchecked(bundle_id) };
-        explicit_ids.extend_from_slice(bundle_info.explicit_components());
-        layouts.extend(
-            explicit_ids
-                .iter()
-                // SAFETY: bundle component ids are valid
-                .map(|&id| unsafe { self.world.components.get_info_unchecked(id) }.layout()),
-        );
+        ids.extend_from_slice(bundle_info.explicit_components());
+        *explicit_len = ids.len();
+        let components = &self.world.components;
         // SAFETY:
         // - `get_components` is called exactly once, and `apply_effect` is called at most once afterwards
-        // - components are written in bundle order, which matches `explicit_ids` and `layouts`
+        // - components are written in bundle order, which matches `ids`, and their ids are valid
         let (bundle, ()) = bundle.partial_move(|bundle| unsafe {
             T::get_components(bundle, &mut |_, component| {
-                let layout = layouts[explicit_ptrs.len()];
+                let layout = components.get_info_unchecked(ids[ptrs.len()]).layout();
                 let ptr = alloc.alloc_layout(layout);
                 core::ptr::copy_nonoverlapping(component.as_ptr(), ptr.as_ptr(), layout.size());
-                explicit_ptrs.push(ptr);
+                ptrs.push(ptr);
             });
         });
 
@@ -1454,9 +1450,10 @@ impl<'w> EntityWorldMut<'w> {
             .scratch
             .pop()
             .unwrap_or_default();
-        scratch.explicit_ids.extend_from_slice(component_ids);
+        scratch.ids.extend_from_slice(component_ids);
+        scratch.explicit_len = component_ids.len();
         scratch
-            .explicit_ptrs
+            .ptrs
             // SAFETY: `OwningPtr`s are never null
             .extend(components.map(|ptr| unsafe { NonNull::new_unchecked(ptr.as_ptr()) }));
         // SAFETY: the caller upholds the preconditions
@@ -1477,11 +1474,12 @@ impl<'w> EntityWorldMut<'w> {
     /// Builds every required component that inserting the explicit components in `scratch` would add,
     /// then inserts all of them in a single archetype move.
     ///
-    /// On success, every explicit component has been moved into the world. On failure, they have been dropped.
+    /// On success, every component in `scratch` has been moved into the world or dropped.
+    /// On failure, they have all been dropped.
     ///
     /// # Safety
-    /// - `bundle_id` must be the bundle of `scratch.explicit_ids`, in the same world as this entity
-    /// - each of `scratch.explicit_ptrs` must own a valid value of the matching component
+    /// - `bundle_id` must be the bundle of the explicit components in `scratch`, in the same world as this entity
+    /// - each pointer in `scratch` must own a valid value of the matching component
     unsafe fn insert_scratch_with_required_templates(
         &mut self,
         bundle_id: BundleId,
@@ -1493,48 +1491,45 @@ impl<'w> EntityWorldMut<'w> {
         // SAFETY: the caller upholds the preconditions
         if let Err(error) = unsafe { self.build_required_components(bundle_id, scratch, mode) } {
             // SAFETY: nothing has been moved out of the scratch
-            unsafe {
-                self.drop_components(&scratch.explicit_ids, &scratch.explicit_ptrs);
-                self.drop_components(&scratch.built_ids, &scratch.built_ptrs);
-            }
+            unsafe { self.drop_components(&scratch.ids, &scratch.ptrs) };
             self.world.flush();
             self.update_location();
             return Err(error);
         }
 
+        // Drop the built components that are no longer missing (ex: because a template inserted them itself).
         let RequiredComponentsScratch {
-            explicit_ids,
-            explicit_ptrs,
-            built_ids,
-            built_ptrs,
+            ids,
+            ptrs,
+            explicit_len,
             missing,
-            write_ids,
-            write_ptrs,
             ..
         } = scratch;
-        write_ids.extend_from_slice(explicit_ids);
-        write_ptrs.extend_from_slice(explicit_ptrs);
-        for constructor in missing.iter() {
-            let component_id = constructor.component_id();
-            let index = built_ids.iter().position(|&id| id == component_id);
-            // SAFETY: `build_required_components` built every missing component
-            let index = unsafe { index.debug_checked_unwrap() };
-            write_ids.push(component_id);
-            write_ptrs.push(built_ptrs[index]);
-            // It is moved into the world below, so it must not be dropped with the unused ones.
-            built_ids.swap_remove(index);
-            built_ptrs.swap_remove(index);
+        let mut written = *explicit_len;
+        for index in *explicit_len..ids.len() {
+            let (id, ptr) = (ids[index], ptrs[index]);
+            if missing
+                .iter()
+                .any(|constructor| constructor.component_id() == id)
+            {
+                ids[written] = id;
+                ptrs[written] = ptr;
+                written += 1;
+            } else {
+                // SAFETY: `ptr` owns a value of component `id` that is not written
+                unsafe { self.drop_components(&[id], &[ptr]) };
+            }
         }
-        // SAFETY: the remaining built components are not written, and nothing else points to them
-        unsafe { self.drop_components(built_ids, built_ptrs) };
+        ids.truncate(written);
+        ptrs.truncate(written);
 
         // Every requirement of the write set was built, so this normally takes the fast path. Requirements that were
         // registered after `bundle_id` was cached are missing from its plan, and get built by the slow path here.
-        // SAFETY: every pointer owns a valid value of the matching component in `write_ids`, from this world
+        // SAFETY: every pointer owns a valid value of the matching component in `ids`, from this world
         unsafe {
             self.try_insert_by_ids_internal(
-                write_ids,
-                write_ptrs.iter().map(|&ptr| OwningPtr::new(ptr)),
+                ids,
+                ptrs.iter().map(|&ptr| OwningPtr::new(ptr)),
                 mode,
                 caller,
                 relationship_hook_mode,
@@ -1574,13 +1569,12 @@ impl<'w> EntityWorldMut<'w> {
 
             let RequiredComponentsScratch {
                 alloc,
-                explicit_ids,
-                explicit_ptrs,
-                built_ids,
-                built_ptrs,
+                ids,
+                ptrs,
+                explicit_len,
                 missing,
-                ..
             } = &mut *scratch;
+            let explicit_len = *explicit_len;
             // Values need no context, so build them first to make them visible to every template. Then build
             // templates in reverse, so a template can read the component that required it.
             let values = missing
@@ -1592,7 +1586,7 @@ impl<'w> EntityWorldMut<'w> {
                 .filter(|constructor| constructor.is_template());
             for constructor in values.chain(templates) {
                 let component_id = constructor.component_id();
-                if built_ids.contains(&component_id) {
+                if ids[explicit_len..].contains(&component_id) {
                     continue;
                 }
                 if self.location.map(|location| location.archetype_id)
@@ -1617,10 +1611,9 @@ impl<'w> EntityWorldMut<'w> {
                         guard.entity,
                         &mut entity_references,
                         InsertingComponents {
-                            explicit_ids,
-                            explicit_ptrs,
-                            built_ids,
-                            built_ptrs,
+                            ids,
+                            ptrs,
+                            explicit_len,
                             keep_existing: mode == InsertMode::Keep,
                         },
                     );
@@ -1633,8 +1626,8 @@ impl<'w> EntityWorldMut<'w> {
                         self.entity
                     )
                 })?;
-                built_ids.push(component_id);
-                built_ptrs.push(ptr);
+                ids.push(component_id);
+                ptrs.push(ptr);
             }
             if self.location.map(|location| location.archetype_id) == Some(location.archetype_id) {
                 return Ok(());
