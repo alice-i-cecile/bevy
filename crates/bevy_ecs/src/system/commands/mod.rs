@@ -642,7 +642,8 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// # Fallible
     ///
-    /// This command will fail if any of the given entities do not exist.
+    /// This command will fail if any of the given entities do not exist,
+    /// or if the required templates of any of the bundles fail to build.
     ///
     /// It will internally return a [`TryInsertBatchError`](crate::world::error::TryInsertBatchError),
     /// which will be handled by the [fallback error handler](crate::error::FallbackErrorHandler).
@@ -673,7 +674,8 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// # Fallible
     ///
-    /// This command will fail if any of the given entities do not exist.
+    /// This command will fail if any of the given entities do not exist,
+    /// or if the required templates of any of the bundles fail to build.
     ///
     /// It will internally return a [`TryInsertBatchError`](crate::world::error::TryInsertBatchError),
     /// which will be handled by the [fallback error handler](crate::error::FallbackErrorHandler).
@@ -703,7 +705,8 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// # Fallible
     ///
-    /// This command will fail if any of the given entities do not exist.
+    /// This command will fail if any of the given entities do not exist,
+    /// or if the required templates of any of the bundles fail to build.
     ///
     /// It will internally return a [`TryInsertBatchError`](crate::world::error::TryInsertBatchError),
     /// which will be handled by [logging the error at the `warn` level](warn).
@@ -734,7 +737,8 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// # Fallible
     ///
-    /// This command will fail if any of the given entities do not exist.
+    /// This command will fail if any of the given entities do not exist,
+    /// or if the required templates of any of the bundles fail to build.
     ///
     /// It will internally return a [`TryInsertBatchError`](crate::world::error::TryInsertBatchError),
     /// which will be handled by [logging the error at the `warn` level](warn).

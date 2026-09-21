@@ -2680,7 +2680,7 @@ impl World {
 
         // SAFETY: the bundle was just registered
         if unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
-            self.insert_batch_with_required_templates(batch, insert_mode, caller, true);
+            self.insert_batch_with_required_templates(batch, insert_mode, caller);
             return;
         }
 
@@ -2767,7 +2767,8 @@ impl World {
     /// This will overwrite any previous values of components shared by the `Bundle`.
     /// See [`World::try_insert_batch_if_new`] to keep the old values instead.
     ///
-    /// Returns a [`TryInsertBatchError`] if any of the provided entities do not exist.
+    /// Returns a [`TryInsertBatchError`] if any of the provided entities do not exist,
+    /// or if the required templates of any of the bundles fail to build, in which case nothing is inserted into that entity.
     ///
     /// For the panicking version, see [`World::insert_batch`].
     #[track_caller]
@@ -2789,7 +2790,8 @@ impl World {
     /// This is the same as [`World::try_insert_batch`], but in case of duplicate
     /// components it will leave the old values instead of replacing them with new ones.
     ///
-    /// Returns a [`TryInsertBatchError`] if any of the provided entities do not exist.
+    /// Returns a [`TryInsertBatchError`] if any of the provided entities do not exist,
+    /// or if the required templates of any of the bundles fail to build, in which case nothing is inserted into that entity.
     ///
     /// For the panicking version, see [`World::insert_batch_if_new`].
     #[track_caller]
@@ -2802,12 +2804,12 @@ impl World {
         self.try_insert_batch_with_caller(batch, InsertMode::Keep, MaybeLocation::caller())
     }
 
-    /// The slow path of the batch inserts, used when the bundle has required templates.
-    /// Inserts one entity at a time, and returns the entities that do not exist.
+    /// The slow path of [`World::insert_batch_with_caller`], used when the bundle has required templates.
+    /// Inserts one entity at a time.
     ///
     /// # Panics
     ///
-    /// If `panic_on_invalid` is set, panics on the first entity that does not exist.
+    /// Panics on the first entity that does not exist.
     #[cold]
     #[inline(never)]
     fn insert_batch_with_required_templates<I, B>(
@@ -2815,29 +2817,64 @@ impl World {
         batch: I,
         insert_mode: InsertMode,
         caller: MaybeLocation,
-        panic_on_invalid: bool,
-    ) -> Vec<Entity>
+    ) where
+        I: IntoIterator,
+        I::IntoIter: Iterator<Item = (Entity, B)>,
+        B: Bundle<Effect: NoBundleEffect>,
+    {
+        for (entity, bundle) in batch {
+            let mut entity_mut = match self.get_entity_mut(entity) {
+                Ok(entity_mut) => entity_mut,
+                Err(err) => {
+                    panic!("error[B0003]: Could not insert a bundle (of type `{}`) for entity {entity} because: {err}. See: https://bevyengine.org/learn/errors/b0003", core::any::type_name::<B>());
+                }
+            };
+            move_as_ptr!(bundle);
+            entity_mut.insert_with_caller(bundle, insert_mode, caller, RelationshipHookMode::Run);
+        }
+    }
+
+    /// The slow path of [`World::try_insert_batch_with_caller`], used when the bundle has required templates.
+    /// Inserts one entity at a time.
+    #[cold]
+    #[inline(never)]
+    fn try_insert_batch_with_required_templates<I, B>(
+        &mut self,
+        batch: I,
+        insert_mode: InsertMode,
+        caller: MaybeLocation,
+    ) -> Result<(), TryInsertBatchError>
     where
         I: IntoIterator,
         I::IntoIter: Iterator<Item = (Entity, B)>,
         B: Bundle<Effect: NoBundleEffect>,
     {
         let mut invalid_entities = Vec::new();
+        let mut required_template_errors = Vec::new();
         for (entity, bundle) in batch {
-            let mut entity_mut = match self.get_entity_mut(entity) {
-                Ok(entity_mut) => entity_mut,
-                Err(err) if panic_on_invalid => {
-                    panic!("error[B0003]: Could not insert a bundle (of type `{}`) for entity {entity} because: {err}. See: https://bevyengine.org/learn/errors/b0003", core::any::type_name::<B>());
-                }
-                Err(_) => {
-                    invalid_entities.push(entity);
-                    continue;
-                }
+            let Ok(mut entity_mut) = self.get_entity_mut(entity) else {
+                invalid_entities.push(entity);
+                continue;
             };
             move_as_ptr!(bundle);
-            entity_mut.insert_with_caller(bundle, insert_mode, caller, RelationshipHookMode::Run);
+            if let Err(error) = entity_mut.try_insert_with_caller(
+                bundle,
+                insert_mode,
+                caller,
+                RelationshipHookMode::Run,
+            ) {
+                required_template_errors.push((entity, error));
+            }
         }
-        invalid_entities
+        if invalid_entities.is_empty() && required_template_errors.is_empty() {
+            Ok(())
+        } else {
+            Err(TryInsertBatchError {
+                bundle_type: DebugName::type_name::<B>(),
+                entities: invalid_entities,
+                required_template_errors,
+            })
+        }
     }
 
     /// Split into a new function so we can differentiate the calling location.
@@ -2873,16 +2910,7 @@ impl World {
 
         // SAFETY: the bundle was just registered
         if unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
-            invalid_entities =
-                self.insert_batch_with_required_templates(batch, insert_mode, caller, false);
-            return if invalid_entities.is_empty() {
-                Ok(())
-            } else {
-                Err(TryInsertBatchError {
-                    bundle_type: DebugName::type_name::<B>(),
-                    entities: invalid_entities,
-                })
-            };
+            return self.try_insert_batch_with_required_templates(batch, insert_mode, caller);
         }
 
         let mut batch_iter = batch.into_iter();
@@ -2975,6 +3003,7 @@ impl World {
             Err(TryInsertBatchError {
                 bundle_type: DebugName::type_name::<B>(),
                 entities: invalid_entities,
+                required_template_errors: Vec::new(),
             })
         }
     }

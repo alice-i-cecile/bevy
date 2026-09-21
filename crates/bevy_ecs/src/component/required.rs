@@ -2273,6 +2273,40 @@ mod tests {
     }
 
     #[test]
+    fn required_templates_try_insert_batch_returns_errors() {
+        #[derive(Component)]
+        struct Cursed;
+
+        #[derive(Component)]
+        struct Health;
+
+        #[derive(Component, Clone, Copy)]
+        #[require(~{template(|context: &mut TemplateContext| -> Result<Health> {
+            if context.entity.contains::<Cursed>() {
+                Err("cursed".into())
+            } else {
+                Ok(Health)
+            }
+        })})]
+        struct Player;
+
+        let mut world = World::new();
+        let healthy = world.spawn_empty().id();
+        let cursed = world.spawn(Cursed).id();
+        let despawned = world.spawn_empty().id();
+        world.despawn(despawned);
+        let error = world
+            .try_insert_batch([(healthy, Player), (cursed, Player), (despawned, Player)])
+            .unwrap_err();
+
+        assert_eq!(error.entities, vec![despawned]);
+        assert_eq!(error.required_template_errors.len(), 1);
+        assert_eq!(error.required_template_errors[0].0, cursed);
+        assert!(world.entity(healthy).contains::<Player>());
+        assert!(!world.entity(cursed).contains::<Player>());
+    }
+
+    #[test]
     fn required_templates_resource_scope() {
         #[derive(Component, Debug, PartialEq)]
         struct Tracked(String);

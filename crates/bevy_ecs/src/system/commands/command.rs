@@ -143,8 +143,8 @@ where
 
 /// A [`Command`] that consumes an iterator to add a series of [`Bundles`](Bundle) to a set of entities.
 ///
-/// If any entities do not exist in the world, this command will return a
-/// [`TryInsertBatchError`](crate::world::error::TryInsertBatchError).
+/// If any entities do not exist in the world, or the required templates of any of the bundles fail to build,
+/// this command will return a [`TryInsertBatchError`](crate::world::error::TryInsertBatchError).
 ///
 /// This is more efficient than inserting the bundles individually.
 #[track_caller]

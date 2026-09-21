@@ -2,10 +2,12 @@
 
 use alloc::vec::Vec;
 use bevy_utils::prelude::DebugName;
+use core::fmt::{Display, Formatter};
 
 use crate::{
     component::ComponentId,
     entity::{Entity, EntityNotSpawnedError},
+    error::BevyError,
     schedule::InternedScheduleLabel,
 };
 
@@ -17,17 +19,37 @@ use crate::{
 pub struct TryRunScheduleError(pub InternedScheduleLabel);
 
 /// The error type returned by [`World::try_insert_batch`] and [`World::try_insert_batch_if_new`]
-/// if any of the provided entities do not exist.
+/// if any of the provided entities do not exist, or if the required templates of any of the bundles fail to build.
 ///
 /// [`World::try_insert_batch`]: crate::world::World::try_insert_batch
 /// [`World::try_insert_batch_if_new`]: crate::world::World::try_insert_batch_if_new
-#[derive(thiserror::Error, Debug, Clone)]
-#[error("Could not insert bundles of type {bundle_type} into the entities with the following IDs because they do not exist: {entities:?}")]
+#[derive(Debug)]
 pub struct TryInsertBatchError {
     /// The bundles' type name.
     pub bundle_type: DebugName,
     /// The IDs of the provided entities that do not exist.
     pub entities: Vec<Entity>,
+    /// The entities whose required templates failed to build, so nothing was inserted, and the errors.
+    pub required_template_errors: Vec<(Entity, BevyError)>,
+}
+
+impl core::error::Error for TryInsertBatchError {}
+
+impl Display for TryInsertBatchError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Could not insert bundles of type {}", self.bundle_type)?;
+        if !self.entities.is_empty() {
+            write!(
+                f,
+                " into the entities with the following IDs because they do not exist: {:?}",
+                self.entities
+            )?;
+        }
+        for (entity, error) in &self.required_template_errors {
+            write!(f, "\nInto {entity}: {error}")?;
+        }
+        Ok(())
+    }
 }
 
 /// An error that occurs when a specified [`Entity`] could not be despawned.
