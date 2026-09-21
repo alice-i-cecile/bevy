@@ -93,6 +93,7 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
     /// are returned instead of the inserted ones, because those are discarded.
     ///
     /// Required templates are built before any of those components are on [`Self::entity`], so this is how they read them.
+    /// Outside of required templates (ex: in a scene), this always returns `None`.
     pub fn inserting<C: Component>(&self) -> Option<&C> {
         let id = self.entity.world().components().get_id(TypeId::of::<C>())?;
         let InsertingComponents {
