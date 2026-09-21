@@ -2686,16 +2686,15 @@ impl World {
                 }
                 Ok(first_location) => {
                     let mut cache = InserterArchetypeCache {
-                        // SAFETY: we initialized this bundle_id in `register_info`
+                        // SAFETY: we initialized this bundle_id in `register_info`, and it has no required templates
                         inserter: unsafe {
-                            BundleInserter::new_with_id(
+                            BundleInserter::new_unchecked(
                                 self,
                                 first_location.archetype_id,
                                 bundle_id,
                                 change_tick,
                             )
-                        }
-                        .expect("the bundle has no required templates"),
+                        },
                         archetype_id: first_location.archetype_id,
                     };
                     move_as_ptr!(first_bundle);
@@ -2716,16 +2715,15 @@ impl World {
                             Ok(location) => {
                                 if location.archetype_id != cache.archetype_id {
                                     cache = InserterArchetypeCache {
-                                        // SAFETY: we initialized this bundle_id in `register_info`
+                                        // SAFETY: we initialized this bundle_id in `register_info`, and it has no required templates
                                         inserter: unsafe {
-                                            BundleInserter::new_with_id(
+                                            BundleInserter::new_unchecked(
                                                 self,
                                                 location.archetype_id,
                                                 bundle_id,
                                                 change_tick,
                                             )
-                                        }
-                                        .expect("the bundle has no required templates"),
+                                        },
                                         archetype_id: location.archetype_id,
                                     }
                                 }
@@ -2889,16 +2887,15 @@ impl World {
             if let Some((first_entity, first_bundle)) = batch_iter.next() {
                 if let Ok(first_location) = self.entities().get_spawned(first_entity) {
                     let mut cache = InserterArchetypeCache {
-                        // SAFETY: we initialized this bundle_id in `register_bundle_info`
+                        // SAFETY: we initialized this bundle_id in `register_bundle_info`, and it has no required templates
                         inserter: unsafe {
-                            BundleInserter::new_with_id(
+                            BundleInserter::new_unchecked(
                                 self,
                                 first_location.archetype_id,
                                 bundle_id,
                                 change_tick,
                             )
-                        }
-                        .expect("the bundle has no required templates"),
+                        },
                         archetype_id: first_location.archetype_id,
                     };
 
@@ -2931,16 +2928,15 @@ impl World {
                 if let Ok(location) = cache.inserter.entities().get_spawned(entity) {
                     if location.archetype_id != cache.archetype_id {
                         cache = InserterArchetypeCache {
-                            // SAFETY: we initialized this bundle_id in `register_info`
+                            // SAFETY: we initialized this bundle_id in `register_info`, and it has no required templates
                             inserter: unsafe {
-                                BundleInserter::new_with_id(
+                                BundleInserter::new_unchecked(
                                     self,
                                     location.archetype_id,
                                     bundle_id,
                                     change_tick,
                                 )
-                            }
-                            .expect("the bundle has no required templates"),
+                            },
                             archetype_id: location.archetype_id,
                         }
                     }

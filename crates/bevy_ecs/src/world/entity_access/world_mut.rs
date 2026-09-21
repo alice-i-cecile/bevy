@@ -1560,7 +1560,12 @@ impl<'w> EntityWorldMut<'w> {
             let change_tick = self.world.change_tick();
             // SAFETY: the caller ensures `bundle_id` is valid, and the archetype id is the entity's
             let plan = unsafe {
-                BundleInserter::plan(self.world, location.archetype_id, bundle_id, change_tick)
+                BundleInserter::new_unchecked(
+                    self.world,
+                    location.archetype_id,
+                    bundle_id,
+                    change_tick,
+                )
             };
             scratch.missing.clear();
             scratch
