@@ -46,6 +46,30 @@ pub fn required_default(c: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+    group.bench_function("spawn_batch", |b| {
+        b.iter_batched_ref(
+            World::new,
+            |world| {
+                world.spawn_batch((0..ENTITIES).map(|_| Player));
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("insert_batch", |b| {
+        b.iter_batched_ref(
+            || {
+                let mut world = World::new();
+                let entities = (0..ENTITIES)
+                    .map(|_| world.spawn_empty().id())
+                    .collect::<Vec<_>>();
+                (world, entities)
+            },
+            |(world, entities)| {
+                world.insert_batch(entities.iter().map(|&entity| (entity, Player)));
+            },
+            BatchSize::LargeInput,
+        );
+    });
     group.bench_function("commands_spawn", |b| {
         b.iter_batched_ref(
             World::new,
