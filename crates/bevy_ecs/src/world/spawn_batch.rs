@@ -1,7 +1,7 @@
 use bevy_ptr::{move_as_ptr, MovingPtr};
 
 use crate::{
-    bundle::{Bundle, BundleSpawner, NoBundleEffect},
+    bundle::{Bundle, BundleId, BundleSpawner, NoBundleEffect},
     change_detection::MaybeLocation,
     entity::{AllocEntitiesIterator, Entity, EntitySetIterator},
     world::World,
@@ -30,7 +30,10 @@ enum SpawnBatchMode<'w> {
     },
     /// The bundle has required components built from templates, which need world access,
     /// so each entity is spawned individually.
-    RequiredTemplates(&'w mut World),
+    RequiredTemplates {
+        world: &'w mut World,
+        bundle_id: BundleId,
+    },
 }
 
 impl<'w, I> SpawnBatchIter<'w, I>
@@ -46,7 +49,7 @@ where
         if unsafe { world.bundles.get_unchecked(bundle_id) }.has_required_templates {
             return Self {
                 inner: iter,
-                mode: SpawnBatchMode::RequiredTemplates(world),
+                mode: SpawnBatchMode::RequiredTemplates { world, bundle_id },
                 caller,
             };
         }
@@ -90,10 +93,10 @@ where
                 // SAFETY: `spawner` is not used again, and is dropped with `self`.
                 unsafe { spawner.flush_commands() };
             }
-            SpawnBatchMode::RequiredTemplates(world) => {
+            SpawnBatchMode::RequiredTemplates { world, bundle_id } => {
                 for bundle in &mut self.inner {
                     move_as_ptr!(bundle);
-                    spawn_with_required_templates(world, bundle, self.caller);
+                    spawn_with_required_templates(world, *bundle_id, bundle, self.caller);
                 }
             }
         }
@@ -127,10 +130,14 @@ fn spawn_batched<B: Bundle<Effect: NoBundleEffect>>(
 #[inline(never)]
 fn spawn_with_required_templates<B: Bundle>(
     world: &mut World,
+    bundle_id: BundleId,
     bundle: MovingPtr<'_, B>,
     caller: MaybeLocation,
 ) -> Entity {
-    world.spawn_with_caller(bundle, caller).id()
+    let entity = world.entity_allocator.alloc();
+    world
+        .spawn_at_with_required_templates_or_report(entity, bundle_id, bundle, caller)
+        .id()
 }
 
 impl<I> Iterator for SpawnBatchIter<'_, I>
@@ -147,8 +154,8 @@ where
             SpawnBatchMode::Batched { spawner, allocator } => {
                 spawn_batched(spawner, allocator, bundle, self.caller)
             }
-            SpawnBatchMode::RequiredTemplates(world) => {
-                spawn_with_required_templates(world, bundle, self.caller)
+            SpawnBatchMode::RequiredTemplates { world, bundle_id } => {
+                spawn_with_required_templates(world, *bundle_id, bundle, self.caller)
             }
         })
     }

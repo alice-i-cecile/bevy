@@ -1127,7 +1127,7 @@ impl World {
     /// Like [`Self::spawn_at_with_required_templates`], but reports errors to the world's fallback error handler.
     #[cold]
     #[inline(never)]
-    fn spawn_at_with_required_templates_or_report<B: Bundle>(
+    pub(crate) fn spawn_at_with_required_templates_or_report<B: Bundle>(
         &mut self,
         entity: Entity,
         bundle_id: BundleId,
