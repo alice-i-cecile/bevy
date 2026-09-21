@@ -4,7 +4,7 @@ use bevy_ptr::{ConstNonNull, MovingPtr};
 
 use crate::{
     archetype::{Archetype, ArchetypeCreated, ArchetypeId, SpawnBundleStatus, ARCHETYPE_CREATED},
-    bundle::{Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode, NeedsRequiredTemplates},
+    bundle::{Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode},
     change_detection::{MaybeLocation, Tick},
     entity::{Entity, EntityAllocator, EntityLocation},
     event::{EntityComponentsTrigger, GlobalTrigger},
@@ -25,21 +25,20 @@ pub(crate) struct BundleSpawner<'w> {
 }
 
 impl<'w> BundleSpawner<'w> {
-    /// Creates a new [`BundleSpawner`], unless the bundle needs required templates.
+    /// Creates a new [`BundleSpawner`].
     ///
     /// # Safety
-    /// Caller must ensure that `bundle_id` exists in `world.bundles`
+    /// Caller must ensure that `bundle_id` exists in `world.bundles`, and that the bundle has no required
+    /// templates: those must be built with world access before spawning, which a [`BundleSpawner`] cannot do.
     #[inline]
     pub(crate) unsafe fn new_with_id(
         world: &'w mut World,
         bundle_id: BundleId,
         change_tick: Tick,
-    ) -> Result<Self, NeedsRequiredTemplates> {
+    ) -> Self {
         // SAFETY: bundle exists per precondition
         let bundle_info = unsafe { world.bundles.get_unchecked(bundle_id) };
-        if bundle_info.has_required_templates {
-            return Err(NeedsRequiredTemplates);
-        }
+        debug_assert!(!bundle_info.has_required_templates);
         // SAFETY: retrieved from same world in previous line
         let (new_archetype_id, is_new_created) = unsafe {
             bundle_info.insert_bundle_into_archetype(
@@ -78,7 +77,7 @@ impl<'w> BundleSpawner<'w> {
                 );
             }
         }
-        Ok(spawner)
+        spawner
     }
 
     #[inline]

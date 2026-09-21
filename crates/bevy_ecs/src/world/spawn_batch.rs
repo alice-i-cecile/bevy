@@ -56,12 +56,8 @@ where
         let (lower, upper) = iter.size_hint();
         let length = upper.unwrap_or(lower);
 
-        // SAFETY: the bundle was registered above
-        let Ok(mut spawner) =
-            (unsafe { BundleSpawner::new_with_id(world, bundle_id, change_tick) })
-        else {
-            unreachable!("the bundle has no required templates");
-        };
+        // SAFETY: the bundle was registered above, and has no required templates
+        let mut spawner = unsafe { BundleSpawner::new_with_id(world, bundle_id, change_tick) };
         spawner.reserve_storage(length);
         let allocator = spawner.allocator().alloc_many(length as u32);
 

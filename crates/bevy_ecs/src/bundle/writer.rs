@@ -1,6 +1,6 @@
 use crate::{
-    component::{Component, ComponentId, Components, ComponentsRegistrator},
     bundle::InsertMode,
+    component::{Component, ComponentId, Components, ComponentsRegistrator},
     error::Result,
     relationship::RelationshipHookMode,
     world::EntityWorldMut,

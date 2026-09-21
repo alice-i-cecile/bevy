@@ -1172,12 +1172,9 @@ impl World {
         caller: MaybeLocation,
     ) -> EntityWorldMut<'_> {
         let change_tick = self.change_tick();
-        // SAFETY: the caller ensures `bundle_id` is registered
-        let Ok(mut bundle_spawner) =
-            (unsafe { BundleSpawner::new_with_id(self, bundle_id, change_tick) })
-        else {
-            unreachable!("the bundle has no required templates");
-        };
+        // SAFETY: the caller ensures `bundle_id` is registered, and has no required templates
+        let mut bundle_spawner =
+            unsafe { BundleSpawner::new_with_id(self, bundle_id, change_tick) };
         let (bundle, entity_location) = bundle.partial_move(|bundle| {
             // SAFETY:
             // - `B` matches `bundle_spawner`'s type
@@ -3630,6 +3627,7 @@ impl World {
         unsafe { self.bundles.get(id).debug_checked_unwrap() }
     }
 
+    #[inline(always)]
     pub(crate) fn register_bundle_info<B: Bundle>(&mut self) -> BundleId {
         // This is a hot path, so return early to avoid the `Vec::new` in `ComponentsRegistrator`
         if let Some(bundle_id) = self.bundles.get_id(TypeId::of::<B>()) {

@@ -11,7 +11,7 @@ mod spawner;
 mod tests;
 mod writer;
 
-pub(crate) use insert::{BundleInserter, NeedsRequiredTemplates};
+pub(crate) use insert::BundleInserter;
 pub(crate) use remove::BundleRemover;
 pub(crate) use spawner::BundleSpawner;
 

@@ -31,7 +31,7 @@ pub(crate) struct BundleInserter<'w> {
     change_tick: Tick,
 }
 
-/// Returned when a [`BundleInserter`] or [`BundleSpawner`](super::BundleSpawner) cannot be created, because
+/// Returned when a [`BundleInserter`] cannot be created, because
 /// the insert adds required components that must be built from templates first.
 #[derive(Debug)]
 pub(crate) struct NeedsRequiredTemplates;
