@@ -1,5 +1,6 @@
 use crate::{
     component::{Component, ComponentId, Components, ComponentsRegistrator},
+    bundle::InsertMode,
     error::Result,
     relationship::RelationshipHookMode,
     world::EntityWorldMut,
@@ -163,6 +164,35 @@ impl<'a> BundleWriter<'a> {
         entity: &mut EntityWorldMut,
         relationship_hook_insert_mode: RelationshipHookMode,
     ) -> Result {
+        // SAFETY: Same preconditions
+        unsafe { self.write_with(entity, InsertMode::Replace, relationship_hook_insert_mode) }
+    }
+
+    /// Like [`Self::write`], but components that `entity` already has keep their current values.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`Self::write`].
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::write`].
+    #[track_caller]
+    pub unsafe fn write_if_new(self, entity: &mut EntityWorldMut) -> Result {
+        // SAFETY: Same preconditions
+        unsafe { self.write_with(entity, InsertMode::Keep, RelationshipHookMode::Run) }
+    }
+
+    /// # Safety
+    ///
+    /// Same as [`Self::write`].
+    #[track_caller]
+    unsafe fn write_with(
+        self,
+        entity: &mut EntityWorldMut,
+        mode: InsertMode,
+        relationship_hook_insert_mode: RelationshipHookMode,
+    ) -> Result {
         // SAFETY:
         // - All `component_ids` are from the same world as `entity`
         // - All `component_data_ptrs` are valid types represented by `component_ids`
@@ -173,6 +203,7 @@ impl<'a> BundleWriter<'a> {
                     .component_ptrs
                     .drain(..)
                     .map(|ptr| OwningPtr::new(ptr)),
+                mode,
                 relationship_hook_insert_mode,
             )
         };

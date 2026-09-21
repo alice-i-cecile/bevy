@@ -2,11 +2,9 @@ use bevy_asset::{AssetServer, Assets};
 use bevy_ecs::{
     component::Component,
     error::{BevyError, Result},
-    reflect::ReflectComponent,
     template::{FromTemplate, Template, TemplateContext},
 };
-use bevy_reflect::Reflect;
-use core::{any::TypeId, marker::PhantomData};
+use core::{any::TypeId, fmt, marker::PhantomData};
 
 use crate::{ResolvedSceneRoot, Scene, ScenePatch};
 
@@ -25,38 +23,40 @@ pub trait SceneComponent: Component + FromTemplate<Template: Default> {
     fn scene(props: Self::Props) -> impl Scene;
 }
 
-/// Indicates that this entity includes a [`Component`] that has been spawned with its [`Scene`].
+/// Marks that the [`Scene`] of the [`SceneComponent`] `C` has been applied to this entity.
 ///
-/// Scene components require this component using [`ApplySceneComponent`], so inserting a scene
-/// component outside of a scene (ex: with [`World::spawn`](bevy_ecs::world::World::spawn)) applies its scene.
-#[derive(Component, Default, Clone, Debug, Reflect)]
-#[reflect(Component)]
-pub struct SceneComponentInfo {
-    spawned_from_scene: bool,
-    #[cfg(debug_assertions)]
-    component_name: &'static str,
+/// Every scene component requires this using [`ApplySceneComponent`], so inserting a scene component
+/// outside of a scene (ex: with [`World::spawn`](bevy_ecs::world::World::spawn)) applies its scene.
+#[derive(Component)]
+pub struct SceneApplied<C: SceneComponent>(PhantomData<fn() -> C>);
+
+impl<C: SceneComponent> Default for SceneApplied<C> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
 }
 
-impl SceneComponentInfo {
-    /// Creates a new [`SceneComponentInfo`] for the given type `C`.
-    pub fn new<C: Component>(spawned_from_scene: bool) -> Self {
-        SceneComponentInfo {
-            spawned_from_scene,
-            #[cfg(debug_assertions)]
-            component_name: core::any::type_name::<C>(),
-        }
+impl<C: SceneComponent> Clone for SceneApplied<C> {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl<C: SceneComponent> fmt::Debug for SceneApplied<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("SceneApplied")
+            .field(&core::any::type_name::<C>())
+            .finish()
     }
 }
 
 /// A [`Template`] that applies the [`Scene`] of the [`SceneComponent`] `C` to the entity it is built for,
 /// using the default [`SceneComponent::Props`].
 ///
-/// This is used as the required [`SceneComponentInfo`] of every scene component. When a scene component
-/// is spawned as a scene, [`SceneComponentInfo`] is already part of the scene and this does nothing.
-/// When it is inserted like any other component, this applies its scene first.
-///
-/// The scene's value for `C` itself is skipped: the inserted `C` always wins, just like any other
-/// explicitly inserted component wins over a required one.
+/// This is the required [`SceneApplied<C>`] of every scene component. When a scene component is spawned
+/// as a scene, [`SceneApplied<C>`] is already part of the scene, so this does nothing. When it is inserted
+/// like any other component, this applies its scene first. Like other required components, the scene
+/// never overwrites the inserted `C` or components the entity already has.
 pub struct ApplySceneComponent<C>(PhantomData<fn() -> C>);
 
 impl<C> Default for ApplySceneComponent<C> {
@@ -66,9 +66,9 @@ impl<C> Default for ApplySceneComponent<C> {
 }
 
 impl<C: SceneComponent> Template for ApplySceneComponent<C> {
-    type Output = SceneComponentInfo;
+    type Output = SceneApplied<C>;
 
-    fn build_template(&self, context: &mut TemplateContext) -> Result<SceneComponentInfo> {
+    fn build_template(&self, context: &mut TemplateContext) -> Result<SceneApplied<C>> {
         let mut resolved = {
             let world = context.entity.world();
             let (Some(assets), Some(patches)) = (
@@ -82,11 +82,8 @@ impl<C: SceneComponent> Template for ApplySceneComponent<C> {
             ResolvedSceneRoot::resolve(Box::new(C::scene(C::Props::default())), assets, patches)?
         };
         resolved.scene.remove_template(TypeId::of::<C::Template>());
-        resolved
-            .scene
-            .remove_template(TypeId::of::<SceneComponentInfo>());
-        resolved.apply(context.entity, &mut Default::default())?;
-        Ok(SceneComponentInfo::new::<C>(true))
+        resolved.apply_if_new(context.entity, &mut Default::default())?;
+        Ok(SceneApplied::default())
     }
 
     fn clone_template(&self) -> Self {

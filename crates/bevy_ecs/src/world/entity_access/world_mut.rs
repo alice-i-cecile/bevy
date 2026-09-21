@@ -1281,6 +1281,7 @@ impl<'w> EntityWorldMut<'w> {
             self.try_insert_by_ids_internal(
                 component_ids,
                 iter_components,
+                InsertMode::Replace,
                 relationship_hook_insert_mode,
             )
         };
@@ -1299,6 +1300,7 @@ impl<'w> EntityWorldMut<'w> {
         &mut self,
         component_ids: &[ComponentId],
         iter_components: I,
+        mode: InsertMode,
         relationship_hook_insert_mode: RelationshipHookMode,
     ) -> Result {
         let location = self.location();
@@ -1327,7 +1329,7 @@ impl<'w> EntityWorldMut<'w> {
                     bundle_id,
                     component_ids,
                     iter_components,
-                    InsertMode::Replace,
+                    mode,
                     MaybeLocation::caller(),
                     relationship_hook_insert_mode,
                 )
@@ -1345,7 +1347,7 @@ impl<'w> EntityWorldMut<'w> {
                 location,
                 iter_components,
                 (*storage_types).iter().cloned(),
-                InsertMode::Replace,
+                mode,
                 MaybeLocation::caller(),
                 relationship_hook_insert_mode,
             )

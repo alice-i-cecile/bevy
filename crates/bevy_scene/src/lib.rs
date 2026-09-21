@@ -957,7 +957,7 @@ pub struct Ready {
 
 #[cfg(test)]
 mod tests {
-    use crate::{self as bevy_scene, Ready, ScenePlugin};
+    use crate::{self as bevy_scene, Ready, SceneApplied, ScenePlugin};
     use crate::{prelude::*, ScenePatch};
     use alloc::sync::Arc;
     use bevy_app::{App, TaskPoolPlugin};
@@ -3534,107 +3534,111 @@ mod tests {
             Ok(ScenePatch::load_with(load_context, (self.0)()))
         }
     }
-}
-
-#[cfg(test)]
-mod scene_component_tests {
-    use crate::{self as bevy_scene, prelude::*, SceneComponentInfo, ScenePlugin};
-    use bevy_app::{App, TaskPoolPlugin};
-    use bevy_asset::AssetPlugin;
-    use bevy_ecs::{lifecycle::HookContext, prelude::*, world::DeferredWorld};
-    use bevy_scene_macros::SceneComponent;
-
-    #[derive(Component, Default, Clone, Debug, PartialEq)]
-    struct Health(u32);
-
-    #[derive(Component, Default, Clone)]
-    struct Sword;
-
-    #[derive(Resource, Default)]
-    struct SeenOnAdd(Vec<(Option<u32>, usize)>);
-
-    #[derive(SceneComponent, Default, Clone)]
-    #[component(on_add = on_add_player)]
-    struct Player {
-        score: u32,
-    }
-
-    impl Player {
-        fn scene() -> impl Scene {
-            bsn! {
-                Player { score: 99 }
-                Health(10)
-                Children [ Sword ]
-            }
-        }
-    }
-
-    fn on_add_player(mut world: DeferredWorld, context: HookContext) {
-        let entity = world.entity(context.entity);
-        let health = entity.get::<Health>().map(|health| health.0);
-        let children = entity
-            .get::<Children>()
-            .map_or(0, |children| children.len());
-        world.resource_mut::<SeenOnAdd>().0.push((health, children));
-    }
-
-    fn app() -> App {
-        let mut app = App::new();
-        app.add_plugins((
-            TaskPoolPlugin::default(),
-            AssetPlugin::default(),
-            ScenePlugin,
-        ));
-        app.init_resource::<SeenOnAdd>();
-        app
-    }
-
-    fn sword_children(world: &World, entity: Entity) -> usize {
-        world
-            .get::<Children>(entity)
-            .unwrap()
-            .iter()
-            .filter(|child| world.get::<Sword>(*child).is_some())
-            .count()
-    }
 
     #[test]
-    fn spawn_applies_scene() {
-        let mut app = app();
+    fn scene_component_inserted_outside_scene_applies_scene() {
+        #[derive(Component, Default, Clone, Debug, PartialEq)]
+        struct Health(u32);
+
+        #[derive(Component, Default, Clone)]
+        struct Sword;
+
+        #[derive(Resource, Default, Debug, PartialEq)]
+        struct OnAddSnapshot {
+            health: Option<u32>,
+            children: usize,
+        }
+
+        #[derive(SceneComponent, Default, Clone)]
+        #[component(on_add = on_add_player)]
+        struct Player {
+            score: u32,
+        }
+
+        impl Player {
+            fn scene() -> impl Scene {
+                bsn! {
+                    Player { score: 99 }
+                    Health(10)
+                    Children [ Sword ]
+                }
+            }
+        }
+
+        fn on_add_player(mut world: DeferredWorld, context: HookContext) {
+            let entity = world.entity(context.entity);
+            let snapshot = OnAddSnapshot {
+                health: entity.get::<Health>().map(|health| health.0),
+                children: entity.get::<Children>().map_or(0, Children::len),
+            };
+            *world.resource_mut::<OnAddSnapshot>() = snapshot;
+        }
+
+        let mut app = test_app();
+        app.init_resource::<OnAddSnapshot>();
         let world = app.world_mut();
+
         let entity = world.spawn(Player { score: 3 }).id();
         assert_eq!(world.get::<Health>(entity), Some(&Health(10)));
         assert_eq!(world.get::<Player>(entity).unwrap().score, 3);
-        assert!(world.get::<SceneComponentInfo>(entity).is_some());
-        assert_eq!(sword_children(world, entity), 1);
-        assert_eq!(world.resource::<SeenOnAdd>().0, vec![(Some(10), 1)]);
-    }
+        assert!(world.get::<SceneApplied<Player>>(entity).is_some());
+        assert_eq!(world.get::<Children>(entity).unwrap().len(), 1);
+        assert_eq!(
+            *world.resource::<OnAddSnapshot>(),
+            OnAddSnapshot {
+                health: Some(10),
+                children: 1
+            }
+        );
 
-    #[test]
-    fn commands_spawn_applies_scene() {
-        let mut app = app();
-        let world = app.world_mut();
         let entity = world.commands().spawn(Player::default()).id();
         world.flush();
         assert_eq!(world.get::<Health>(entity), Some(&Health(10)));
-        assert_eq!(sword_children(world, entity), 1);
-    }
 
-    #[test]
-    fn explicit_component_wins_over_scene() {
-        let mut app = app();
-        let world = app.world_mut();
-        let entity = world.spawn((Player::default(), Health(1))).id();
-        assert_eq!(world.get::<Health>(entity), Some(&Health(1)));
-    }
+        let explicit = world.spawn((Player::default(), Health(1))).id();
+        let existing = world.spawn(Health(2)).insert(Player::default()).id();
+        assert_eq!(world.get::<Health>(explicit), Some(&Health(1)));
+        assert_eq!(world.get::<Health>(existing), Some(&Health(2)));
 
-    #[test]
-    fn spawn_scene_applies_scene_once() {
-        let mut app = app();
-        let world = app.world_mut();
         let entity = world.spawn_scene(bsn! { @Player }).unwrap().id();
         assert_eq!(world.get::<Player>(entity).unwrap().score, 99);
-        assert_eq!(sword_children(world, entity), 1);
-        assert_eq!(world.resource::<SeenOnAdd>().0, vec![(Some(10), 0)]);
+        assert_eq!(world.get::<Children>(entity).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn scene_components_including_scene_components() {
+        #[derive(Component, Default, Clone, Debug, PartialEq)]
+        struct Health(u32);
+
+        #[derive(Component, Default, Clone)]
+        struct Sword;
+
+        #[derive(SceneComponent, Default, Clone)]
+        struct Base;
+
+        impl Base {
+            fn scene() -> impl Scene {
+                bsn! { Health(5) }
+            }
+        }
+
+        #[derive(SceneComponent, Default, Clone)]
+        struct Derived;
+
+        impl Derived {
+            fn scene() -> impl Scene {
+                bsn! { @Base Sword }
+            }
+        }
+
+        let mut app = test_app();
+        let world = app.world_mut();
+        let derived = world.spawn(Derived).id();
+        assert_eq!(world.get::<Health>(derived), Some(&Health(5)));
+        assert!(world.get::<Base>(derived).is_some());
+        assert!(world.get::<Sword>(derived).is_some());
+
+        let both = world.spawn(Base).insert(Derived).id();
+        assert!(world.get::<Sword>(both).is_some());
     }
 }

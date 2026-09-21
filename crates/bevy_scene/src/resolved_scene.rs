@@ -1,7 +1,7 @@
 use crate::{Ready, ResolveContext, ResolveSceneError, Scene, SceneList, ScenePatch};
 use bevy_asset::{AssetId, AssetPath, AssetServer, Assets, Handle, UntypedAssetId};
 use bevy_ecs::{
-    bundle::{Bundle, BundleScratch, BundleWriter},
+    bundle::{Bundle, BundleScratch, BundleWriter, InsertMode},
     component::{Component, ComponentsRegistrator},
     entity::Entity,
     error::{BevyError, Result},
@@ -69,10 +69,30 @@ impl ResolvedSceneRoot {
         entity: &mut EntityWorldMut,
         bundle_scratch: &mut BundleScratch,
     ) -> Result<(), ApplySceneError> {
+        self.apply_with_mode(entity, bundle_scratch, InsertMode::Replace)
+    }
+
+    /// Like [`Self::apply`], but components that the entity already has keep their current values.
+    pub fn apply_if_new(
+        &self,
+        entity: &mut EntityWorldMut,
+        bundle_scratch: &mut BundleScratch,
+    ) -> Result<(), ApplySceneError> {
+        self.apply_with_mode(entity, bundle_scratch, InsertMode::Keep)
+    }
+
+    fn apply_with_mode(
+        &self,
+        entity: &mut EntityWorldMut,
+        bundle_scratch: &mut BundleScratch,
+        insert_mode: InsertMode,
+    ) -> Result<(), ApplySceneError> {
         let mut entity_references = SceneEntityReferences::default();
         let mut context = TemplateContext::new(entity, &mut entity_references);
 
-        let result = self.scene.apply(&mut context, bundle_scratch);
+        let result = self
+            .scene
+            .apply_with(&mut context, bundle_scratch, insert_mode, |_, _| {});
         if !bundle_scratch.is_empty() {
             // SAFETY: Components comes from the same world as the `context` passed in to self.scene.apply above
             unsafe {
@@ -207,7 +227,7 @@ impl ResolvedScene {
         context: &mut TemplateContext,
         bundle_scratch: &mut BundleScratch,
     ) -> Result<(), ApplySceneError> {
-        self.apply_with(context, bundle_scratch, |_, _| {})
+        self.apply_with(context, bundle_scratch, InsertMode::Replace, |_, _| {})
     }
 
     /// Applies this scene to the given [`TemplateContext`] (which holds an already-spawned [`EntityWorldMut`]).
@@ -225,6 +245,7 @@ impl ResolvedScene {
         &self,
         context: &mut TemplateContext,
         bundle_scratch: &mut BundleScratch,
+        insert_mode: InsertMode,
         writer_ops: impl FnOnce(&mut TemplateContext, &mut BundleWriter),
     ) -> Result<(), ApplySceneError> {
         let mut bundle_writer = bundle_scratch.writer();
@@ -281,9 +302,11 @@ impl ResolvedScene {
 
                 (writer_ops)(context, &mut bundle_writer);
 
-                bundle_writer
-                    .write(context.entity)
-                    .map_err(ApplySceneError::TemplateBuildError)?;
+                match insert_mode {
+                    InsertMode::Replace => bundle_writer.write(context.entity),
+                    InsertMode::Keep => bundle_writer.write_if_new(context.entity),
+                }
+                .map_err(ApplySceneError::TemplateBuildError)?;
 
                 resolved_cached
                     .scene
@@ -307,9 +330,11 @@ impl ResolvedScene {
                     );
                 }
                 (writer_ops)(context, &mut bundle_writer);
-                bundle_writer
-                    .write(context.entity)
-                    .map_err(ApplySceneError::TemplateBuildError)?;
+                match insert_mode {
+                    InsertMode::Replace => bundle_writer.write(context.entity),
+                    InsertMode::Keep => bundle_writer.write_if_new(context.entity),
+                }
+                .map_err(ApplySceneError::TemplateBuildError)?;
                 self.apply_related(context, bundle_scratch)?;
             }
         };
@@ -379,6 +404,7 @@ impl ResolvedScene {
                         .apply_with(
                             &mut TemplateContext::new(&mut entity, entity_references),
                             bundle_scratch,
+                            InsertMode::Replace,
                             |context, bundle_writer| {
                                 // SAFETY: `context` is used to write all previous `bundle_writer` components
                                 // and is also used to write this relationship component
