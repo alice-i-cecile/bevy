@@ -113,6 +113,8 @@ pub struct World {
     pub(crate) last_trigger_id: u32,
     /// The (entity, component) pairs whose required component templates are currently being built.
     pub(crate) building_required_templates: Vec<(Entity, ComponentId)>,
+    /// Reusable allocations for inserting bundles with required templates, one per nested insert.
+    pub(crate) required_template_scratch: Vec<crate::component::RequiredTemplateScratch>,
     /// The byte index in [`Self::command_queue`] at which unapplied command start.
     ///
     /// This is nonzero while running commands to allow the same buffer to be shared by nested commands.
@@ -148,6 +150,7 @@ impl Default for World {
             last_check_tick: Tick::new(0),
             last_trigger_id: 0,
             building_required_templates: Vec::new(),
+            required_template_scratch: Vec::new(),
             command_queue_start: 0,
             command_queue: SyncUnsafeCell::new(CommandQueue::silent()),
             component_ids: ComponentIds::default(),

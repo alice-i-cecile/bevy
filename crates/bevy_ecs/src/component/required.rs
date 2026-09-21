@@ -2,7 +2,7 @@ use alloc::{boxed::Box, format, vec::Vec};
 use bevy_platform::{hash::FixedHasher, sync::Arc};
 use bevy_ptr::OwningPtr;
 use bumpalo::Bump;
-use core::{fmt::Debug, marker::PhantomData, ptr::NonNull};
+use core::{alloc::Layout, fmt::Debug, marker::PhantomData, ptr::NonNull};
 use indexmap::{IndexMap, IndexSet};
 use thiserror::Error;
 
@@ -251,14 +251,45 @@ impl RequiredStage {
     }
 }
 
-impl Drop for RequiredStage {
-    fn drop(&mut self) {
-        for entry in &mut self.entries {
-            if let (Some(ptr), Some(drop)) = (entry.ptr.take(), entry.drop) {
+impl RequiredStage {
+    /// Drops every value that was not taken, and resets the stage so its allocations can be reused.
+    pub(crate) fn clear(&mut self) {
+        for entry in self.entries.drain(..) {
+            if let (Some(ptr), Some(drop)) = (entry.ptr, entry.drop) {
                 // SAFETY: `ptr` points to a valid value of the type `drop` was created for, and was never taken
                 unsafe { drop(OwningPtr::new(ptr)) };
             }
         }
+        self.alloc.reset();
+    }
+}
+
+impl Drop for RequiredStage {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+
+/// Reusable allocations for inserting bundles with required templates. Kept in a per-world pool.
+#[derive(Default)]
+pub(crate) struct RequiredTemplateScratch {
+    pub(crate) alloc: Bump,
+    pub(crate) component_ids: Vec<ComponentId>,
+    pub(crate) layouts: Vec<Layout>,
+    pub(crate) ptrs: Vec<NonNull<u8>>,
+    pub(crate) stage: RequiredStage,
+    pub(crate) templates: Vec<Arc<dyn ErasedRequiredTemplate>>,
+}
+
+impl RequiredTemplateScratch {
+    /// Resets this scratch for reuse. Values pointed to by `ptrs` must already have been moved out or dropped.
+    pub(crate) fn clear(&mut self) {
+        self.stage.clear();
+        self.templates.clear();
+        self.ptrs.clear();
+        self.layouts.clear();
+        self.component_ids.clear();
+        self.alloc.reset();
     }
 }
 

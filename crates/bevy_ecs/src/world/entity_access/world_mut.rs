@@ -4,7 +4,10 @@ use crate::{
         Bundle, BundleFromComponents, BundleInserter, BundleRemover, DynamicBundle, InsertMode,
     },
     change_detection::{ComponentTicks, MaybeLocation, MutUntyped, Tick},
-    component::{Component, ComponentId, Components, Mutable, RequiredStage, StorageType},
+    component::{
+        Component, ComponentId, Components, ErasedRequiredTemplate, Mutable, RequiredStage,
+        RequiredTemplateScratch, StorageType,
+    },
     entity::{Entity, EntityCloner, EntityClonerBuilder, EntityLocation, OptIn, OptOut},
     error::{ErrorContext, Result},
     event::{EntityComponentsTrigger, EntityEvent},
@@ -27,9 +30,9 @@ use crate::{
 };
 
 use alloc::{format, vec::Vec};
+use bevy_platform::sync::Arc;
 use bevy_ptr::{move_as_ptr, MovingPtr, OwningPtr};
 use bevy_utils::prelude::DebugName;
-use bumpalo::Bump;
 use core::{any::TypeId, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
 
 /// A mutable reference to a particular [`Entity`], and the entire world.
@@ -2484,21 +2487,33 @@ impl<'w> EntityWorldMut<'w> {
         let bundle_id = self.world.register_bundle_info::<T>();
         // SAFETY: the bundle was just registered
         let bundle_info = unsafe { self.world.bundles.get_unchecked(bundle_id) };
-        let component_ids = bundle_info.explicit_components().to_vec();
-        let layouts = component_ids
-            .iter()
-            // SAFETY: bundle component ids are valid
-            .map(|&id| unsafe { self.world.components.get_info_unchecked(id) }.layout())
-            .collect::<Vec<_>>();
-        let scratch = Bump::new();
-        let mut ptrs = Vec::with_capacity(component_ids.len());
+        let mut scratch = self
+            .world
+            .required_template_scratch
+            .pop()
+            .unwrap_or_default();
+        let RequiredTemplateScratch {
+            alloc,
+            component_ids,
+            layouts,
+            ptrs,
+            stage,
+            templates,
+        } = &mut scratch;
+        component_ids.extend_from_slice(bundle_info.explicit_components());
+        layouts.extend(
+            component_ids
+                .iter()
+                // SAFETY: bundle component ids are valid
+                .map(|&id| unsafe { self.world.components.get_info_unchecked(id) }.layout()),
+        );
         // SAFETY:
         // - `get_components` is called exactly once, and `apply_effect` is called at most once afterwards
         // - components are written in bundle order, which matches `component_ids` and `layouts`
         let (bundle, ()) = bundle.partial_move(|bundle| unsafe {
             T::get_components(bundle, &mut |_, component| {
                 let layout = layouts[ptrs.len()];
-                let ptr = scratch.alloc_layout(layout);
+                let ptr = alloc.alloc_layout(layout);
                 core::ptr::copy_nonoverlapping(component.as_ptr(), ptr.as_ptr(), layout.size());
                 ptrs.push(ptr);
             });
@@ -2507,19 +2522,25 @@ impl<'w> EntityWorldMut<'w> {
         // SAFETY: `ptrs` point to owned values of the components in `component_ids`
         let result = unsafe {
             self.insert_by_ids_with_required_templates(
-                &component_ids,
-                &ptrs,
+                component_ids,
+                ptrs,
                 mode,
                 caller,
                 relationship_hook_mode,
+                stage,
+                templates,
             )
         };
+        if result.is_err() {
+            // SAFETY: the insert failed, so `ptrs` still own their values
+            unsafe { self.drop_component_ptrs(component_ids, ptrs) };
+        }
+        scratch.clear();
+        self.world.required_template_scratch.push(scratch);
         match result {
             // SAFETY: called exactly once after `get_components`
             Ok(()) => unsafe { T::apply_effect(bundle, self) },
             Err(error) => {
-                // SAFETY: the insert failed, so `ptrs` still own their values
-                unsafe { self.drop_component_ptrs(&component_ids, &ptrs) };
                 // The bundle's effect cannot be dropped without being applied, so it is leaked.
                 (self.world.fallback_error_handler())(
                     error,
@@ -2544,6 +2565,11 @@ impl<'w> EntityWorldMut<'w> {
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
     ) {
+        let mut scratch = self
+            .world
+            .required_template_scratch
+            .pop()
+            .unwrap_or_default();
         // SAFETY: same preconditions
         let result = unsafe {
             self.insert_by_ids_with_required_templates(
@@ -2552,8 +2578,12 @@ impl<'w> EntityWorldMut<'w> {
                 mode,
                 caller,
                 relationship_hook_mode,
+                &mut scratch.stage,
+                &mut scratch.templates,
             )
         };
+        scratch.clear();
+        self.world.required_template_scratch.push(scratch);
         if let Err(error) = result {
             // SAFETY: the insert failed, so `ptrs` still own their values
             unsafe { self.drop_component_ptrs(component_ids, ptrs) };
@@ -2594,13 +2624,14 @@ impl<'w> EntityWorldMut<'w> {
         mode: InsertMode,
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
+        stage: &mut RequiredStage,
+        templates: &mut Vec<Arc<dyn ErasedRequiredTemplate>>,
     ) -> Result {
         let bundle_id = self.world.bundles.init_dynamic_info(
             &mut self.world.storages,
             &self.world.components,
             component_ids,
         );
-        let mut stage = RequiredStage::default();
 
         // Templates have full world access and may change this entity, which can change which
         // required components are missing. Keep building until every missing one is staged.
@@ -2618,16 +2649,18 @@ impl<'w> EntityWorldMut<'w> {
                     change_tick,
                 )
             };
-            let templates = bundle_inserter
-                .required_templates()
-                .filter(|template| !stage.contains(template.component_id()))
-                .cloned()
-                .collect::<Vec<_>>();
+            templates.clear();
+            templates.extend(
+                bundle_inserter
+                    .required_templates()
+                    .filter(|template| !stage.contains(template.component_id()))
+                    .cloned(),
+            );
             if templates.is_empty() {
                 break;
             }
 
-            for template in templates {
+            for template in templates.drain(..) {
                 if self.location.map(|location| location.archetype_id)
                     != Some(location.archetype_id)
                 {
@@ -2652,7 +2685,7 @@ impl<'w> EntityWorldMut<'w> {
                         ptrs,
                     },
                 );
-                let result = template.build(&mut context, &mut stage);
+                let result = template.build(&mut context, stage);
                 self.world.building_required_templates.pop();
                 if let Err(error) = result {
                     let name = self.world.components.get_name(key.1).unwrap();
@@ -2688,7 +2721,7 @@ impl<'w> EntityWorldMut<'w> {
                 mode,
                 caller,
                 relationship_hook_mode,
-                Some(&mut stage),
+                Some(stage),
             )
         });
         // SAFETY: same as above
