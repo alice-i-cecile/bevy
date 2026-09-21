@@ -136,14 +136,23 @@ impl RequiredComponentConstructor {
         entity: Entity,
         caller: MaybeLocation,
     ) {
-        match &self.0 {
-            // SAFETY: the caller upholds the preconditions of `ErasedRequiredValue::initialize`
-            RequiredConstructorKind::Value(value) => unsafe {
-                value.initialize(table, sparse_sets, change_tick, table_row, entity, caller);
-            },
-            // `BundleInserter` and `BundleSpawner` cannot be created for inserts that need required
-            // templates, so `write_components` never reaches one.
-            RequiredConstructorKind::Template(_) => unreachable!(),
+        let value = match &self.0 {
+            RequiredConstructorKind::Value(value) => Some(value),
+            RequiredConstructorKind::Template(_) => None,
+        };
+        // SAFETY:
+        // - `BundleInserter` and `BundleSpawner` cannot be created for inserts that need required
+        //   templates, so `write_components` never reaches one
+        // - the caller upholds the preconditions of `ErasedRequiredValue::initialize`
+        unsafe {
+            value.debug_checked_unwrap().initialize(
+                table,
+                sparse_sets,
+                change_tick,
+                table_row,
+                entity,
+                caller,
+            );
         }
     }
 }

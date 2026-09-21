@@ -78,7 +78,7 @@ impl<'w> BundleInserter<'w> {
     /// # Safety
     /// - `bundle_id` must correspond to an existing bundle in `world`.
     /// - `archetype_id` must correspond to a valid archetype in `world`.
-    #[inline]
+    #[inline(always)]
     pub(crate) unsafe fn plan(
         world: &'w mut World,
         archetype_id: ArchetypeId,
