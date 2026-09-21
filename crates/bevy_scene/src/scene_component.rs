@@ -1,7 +1,7 @@
 use bevy_asset::{AssetServer, Assets};
 use bevy_ecs::{
     component::Component,
-    error::{BevyError, Result},
+    error::Result,
     template::{FromTemplate, Template, TemplateContext},
 };
 use core::{any::TypeId, fmt, marker::PhantomData};
@@ -75,9 +75,11 @@ impl<C: SceneComponent> Template for ApplySceneComponent<C> {
                 world.get_resource::<AssetServer>(),
                 world.get_resource::<Assets<ScenePatch>>(),
             ) else {
-                return Err(BevyError::error(
-                    "Scene components can only be inserted into worlds with the ScenePlugin",
-                ));
+                tracing::error!(
+                    "Scene component {} was inserted into a world without the ScenePlugin, so its scene was not applied",
+                    core::any::type_name::<C>()
+                );
+                return Ok(SceneApplied::default());
             };
             ResolvedSceneRoot::resolve(Box::new(C::scene(C::Props::default())), assets, patches)?
         };

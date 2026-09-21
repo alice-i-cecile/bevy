@@ -3607,6 +3607,26 @@ mod tests {
     }
 
     #[test]
+    fn scene_component_without_scene_plugin() {
+        #[derive(Component, Default, Clone)]
+        struct Health;
+
+        #[derive(SceneComponent, Default, Clone)]
+        struct Player;
+
+        impl Player {
+            fn scene() -> impl Scene {
+                bsn! { Health }
+            }
+        }
+
+        let mut world = World::new();
+        let entity = world.spawn(Player).id();
+        assert!(world.get::<Player>(entity).is_some());
+        assert!(world.get::<Health>(entity).is_none());
+    }
+
+    #[test]
     fn scene_components_including_scene_components() {
         #[derive(Component, Default, Clone, Debug, PartialEq)]
         struct Health(u32);
