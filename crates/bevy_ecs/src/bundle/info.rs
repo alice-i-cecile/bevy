@@ -13,8 +13,7 @@ use crate::{
     bundle::{Bundle, DynamicBundle},
     change_detection::{MaybeLocation, Tick},
     component::{
-        ComponentId, Components, ComponentsRegistrator, RequiredComponentConstructor,
-        RequiredStage, StorageType,
+        ComponentId, Components, ComponentsRegistrator, RequiredComponentConstructor, StorageType,
     },
     entity::Entity,
     query::DebugCheckedUnwrap as _,
@@ -257,7 +256,6 @@ impl BundleInfo {
         bundle: MovingPtr<'_, T>,
         insert_mode: InsertMode,
         caller: MaybeLocation,
-        mut stage: Option<&mut RequiredStage>,
     ) {
         // NOTE: get_components calls `write_component` on each component in "bundle order".
         // bundle_info.component_ids are also in "bundle order"
@@ -338,7 +336,6 @@ impl BundleInfo {
                     table_row,
                     entity,
                     caller,
-                    &mut stage,
                 );
             }
         }

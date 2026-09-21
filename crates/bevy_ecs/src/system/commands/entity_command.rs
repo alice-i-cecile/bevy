@@ -15,7 +15,7 @@ use crate::{
     change_detection::MaybeLocation,
     component::{Component, ComponentId},
     entity::{Entity, EntityClonerBuilder, OptIn, OptOut},
-    error::EntityCommandOutput,
+    error::{EntityCommandOutput, Result},
     name::Name,
     observer::IntoEntityObserver,
     relationship::RelationshipHookMode,
@@ -145,9 +145,9 @@ where
 #[track_caller]
 pub fn insert(bundle: impl Bundle, mode: InsertMode) -> impl EntityCommand {
     let caller = MaybeLocation::caller();
-    move |mut entity: EntityWorldMut| {
+    move |mut entity: EntityWorldMut| -> Result {
         move_as_ptr!(bundle);
-        entity.insert_with_caller(bundle, mode, caller, RelationshipHookMode::Run);
+        entity.try_insert_with_caller(bundle, mode, caller, RelationshipHookMode::Run)
     }
 }
 

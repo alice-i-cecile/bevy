@@ -281,7 +281,9 @@ impl ResolvedScene {
 
                 (writer_ops)(context, &mut bundle_writer);
 
-                bundle_writer.write(context.entity);
+                bundle_writer
+                    .write(context.entity)
+                    .map_err(ApplySceneError::TemplateBuildError)?;
 
                 resolved_cached
                     .scene
@@ -305,7 +307,9 @@ impl ResolvedScene {
                     );
                 }
                 (writer_ops)(context, &mut bundle_writer);
-                bundle_writer.write(context.entity);
+                bundle_writer
+                    .write(context.entity)
+                    .map_err(ApplySceneError::TemplateBuildError)?;
                 self.apply_related(context, bundle_scratch)?;
             }
         };

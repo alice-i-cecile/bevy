@@ -1,5 +1,6 @@
 use crate::{
     component::{Component, ComponentId, Components, ComponentsRegistrator},
+    error::Result,
     relationship::RelationshipHookMode,
     world::EntityWorldMut,
 };
@@ -133,10 +134,14 @@ impl<'a> BundleWriter<'a> {
     ///
     /// `entity` must be from the same world that all [`Self::push_component`] or [`Self::push_component_by_id`] calls since the last
     /// [`Self::write`] or [`Self::write_with_relationship_hook_insert_mode`] were called with.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a required template of one of the components fails to build. Nothing is inserted in that case.
     #[track_caller]
-    pub unsafe fn write(self, entity: &mut EntityWorldMut) {
+    pub unsafe fn write(self, entity: &mut EntityWorldMut) -> Result {
         // SAFETY: Same preconditions
-        unsafe { self.write_with_relationship_hook_insert_mode(entity, RelationshipHookMode::Run) };
+        unsafe { self.write_with_relationship_hook_insert_mode(entity, RelationshipHookMode::Run) }
     }
 
     /// Writes the current contents of the bundle to the given `entity` and clears the scratch space.
@@ -148,27 +153,32 @@ impl<'a> BundleWriter<'a> {
     ///
     /// `entity` must be from the same world that all [`Self::push_component`] or [`Self::push_component_by_id`] calls since the last
     ///  [`Self::write`] or [`Self::write_with_relationship_hook_insert_mode`] were called with.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a required template of one of the components fails to build. Nothing is inserted in that case.
     #[track_caller]
     pub unsafe fn write_with_relationship_hook_insert_mode(
         self,
         entity: &mut EntityWorldMut,
         relationship_hook_insert_mode: RelationshipHookMode,
-    ) {
+    ) -> Result {
         // SAFETY:
         // - All `component_ids` are from the same world as `entity`
         // - All `component_data_ptrs` are valid types represented by `component_ids`
-        unsafe {
-            entity.insert_by_ids_internal(
+        let result = unsafe {
+            entity.try_insert_by_ids_internal(
                 &self.0.component_ids,
                 self.0
                     .component_ptrs
                     .drain(..)
                     .map(|ptr| OwningPtr::new(ptr)),
                 relationship_hook_insert_mode,
-            );
-        }
+            )
+        };
         self.0.component_ids.clear();
         self.0.alloc.reset();
+        result
     }
 
     /// Returns true if there are currently no components.
@@ -196,7 +206,7 @@ mod tests {
             bundle_writer.push_component(&mut components, X);
             bundle_writer.push_component(&mut components, Name::new("Hi"));
             let mut entity = world.spawn_empty();
-            bundle_writer.write(&mut entity);
+            bundle_writer.write(&mut entity).unwrap();
 
             assert_eq!(entity.get::<Name>().unwrap().as_str(), "Hi");
             assert!(entity.contains::<X>());

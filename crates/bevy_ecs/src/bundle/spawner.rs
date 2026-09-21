@@ -4,7 +4,7 @@ use bevy_ptr::{ConstNonNull, MovingPtr};
 
 use crate::{
     archetype::{Archetype, ArchetypeCreated, ArchetypeId, SpawnBundleStatus, ARCHETYPE_CREATED},
-    bundle::{Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode},
+    bundle::{Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode, NeedsRequiredTemplates},
     change_detection::{MaybeLocation, Tick},
     entity::{Entity, EntityAllocator, EntityLocation},
     event::{EntityComponentsTrigger, GlobalTrigger},
@@ -25,22 +25,18 @@ pub(crate) struct BundleSpawner<'w> {
 }
 
 impl<'w> BundleSpawner<'w> {
-    /// Returns true if spawning this bundle requires building templated required components first.
     #[inline]
-    pub(crate) fn has_required_templates(&self) -> bool {
-        // SAFETY: the bundle info is valid for the lifetime of the spawner
-        unsafe { self.bundle_info.as_ref() }.has_required_templates
-    }
-
-    #[inline]
-    pub fn new<T: Bundle>(world: &'w mut World, change_tick: Tick) -> Self {
+    pub fn new<T: Bundle>(
+        world: &'w mut World,
+        change_tick: Tick,
+    ) -> Result<Self, NeedsRequiredTemplates> {
         let bundle_id = world.register_bundle_info::<T>();
 
         // SAFETY: we initialized this bundle_id in `init_info`
         unsafe { Self::new_with_id(world, bundle_id, change_tick) }
     }
 
-    /// Creates a new [`BundleSpawner`].
+    /// Creates a new [`BundleSpawner`], unless the bundle needs required templates.
     ///
     /// # Safety
     /// Caller must ensure that `bundle_id` exists in `world.bundles`
@@ -49,9 +45,12 @@ impl<'w> BundleSpawner<'w> {
         world: &'w mut World,
         bundle_id: BundleId,
         change_tick: Tick,
-    ) -> Self {
+    ) -> Result<Self, NeedsRequiredTemplates> {
         // SAFETY: bundle exists per precondition
         let bundle_info = unsafe { world.bundles.get_unchecked(bundle_id) };
+        if bundle_info.has_required_templates {
+            return Err(NeedsRequiredTemplates);
+        }
         // SAFETY: retrieved from same world in previous line
         let (new_archetype_id, is_new_created) = unsafe {
             bundle_info.insert_bundle_into_archetype(
@@ -90,7 +89,7 @@ impl<'w> BundleSpawner<'w> {
                 );
             }
         }
-        spawner
+        Ok(spawner)
     }
 
     #[inline]
@@ -151,7 +150,6 @@ impl<'w> BundleSpawner<'w> {
                     bundle,
                     InsertMode::Replace,
                     caller,
-                    None,
                 );
             }
             // SAFETY: Entity was just spawned at this location

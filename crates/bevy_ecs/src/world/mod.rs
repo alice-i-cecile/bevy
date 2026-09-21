@@ -41,11 +41,11 @@ use crate::{
     component::{
         Component, ComponentDescriptor, ComponentId, ComponentIds, ComponentInfo, Components,
         ComponentsQueuedRegistrator, ComponentsRegistrator, Mutable, RequiredComponents,
-        RequiredComponentsError,
+        RequiredComponentsError, RequiredTemplates,
     },
     entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError, SpawnError},
     entity_disabling::DefaultQueryFilters,
-    error::{ErrorHandler, FallbackErrorHandler},
+    error::{BevyError, ErrorContext, ErrorHandler, FallbackErrorHandler},
     lifecycle::{
         AddEvent, ComponentHooks, DespawnEvent, DiscardEvent, InsertEvent, RemoveEvent,
         RemovedComponentMessages, ADD, DESPAWN, DISCARD, INSERT, REMOVE,
@@ -111,10 +111,8 @@ pub struct World {
     pub(crate) last_change_tick: Tick,
     pub(crate) last_check_tick: Tick,
     pub(crate) last_trigger_id: u32,
-    /// The (entity, component) pairs whose required component templates are currently being built.
-    pub(crate) building_required_templates: Vec<(Entity, ComponentId)>,
-    /// Reusable allocations for inserting bundles with required templates, one per nested insert.
-    pub(crate) required_template_scratch: Vec<crate::component::RequiredTemplateScratch>,
+    /// State for inserting bundles that need required templates.
+    pub(crate) required_templates: RequiredTemplates,
     /// The byte index in [`Self::command_queue`] at which unapplied command start.
     ///
     /// This is nonzero while running commands to allow the same buffer to be shared by nested commands.
@@ -149,8 +147,7 @@ impl Default for World {
             last_change_tick: Tick::new(0),
             last_check_tick: Tick::new(0),
             last_trigger_id: 0,
-            building_required_templates: Vec::new(),
-            required_template_scratch: Vec::new(),
+            required_templates: RequiredTemplates::default(),
             command_queue_start: 0,
             command_queue: SyncUnsafeCell::new(CommandQueue::silent()),
             component_ids: ComponentIds::default(),
@@ -1111,18 +1108,46 @@ impl World {
         bundle: MovingPtr<'_, B>,
         caller: MaybeLocation,
     ) -> EntityWorldMut<'_> {
+        if let Err(error) = self.try_spawn_at_unchecked(entity, bundle, caller) {
+            (self.fallback_error_handler())(
+                error,
+                ErrorContext::RequiredTemplate {
+                    name: DebugName::type_name::<B>(),
+                },
+            );
+        }
+        let location = self.entities().get_spawned(entity).ok();
+        // SAFETY: `location` is the entity's current location, or `None` if it was despawned
+        unsafe { EntityWorldMut::new(self, entity, location) }
+    }
+
+    /// Spawns `bundle` on `entity`.
+    ///
+    /// If one of its required templates fails to build, `entity` is despawned and the error is returned.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the entity index is already constructed
+    pub(crate) fn try_spawn_at_unchecked<B: Bundle>(
+        &mut self,
+        entity: Entity,
+        bundle: MovingPtr<'_, B>,
+        caller: MaybeLocation,
+    ) -> Result<EntityWorldMut<'_>, BevyError> {
         let change_tick = self.change_tick();
-        let mut bundle_spawner = BundleSpawner::new::<B>(self, change_tick);
-        if bundle_spawner.has_required_templates() {
+        let Ok(mut bundle_spawner) = BundleSpawner::new::<B>(self, change_tick) else {
             let mut entity_mut = self.spawn_empty_at_unchecked(entity, caller);
-            entity_mut.insert_with_caller(
+            if let Err(error) = entity_mut.try_insert_with_caller(
                 bundle,
                 InsertMode::Replace,
                 caller,
                 RelationshipHookMode::Run,
-            );
-            return entity_mut;
-        }
+            ) {
+                entity_mut.despawn();
+                return Err(error);
+            }
+            return Ok(entity_mut);
+        };
         let (bundle, entity_location) = bundle.partial_move(|bundle| {
             // SAFETY:
             // - `B` matches `bundle_spawner`'s type
@@ -1148,7 +1173,7 @@ impl World {
         // - This is called exactly once after `get_components` has been called in `spawn_non_existent`.
         // - `bundle` had it's `get_components` function called exactly once inside `spawn_non_existent`.
         unsafe { B::apply_effect(bundle, &mut entity) };
-        entity
+        Ok(entity)
     }
 
     /// A faster version of [`spawn_at`](Self::spawn_at) for the empty bundle.
@@ -2630,7 +2655,8 @@ impl World {
                                 bundle_id,
                                 change_tick,
                             )
-                        },
+                        }
+                        .expect("the bundle has no required templates"),
                         archetype_id: first_location.archetype_id,
                     };
                     move_as_ptr!(first_bundle);
@@ -2659,7 +2685,8 @@ impl World {
                                                 bundle_id,
                                                 change_tick,
                                             )
-                                        },
+                                        }
+                                        .expect("the bundle has no required templates"),
                                         archetype_id: location.archetype_id,
                                     }
                                 }
@@ -2804,7 +2831,8 @@ impl World {
                                 bundle_id,
                                 change_tick,
                             )
-                        },
+                        }
+                        .expect("the bundle has no required templates"),
                         archetype_id: first_location.archetype_id,
                     };
 
@@ -2845,7 +2873,8 @@ impl World {
                                     bundle_id,
                                     change_tick,
                                 )
-                            },
+                            }
+                            .expect("the bundle has no required templates"),
                             archetype_id: location.archetype_id,
                         }
                     }
@@ -3018,8 +3047,18 @@ impl World {
                     let tick = world.change_tick();
                     // SAFETY:
                     // - `location.archetype_id` is part of a valid `EntityLocation`.
-                    let mut bundle_inserter =
-                        unsafe { BundleInserter::new::<R>(world, location.archetype_id, tick) };
+                    let Ok(mut bundle_inserter) =
+                        (unsafe { BundleInserter::new::<R>(world, location.archetype_id, tick) })
+                    else {
+                        // A templated required component of `R` was removed during the scope.
+                        entity_mut.insert_with_caller(
+                            value,
+                            InsertMode::Replace,
+                            self.caller,
+                            RelationshipHookMode::Run,
+                        );
+                        return;
+                    };
                     // SAFETY:
                     // - `location` matches current entity and thus must currently exist in the source
                     //   archetype for this inserter and its location within the archetype.

@@ -50,11 +50,13 @@ pub struct TemplateContext<'a, 'w> {
     inserting: InsertingComponents<'a>,
 }
 
-/// The explicit components of a bundle that is currently being inserted, visible to required component templates.
+/// The components an insert is adding, visible to the required templates built for that insert.
 #[derive(Clone, Copy, Default)]
 pub(crate) struct InsertingComponents<'a> {
-    pub(crate) ids: &'a [ComponentId],
-    pub(crate) ptrs: &'a [NonNull<u8>],
+    pub(crate) explicit_ids: &'a [ComponentId],
+    pub(crate) explicit_ptrs: &'a [NonNull<u8>],
+    pub(crate) built_ids: &'a [ComponentId],
+    pub(crate) built_ptrs: &'a [NonNull<u8>],
 }
 
 impl<'a, 'w> TemplateContext<'a, 'w> {
@@ -82,22 +84,27 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
         }
     }
 
-    /// Returns the component `C` if it is part of the bundle currently being inserted into [`Self::entity`].
+    /// Returns the component `C` if the insert this required template is being built for adds it:
+    /// either as part of the inserted bundle, or as a required component that has already been built.
     ///
-    /// Required component templates are built before the bundle that requires them is inserted, so the
-    /// bundle's components are not on the entity yet. This makes them readable anyway, which lets a
-    /// required template depend on the values of the component that required it.
+    /// Required templates are built before any of those components are on [`Self::entity`], so this is how they read them.
     pub fn inserting<C: Component>(&self) -> Option<&C> {
         let id = self.entity.world().components().get_id(TypeId::of::<C>())?;
-        let index = self
-            .inserting
-            .ids
+        let InsertingComponents {
+            explicit_ids,
+            explicit_ptrs,
+            built_ids,
+            built_ptrs,
+        } = self.inserting;
+        let ptr = explicit_ids
             .iter()
-            .position(|&inserting| inserting == id)?;
-        // SAFETY: `ptrs[index]` points to a valid value of the component with id `ids[index]`, which is `C`,
-        // and stays valid for `'a`
-        Some(unsafe { self.inserting.ptrs[index].cast::<C>().as_ref() })
+            .zip(explicit_ptrs)
+            .chain(built_ids.iter().zip(built_ptrs))
+            .find_map(|(&inserting, ptr)| (inserting == id).then_some(*ptr))?;
+        // SAFETY: `ptr` points to a valid value of the component with id `id`, which is `C`, and stays valid for `'a`
+        Some(unsafe { ptr.cast::<C>().as_ref() })
     }
+
     /// Get the entity associated with the [`SceneEntityReference`], spawning a new one
     /// if this is the first call with this index.
     pub fn get_entity(&mut self, reference: SceneEntityReference) -> Entity {

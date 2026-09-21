@@ -56,7 +56,12 @@ where
         let (lower, upper) = iter.size_hint();
         let length = upper.unwrap_or(lower);
 
-        let mut spawner = BundleSpawner::new::<I::Item>(world, change_tick);
+        // SAFETY: the bundle was registered above
+        let Ok(mut spawner) =
+            (unsafe { BundleSpawner::new_with_id(world, bundle_id, change_tick) })
+        else {
+            unreachable!("the bundle has no required templates");
+        };
         spawner.reserve_storage(length);
         let allocator = spawner.allocator().alloc_many(length as u32);
 
@@ -82,7 +87,7 @@ where
                 spawner.allocator().free(e);
             }
             // Apply any commands from those operations.
-            // SAFETY: `self.spawner` will be dropped immediately after this call.
+            // SAFETY: `spawner` is not used again, and is dropped with `self`.
             unsafe { spawner.flush_commands() };
         }
     }

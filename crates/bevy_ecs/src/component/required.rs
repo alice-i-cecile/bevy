@@ -2,14 +2,20 @@ use alloc::{boxed::Box, format, vec::Vec};
 use bevy_platform::{hash::FixedHasher, sync::Arc};
 use bevy_ptr::OwningPtr;
 use bumpalo::Bump;
-use core::{alloc::Layout, fmt::Debug, marker::PhantomData, ptr::NonNull};
+use core::{
+    alloc::Layout,
+    any::{Any, TypeId},
+    fmt::Debug,
+    marker::PhantomData,
+    ptr::NonNull,
+};
 use indexmap::{IndexMap, IndexSet};
 use thiserror::Error;
 
 use crate::{
     bundle::BundleInfo,
     change_detection::{MaybeLocation, Tick},
-    component::{Component, ComponentId, Components, ComponentsRegistrator, StorageType},
+    component::{Component, ComponentId, Components, ComponentsRegistrator},
     entity::Entity,
     error::Result,
     query::DebugCheckedUnwrap as _,
@@ -30,8 +36,8 @@ pub struct RequiredComponentConstructor(RequiredConstructorKind);
 
 #[derive(Clone)]
 enum RequiredConstructorKind {
-    // Note: this function makes `unsafe` assumptions, so it cannot be public.
-    Value(Arc<dyn Fn(&mut Table, &mut SparseSets, Tick, TableRow, Entity, MaybeLocation)>),
+    // Note: these make `unsafe` assumptions, so they cannot be public.
+    Value(Arc<dyn ErasedRequiredValue>),
     Template(Arc<dyn ErasedRequiredTemplate>),
 }
 
@@ -45,61 +51,22 @@ impl RequiredComponentConstructor {
         component_id: ComponentId,
         constructor: impl Fn() -> C + 'static,
     ) -> Self {
-        RequiredComponentConstructor(RequiredConstructorKind::Value({
-            // `portable-atomic-util` `Arc` is not able to coerce an unsized
-            // type like `std::sync::Arc` can. Creating a `Box` first does the
-            // coercion.
-            //
-            // This would be resolved by https://github.com/rust-lang/rust/issues/123430
-
-            #[cfg(not(target_has_atomic = "ptr"))]
-            use alloc::boxed::Box;
-
-            type Constructor = dyn for<'a, 'b> Fn(
-                &'a mut Table,
-                &'b mut SparseSets,
-                Tick,
-                TableRow,
-                Entity,
-                MaybeLocation,
-            );
-
-            #[cfg(not(target_has_atomic = "ptr"))]
-            type Intermediate<T> = Box<T>;
-
-            #[cfg(target_has_atomic = "ptr")]
-            type Intermediate<T> = Arc<T>;
-
-            let boxed: Intermediate<Constructor> = Intermediate::new(
-                move |table, sparse_sets, change_tick, table_row, entity, caller| {
-                    OwningPtr::make(constructor(), |ptr| {
-                        // SAFETY: This will only be called in the context of `BundleInfo::write_components`, which will
-                        // pass in a valid table_row and entity requiring a C constructor
-                        // C::STORAGE_TYPE is the storage type associated with `component_id` / `C`
-                        // `ptr` points to valid `C` data, which matches the type associated with `component_id`
-                        unsafe {
-                            BundleInfo::initialize_required_component(
-                                table,
-                                sparse_sets,
-                                change_tick,
-                                table_row,
-                                entity,
-                                component_id,
-                                C::STORAGE_TYPE,
-                                ptr,
-                                caller,
-                            );
-                        }
-                    });
-                },
-            );
-
-            Arc::from(boxed)
-        }))
+        // `portable-atomic-util` `Arc` is not able to coerce an unsized
+        // type like `std::sync::Arc` can. Creating a `Box` first does the
+        // coercion.
+        //
+        // This would be resolved by https://github.com/rust-lang/rust/issues/123430
+        let boxed: Box<dyn ErasedRequiredValue> = Box::new(RequiredValue {
+            component_id,
+            constructor,
+        });
+        RequiredComponentConstructor(RequiredConstructorKind::Value(Arc::from(boxed)))
     }
 
     /// Creates a new [`RequiredComponentConstructor`] that builds `C` from a [`Template`] before the entity
     /// is moved to its new archetype, giving it access to the [`World`](crate::world::World) via [`TemplateContext`].
+    ///
+    /// If `T` is `C` itself, the template needs no context, so this creates a constructor that clones it instead.
     ///
     /// # Safety
     ///
@@ -108,6 +75,18 @@ impl RequiredComponentConstructor {
         component_id: ComponentId,
         template: T,
     ) -> Self {
+        if TypeId::of::<T>() == TypeId::of::<C>() {
+            // SAFETY: the caller ensures `component_id` is valid for `C`
+            return unsafe {
+                Self::new(component_id, move || {
+                    let mut value = Some(template.clone_template());
+                    (&mut value as &mut dyn Any)
+                        .downcast_mut::<Option<C>>()
+                        .and_then(Option::take)
+                        .unwrap()
+                })
+            };
+        }
         let boxed: Box<dyn ErasedRequiredTemplate> = Box::new(RequiredTemplate::<C, T> {
             component_id,
             template,
@@ -116,16 +95,26 @@ impl RequiredComponentConstructor {
         RequiredComponentConstructor(RequiredConstructorKind::Template(Arc::from(boxed)))
     }
 
-    /// Returns true if this constructor is built from a [`Template`] before insertion.
+    /// Returns `true` if this constructor needs a [`TemplateContext`], and so must be built before insertion.
     #[inline]
     pub fn is_template(&self) -> bool {
         matches!(self.0, RequiredConstructorKind::Template(_))
     }
 
-    pub(crate) fn template(&self) -> Option<&Arc<dyn ErasedRequiredTemplate>> {
+    /// Returns the [`ComponentId`] of the component this constructor creates.
+    #[inline]
+    pub fn component_id(&self) -> ComponentId {
         match &self.0 {
-            RequiredConstructorKind::Template(template) => Some(template),
-            RequiredConstructorKind::Value(_) => None,
+            RequiredConstructorKind::Value(value) => value.component_id(),
+            RequiredConstructorKind::Template(template) => template.component_id(),
+        }
+    }
+
+    /// Builds the component into `alloc`, returning a pointer to the new value.
+    pub(crate) fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>> {
+        match &self.0 {
+            RequiredConstructorKind::Value(value) => Ok(value.build(alloc)),
+            RequiredConstructorKind::Template(template) => template.build(context, alloc),
         }
     }
 
@@ -146,46 +135,87 @@ impl RequiredComponentConstructor {
         table_row: TableRow,
         entity: Entity,
         caller: MaybeLocation,
-        stage: &mut Option<&mut RequiredStage>,
     ) {
         match &self.0 {
-            RequiredConstructorKind::Value(constructor) => {
-                (constructor)(table, sparse_sets, change_tick, table_row, entity, caller);
-            }
-            RequiredConstructorKind::Template(template) => {
-                let component_id = template.component_id();
-                let Some(ptr) = stage.as_mut().and_then(|stage| stage.take(component_id)) else {
-                    panic!(
-                        "Required component {component_id:?} is built from a template, but was inserted \
-                        through an API that does not support required templates"
-                    );
-                };
-                // SAFETY:
-                // - the caller ensures we are in `BundleInfo::write_components` for a valid entity and table_row
-                // - `ptr` was staged by `RequiredTemplate::build` for `component_id`, which has this storage type
-                unsafe {
-                    BundleInfo::initialize_required_component(
-                        table,
-                        sparse_sets,
-                        change_tick,
-                        table_row,
-                        entity,
-                        component_id,
-                        template.storage_type(),
-                        ptr,
-                        caller,
-                    );
-                }
-            }
+            // SAFETY: the caller upholds the preconditions of `ErasedRequiredValue::initialize`
+            RequiredConstructorKind::Value(value) => unsafe {
+                value.initialize(table, sparse_sets, change_tick, table_row, entity, caller);
+            },
+            // `BundleInserter` and `BundleSpawner` cannot be created for inserts that need required
+            // templates, so `write_components` never reaches one.
+            RequiredConstructorKind::Template(_) => unreachable!(),
         }
     }
 }
 
-/// A type-erased [`Template`] used to build a required component before it is inserted.
-pub(crate) trait ErasedRequiredTemplate: Send + Sync + 'static {
+trait ErasedRequiredValue {
     fn component_id(&self) -> ComponentId;
-    fn storage_type(&self) -> StorageType;
-    fn build(&self, context: &mut TemplateContext, stage: &mut RequiredStage) -> Result;
+
+    fn build(&self, alloc: &Bump) -> NonNull<u8>;
+
+    /// # Safety
+    ///
+    /// Same as [`RequiredComponentConstructor::initialize`].
+    unsafe fn initialize(
+        &self,
+        table: &mut Table,
+        sparse_sets: &mut SparseSets,
+        change_tick: Tick,
+        table_row: TableRow,
+        entity: Entity,
+        caller: MaybeLocation,
+    );
+}
+
+struct RequiredValue<F> {
+    component_id: ComponentId,
+    constructor: F,
+}
+
+impl<C: Component, F: Fn() -> C> ErasedRequiredValue for RequiredValue<F> {
+    fn component_id(&self) -> ComponentId {
+        self.component_id
+    }
+
+    fn build(&self, alloc: &Bump) -> NonNull<u8> {
+        NonNull::from(alloc.alloc((self.constructor)())).cast()
+    }
+
+    unsafe fn initialize(
+        &self,
+        table: &mut Table,
+        sparse_sets: &mut SparseSets,
+        change_tick: Tick,
+        table_row: TableRow,
+        entity: Entity,
+        caller: MaybeLocation,
+    ) {
+        OwningPtr::make((self.constructor)(), |ptr| {
+            // SAFETY: This will only be called in the context of `BundleInfo::write_components`, which will
+            // pass in a valid table_row and entity requiring a C constructor
+            // C::STORAGE_TYPE is the storage type associated with `component_id` / `C`
+            // `ptr` points to valid `C` data, which matches the type associated with `component_id`
+            unsafe {
+                BundleInfo::initialize_required_component(
+                    table,
+                    sparse_sets,
+                    change_tick,
+                    table_row,
+                    entity,
+                    self.component_id,
+                    C::STORAGE_TYPE,
+                    ptr,
+                    caller,
+                );
+            }
+        });
+    }
+}
+
+trait ErasedRequiredTemplate: Send + Sync + 'static {
+    fn component_id(&self) -> ComponentId;
+
+    fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>>;
 }
 
 struct RequiredTemplate<C, T> {
@@ -201,101 +231,50 @@ impl<C: Component, T: Template<Output = C> + Send + Sync + 'static> ErasedRequir
         self.component_id
     }
 
-    fn storage_type(&self) -> StorageType {
-        C::STORAGE_TYPE
-    }
-
-    fn build(&self, context: &mut TemplateContext, stage: &mut RequiredStage) -> Result {
+    fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>> {
         let value = self.template.build_template(context)?;
-        stage.push(self.component_id, value);
-        Ok(())
+        Ok(NonNull::from(alloc.alloc(value)).cast())
     }
 }
 
-/// Required component values built from templates, waiting to be written during an insert.
+/// Reusable allocations for inserting bundles that need required templates.
 #[derive(Default)]
-pub(crate) struct RequiredStage {
-    entries: Vec<StagedRequired>,
-    alloc: Bump,
-}
-
-struct StagedRequired {
-    component_id: ComponentId,
-    ptr: Option<NonNull<u8>>,
-    drop: Option<unsafe fn(OwningPtr<'_>)>,
-}
-
-impl RequiredStage {
-    fn push<C: Component>(&mut self, component_id: ComponentId, value: C) {
-        let ptr = NonNull::from(self.alloc.alloc(value)).cast::<u8>();
-        self.entries.push(StagedRequired {
-            component_id,
-            ptr: Some(ptr),
-            drop: core::mem::needs_drop::<C>().then_some(drop_as::<C> as unsafe fn(OwningPtr<'_>)),
-        });
-    }
-
-    pub(crate) fn contains(&self, component_id: ComponentId) -> bool {
-        self.entries
-            .iter()
-            .any(|entry| entry.component_id == component_id)
-    }
-
-    fn take(&mut self, component_id: ComponentId) -> Option<OwningPtr<'_>> {
-        let entry = self
-            .entries
-            .iter_mut()
-            .find(|entry| entry.component_id == component_id)?;
-        // SAFETY: staged pointers point to valid, owned values that have not been taken yet
-        entry.ptr.take().map(|ptr| unsafe { OwningPtr::new(ptr) })
-    }
-}
-
-impl RequiredStage {
-    /// Drops every value that was not taken, and resets the stage so its allocations can be reused.
-    pub(crate) fn clear(&mut self) {
-        for entry in self.entries.drain(..) {
-            if let (Some(ptr), Some(drop)) = (entry.ptr, entry.drop) {
-                // SAFETY: `ptr` points to a valid value of the type `drop` was created for, and was never taken
-                unsafe { drop(OwningPtr::new(ptr)) };
-            }
-        }
-        self.alloc.reset();
-    }
-}
-
-impl Drop for RequiredStage {
-    fn drop(&mut self) {
-        self.clear();
-    }
-}
-
-/// Reusable allocations for inserting bundles with required templates. Kept in a per-world pool.
-#[derive(Default)]
-pub(crate) struct RequiredTemplateScratch {
+pub(crate) struct RequiredComponentsScratch {
+    /// Holds the explicit components of typed bundles, and every built required component.
     pub(crate) alloc: Bump,
-    pub(crate) component_ids: Vec<ComponentId>,
+    pub(crate) explicit_ids: Vec<ComponentId>,
+    pub(crate) explicit_ptrs: Vec<NonNull<u8>>,
     pub(crate) layouts: Vec<Layout>,
-    pub(crate) ptrs: Vec<NonNull<u8>>,
-    pub(crate) stage: RequiredStage,
-    pub(crate) templates: Vec<Arc<dyn ErasedRequiredTemplate>>,
+    pub(crate) built_ids: Vec<ComponentId>,
+    pub(crate) built_ptrs: Vec<NonNull<u8>>,
+    /// The required components missing from the entity, in the order they are written.
+    pub(crate) missing: Vec<RequiredComponentConstructor>,
+    pub(crate) write_ids: Vec<ComponentId>,
+    pub(crate) write_ptrs: Vec<NonNull<u8>>,
 }
 
-impl RequiredTemplateScratch {
-    /// Resets this scratch for reuse. Values pointed to by `ptrs` must already have been moved out or dropped.
+impl RequiredComponentsScratch {
+    /// Resets this scratch for reuse. Every value it points to must already have been moved out or dropped.
     pub(crate) fn clear(&mut self) {
-        self.stage.clear();
-        self.templates.clear();
-        self.ptrs.clear();
+        self.explicit_ids.clear();
+        self.explicit_ptrs.clear();
         self.layouts.clear();
-        self.component_ids.clear();
+        self.built_ids.clear();
+        self.built_ptrs.clear();
+        self.missing.clear();
+        self.write_ids.clear();
+        self.write_ptrs.clear();
         self.alloc.reset();
     }
 }
 
-unsafe fn drop_as<C>(ptr: OwningPtr<'_>) {
-    // SAFETY: the caller ensures `ptr` points to a valid `C`
-    unsafe { ptr.drop_as::<C>() };
+/// Per-world state for building required templates.
+#[derive(Default)]
+pub(crate) struct RequiredTemplates {
+    /// One scratch per nested insert.
+    pub(crate) scratch: Vec<RequiredComponentsScratch>,
+    /// The entity and component pairs whose templates are being built, used to detect cycles.
+    pub(crate) building: Vec<(Entity, ComponentId)>,
 }
 
 /// The collection of metadata for components that are required for a given component.

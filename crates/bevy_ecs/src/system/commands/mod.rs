@@ -23,7 +23,7 @@ use crate::{
         Entities, Entity, EntityAllocator, EntityClonerBuilder, EntityNotSpawnedError,
         InvalidEntityError, OptIn, OptOut,
     },
-    error::{warn, BevyError, ErrorContext},
+    error::{warn, BevyError, ErrorContext, Result},
     event::{EntityEvent, Event},
     message::Message,
     observer::{IntoEntityObserver, IntoObserver},
@@ -268,11 +268,11 @@ impl<'w, 's> Commands<'w, 's> {
     pub fn spawn<T: Bundle>(&mut self, bundle: T) -> EntityCommands<'_> {
         let entity = self.allocator.alloc();
         let caller = MaybeLocation::caller();
-        self.queue(move |world: &mut World| {
+        self.queue(move |world: &mut World| -> Result {
             move_as_ptr!(bundle);
-            world
-                .spawn_at_with_caller(entity, bundle, caller)
-                .map(|_| ())
+            world.entities.check_can_spawn_at(entity)?;
+            world.try_spawn_at_unchecked(entity, bundle, caller)?;
+            Ok(())
         });
         self.entity(entity)
     }
