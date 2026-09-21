@@ -3535,3 +3535,106 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod scene_component_tests {
+    use crate::{self as bevy_scene, prelude::*, SceneComponentInfo, ScenePlugin};
+    use bevy_app::{App, TaskPoolPlugin};
+    use bevy_asset::AssetPlugin;
+    use bevy_ecs::{lifecycle::HookContext, prelude::*, world::DeferredWorld};
+    use bevy_scene_macros::SceneComponent;
+
+    #[derive(Component, Default, Clone, Debug, PartialEq)]
+    struct Health(u32);
+
+    #[derive(Component, Default, Clone)]
+    struct Sword;
+
+    #[derive(Resource, Default)]
+    struct SeenOnAdd(Vec<(Option<u32>, usize)>);
+
+    #[derive(SceneComponent, Default, Clone)]
+    #[component(on_add = on_add_player)]
+    struct Player {
+        score: u32,
+    }
+
+    impl Player {
+        fn scene() -> impl Scene {
+            bsn! {
+                Player { score: 99 }
+                Health(10)
+                Children [ Sword ]
+            }
+        }
+    }
+
+    fn on_add_player(mut world: DeferredWorld, context: HookContext) {
+        let entity = world.entity(context.entity);
+        let health = entity.get::<Health>().map(|health| health.0);
+        let children = entity
+            .get::<Children>()
+            .map_or(0, |children| children.len());
+        world.resource_mut::<SeenOnAdd>().0.push((health, children));
+    }
+
+    fn app() -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            TaskPoolPlugin::default(),
+            AssetPlugin::default(),
+            ScenePlugin,
+        ));
+        app.init_resource::<SeenOnAdd>();
+        app
+    }
+
+    fn sword_children(world: &World, entity: Entity) -> usize {
+        world
+            .get::<Children>(entity)
+            .unwrap()
+            .iter()
+            .filter(|child| world.get::<Sword>(*child).is_some())
+            .count()
+    }
+
+    #[test]
+    fn spawn_applies_scene() {
+        let mut app = app();
+        let world = app.world_mut();
+        let entity = world.spawn(Player { score: 3 }).id();
+        assert_eq!(world.get::<Health>(entity), Some(&Health(10)));
+        assert_eq!(world.get::<Player>(entity).unwrap().score, 3);
+        assert!(world.get::<SceneComponentInfo>(entity).is_some());
+        assert_eq!(sword_children(world, entity), 1);
+        assert_eq!(world.resource::<SeenOnAdd>().0, vec![(Some(10), 1)]);
+    }
+
+    #[test]
+    fn commands_spawn_applies_scene() {
+        let mut app = app();
+        let world = app.world_mut();
+        let entity = world.commands().spawn(Player::default()).id();
+        world.flush();
+        assert_eq!(world.get::<Health>(entity), Some(&Health(10)));
+        assert_eq!(sword_children(world, entity), 1);
+    }
+
+    #[test]
+    fn explicit_component_wins_over_scene() {
+        let mut app = app();
+        let world = app.world_mut();
+        let entity = world.spawn((Player::default(), Health(1))).id();
+        assert_eq!(world.get::<Health>(entity), Some(&Health(1)));
+    }
+
+    #[test]
+    fn spawn_scene_applies_scene_once() {
+        let mut app = app();
+        let world = app.world_mut();
+        let entity = world.spawn_scene(bsn! { @Player }).unwrap().id();
+        assert_eq!(world.get::<Player>(entity).unwrap().score, 99);
+        assert_eq!(sword_children(world, entity), 1);
+        assert_eq!(world.resource::<SeenOnAdd>().0, vec![(Some(10), 0)]);
+    }
+}

@@ -445,6 +445,17 @@ impl ResolvedScene {
         self.insert_erased_template(TypeId::of::<T>(), Box::new(template));
     }
 
+    /// Removes the template with the given `type_id` from this scene, if it exists. This does not affect cached scenes.
+    pub fn remove_template(&mut self, type_id: TypeId) -> Option<Box<dyn ErasedTemplate>> {
+        let index = self.template_indices.remove(&type_id)?;
+        for other in self.template_indices.values_mut() {
+            if *other > index {
+                *other -= 1;
+            }
+        }
+        Some(self.component_templates.remove(index))
+    }
+
     /// Inserts the given [`Template`] with the given `type_id`. This will overwrite the existing [`Template`] of that type if it already exists.
     pub fn insert_erased_template(&mut self, type_id: TypeId, template: Box<dyn ErasedTemplate>) {
         match self.template_indices.entry(type_id) {
