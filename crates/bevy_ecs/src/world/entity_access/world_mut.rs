@@ -9,7 +9,7 @@ use crate::{
         Component, ComponentId, Components, Mutable, RequiredComponentsScratch, StorageType,
     },
     entity::{Entity, EntityCloner, EntityClonerBuilder, EntityLocation, OptIn, OptOut},
-    error::Result,
+    error::{BevyError, Result},
     event::{EntityComponentsTrigger, EntityEvent},
     lifecycle::{DespawnEvent, DiscardEvent, RemoveEvent, DESPAWN, DISCARD, REMOVE},
     observer::IntoEntityObserver,
@@ -1690,9 +1690,12 @@ impl<'w> EntityWorldMut<'w> {
                 };
                 let ptr = result.map_err(|error| {
                     let name = self.world.components.get_name(component_id).unwrap();
-                    format!(
-                        "Failed to build required component {name} for entity {}: {error}",
-                        self.entity
+                    BevyError::new(
+                        error.severity(),
+                        format!(
+                            "Failed to build required component {name} for entity {}: {error}",
+                            self.entity
+                        ),
                     )
                 })?;
                 ids.push(component_id);

@@ -877,7 +877,7 @@ mod tests {
     use crate::{
         bundle::Bundle,
         component::{Component, RequiredComponentsError},
-        error::{ignore, FallbackErrorHandler, Result},
+        error::{ignore, BevyError, FallbackErrorHandler, Result},
         lifecycle::HookContext,
         prelude::{FromTemplate, Resource},
         template::{template, Template, TemplateContext},
@@ -2106,6 +2106,20 @@ mod tests {
         struct Broken;
 
         World::new().spawn(Broken);
+    }
+
+    #[test]
+    fn required_templates_failure_keeps_severity() {
+        #[derive(Component)]
+        struct Health;
+
+        #[derive(Component)]
+        #[require(~{template(|_: &mut TemplateContext| -> Result<Health> { Err(BevyError::warning("no health")) })})]
+        struct Broken;
+
+        let mut world = World::new();
+        let entity = world.spawn(Broken).id();
+        assert!(world.get_entity(entity).is_err());
     }
 
     #[test]
