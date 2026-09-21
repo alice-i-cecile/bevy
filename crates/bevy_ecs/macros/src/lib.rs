@@ -793,10 +793,7 @@ pub fn derive_settings_group(input: TokenStream) -> TokenStream {
 ///     // tuple structs
 ///     B(1),
 ///     // named-field structs
-///     C {
-///         x: 1,
-///         ..default()
-///     },
+///     C { x: 1 },
 ///     // unit structs/variants
 ///     D::One,
 ///     // associated consts

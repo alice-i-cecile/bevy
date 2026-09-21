@@ -145,45 +145,45 @@ use core::{fmt::Debug, marker::PhantomData, ops::Deref};
 /// assert_eq!(&C(0), world.entity(id).get::<C>().unwrap());
 /// ```
 ///
-/// You can define inline component values that take the following forms:
+/// You can define inline component values using `bsn!` syntax, which means the same thing it does in `bsn!`.
+/// For example, `B(1)` patches the default value of `B`, so `B` must implement [`FromTemplate`](crate::template::FromTemplate)
+/// (which [`Default`] and [`Clone`] types do automatically):
 /// ```
 /// # use bevy_ecs::prelude::*;
 /// #[derive(Component)]
 /// #[require(
 ///     B(1), // tuple structs
-///     C { // named-field structs
-///         x: 1,
-///         ..Default::default()
-///     },
+///     C { x: 1 }, // named-field structs, where unspecified fields keep their default values
 ///     D::One, // enum variants
 ///     E::ONE, // associated consts
 ///     F::new(1) // constructors
 /// )]
 /// struct A;
 ///
-/// #[derive(Component, PartialEq, Eq, Debug)]
+/// #[derive(Component, PartialEq, Eq, Debug, Default, Clone)]
 /// struct B(u8);
 ///
-/// #[derive(Component, PartialEq, Eq, Debug, Default)]
+/// #[derive(Component, PartialEq, Eq, Debug, Default, Clone)]
 /// struct C {
 ///     x: u8,
 ///     y: u8,
 /// }
 ///
-/// #[derive(Component, PartialEq, Eq, Debug)]
+/// #[derive(Component, PartialEq, Eq, Debug, Default, Clone)]
 /// enum D {
+///    #[default]
 ///    Zero,
 ///    One,
 /// }
 ///
-/// #[derive(Component, PartialEq, Eq, Debug)]
+/// #[derive(Component, PartialEq, Eq, Debug, Default, Clone)]
 /// struct E(u8);
 ///
 /// impl E {
 ///     pub const ONE: Self = Self(1);
 /// }
 ///
-/// #[derive(Component, PartialEq, Eq, Debug)]
+/// #[derive(Component, PartialEq, Eq, Debug, Default, Clone)]
 /// struct F(u8);
 ///
 /// impl F {
@@ -231,6 +231,37 @@ use core::{fmt::Debug, marker::PhantomData, ops::Deref};
 /// assert_eq!(&C(20), world.entity(id).get::<C>().unwrap());
 /// ```
 ///
+/// Because entries use `bsn!` syntax, required components can also be built from [`Template`](crate::template::Template)s.
+/// Templates can use the [`World`], for example to read resources or load assets. They are built before
+/// the component that requires them is inserted, so hooks and observers always see their final values. Templates can read
+/// the components being inserted with [`TemplateContext::inserting`](crate::template::TemplateContext::inserting).
+///
+/// ```
+/// # use bevy_ecs::{prelude::*, template::{template, TemplateContext}};
+/// #[derive(Resource)]
+/// struct Difficulty(u32);
+///
+/// #[derive(Component)]
+/// #[require(~{template(|context: &mut TemplateContext| {
+///     let level = context.inserting::<Enemy>().unwrap().level;
+///     Ok(Health(level * context.resource::<Difficulty>().0))
+/// })})]
+/// struct Enemy {
+///     level: u32,
+/// }
+///
+/// #[derive(Component, PartialEq, Eq, Debug)]
+/// struct Health(u32);
+///
+/// # let mut world = World::default();
+/// world.insert_resource(Difficulty(10));
+/// let id = world.spawn(Enemy { level: 3 }).id();
+/// assert_eq!(&Health(30), world.entity(id).get::<Health>().unwrap());
+/// ```
+///
+/// If building a template fails, nothing is inserted. Commands report the error to their error handler, and other
+/// APIs like [`World::spawn`](crate::world::World::spawn) report it to the world's [`FallbackErrorHandler`](crate::error::FallbackErrorHandler).
+///
 /// Required components are _recursive_. This means, if a Required Component has required components,
 /// those components will _also_ be inserted if they are missing:
 ///
@@ -262,7 +293,7 @@ use core::{fmt::Debug, marker::PhantomData, ops::Deref};
 ///
 /// ```
 /// # use bevy_ecs::prelude::*;
-/// #[derive(Component)]
+/// #[derive(Component, Default, Clone)]
 /// struct X(usize);
 ///
 /// #[derive(Component, Default)]

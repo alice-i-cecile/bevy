@@ -629,8 +629,9 @@
 //! systems that query for the `Player` component, they can generally assume the rest of the scene will be there
 //! too!
 //!
-//! [`SceneComponent`]s can only be spawned using scene APIs like [`World::spawn_scene`]. Spawning
-//! them using [`World::spawn`] will log an error.
+//! Inserting a [`SceneComponent`] outside of a scene (ex: with [`World::spawn`]) applies its scene with
+//! default props before the component is inserted. Like other required components, the scene never
+//! overwrites the inserted component or components the entity already has.
 //!
 //! ### Custom Scene Functions
 //!
@@ -832,22 +833,22 @@
 //! They are functionally quite different however. It is worth understanding the differences and
 //! tradeoffs:
 //!
-//! - **Required Components**: Context-less (ex: Default constructors), non-hierarchical, can always
-//!   be applied immediately, not dependency aware, automatically enforced at runtime as components
-//!   are added, not patchable, pretty low overhead, not a lot of features / functionality
-//! - **Scene Components**: Require context (ex: World access and "Entity Spawn Context", such as
-//!   entity references), hierarchical (spawn children), cannot always be applied immediately
-//!   (can have dependencies that aren't loaded yet), dependency aware, only enforced at spawn
-//!   time, patchable, more dynamic / higher overhead, many features.
+//! - **Required Components**: Use `bsn!` syntax, so they can be built from templates with World access
+//!   (ex: `#[require(Mesh3d("mesh.gltf#Mesh0/Primitive0"))]`), non-hierarchical, applied whenever the
+//!   component is inserted, override whole values instead of patching them, not dependency aware,
+//!   low overhead when no templates are involved.
+//! - **Scene Components**: Hierarchical (spawn children), take props, patchable (a scene that includes
+//!   `@MySceneComp` can patch individual fields of its components), dependency aware when spawned as a
+//!   scene, more dynamic / higher overhead, many features. Inserting one outside of a scene applies its
+//!   scene with default props.
 //!
 //! Some good rules of thumb:
 //!
 //! - Are you building something "hierarchical" / with related entities? Use [`SceneComponent`].
-//! - Do you want or need the full capabilities of the scene system? Use [`SceneComponent`].
-//! - Are you spawning something that has dependencies / needs World access? use [`SceneComponent`].
-//! - Are you defining "flat" components that aren't really scenes on their own? Use required components.
-//! - Do you need the "required" components to be automatically added in non-scene contexts?  Use required components.
-//! - Is spawn performance a very high priority? Use required components.
+//! - Do you want or need the full capabilities of the scene system, like props and patching? Use [`SceneComponent`].
+//! - Are you defining "flat" components that aren't really scenes on their own? Use required components,
+//!   with templates if they need World access.
+//! - Is spawn performance a very high priority? Use required components without templates.
 //!
 //! ## .bsn Asset Format
 //!
