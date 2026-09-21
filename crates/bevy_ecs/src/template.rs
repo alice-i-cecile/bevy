@@ -57,6 +57,8 @@ pub(crate) struct InsertingComponents<'a> {
     pub(crate) explicit_ptrs: &'a [NonNull<u8>],
     pub(crate) built_ids: &'a [ComponentId],
     pub(crate) built_ptrs: &'a [NonNull<u8>],
+    /// Whether explicit components that the entity already has keep their current values.
+    pub(crate) keep_existing: bool,
 }
 
 impl<'a, 'w> TemplateContext<'a, 'w> {
@@ -86,6 +88,8 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
 
     /// Returns the component `C` if the insert this required template is being built for adds it:
     /// either as part of the inserted bundle, or as a required component that has already been built.
+    /// If the insert keeps existing values (ex: [`EntityWorldMut::insert_if_new`]), components the entity already has
+    /// are returned instead of the inserted ones, because those are discarded.
     ///
     /// Required templates are built before any of those components are on [`Self::entity`], so this is how they read them.
     pub fn inserting<C: Component>(&self) -> Option<&C> {
@@ -95,7 +99,14 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
             explicit_ptrs,
             built_ids,
             built_ptrs,
+            keep_existing,
         } = self.inserting;
+        if keep_existing
+            && explicit_ids.contains(&id)
+            && let Some(existing) = self.entity.get::<C>()
+        {
+            return Some(existing);
+        }
         let ptr = explicit_ids
             .iter()
             .zip(explicit_ptrs)

@@ -1968,6 +1968,25 @@ mod tests {
     }
 
     #[test]
+    fn required_templates_read_existing_components_if_new() {
+        #[derive(Component, Debug, PartialEq)]
+        #[require(~{template(|context: &mut TemplateContext| {
+            Ok(Health(context.inserting::<Level>().unwrap().0 * 10))
+        })})]
+        struct Level(u32);
+
+        #[derive(Component, Debug, PartialEq)]
+        struct Health(u32);
+
+        let mut world = World::new();
+        let entity = world.spawn(Level(5)).id();
+        world.entity_mut(entity).remove::<Health>();
+        world.entity_mut(entity).insert_if_new(Level(1));
+        assert_eq!(world.get::<Level>(entity), Some(&Level(5)));
+        assert_eq!(world.get::<Health>(entity), Some(&Health(50)));
+    }
+
+    #[test]
     fn required_templates_patch_syntax() {
         #[derive(Resource)]
         struct Prefix(&'static str);

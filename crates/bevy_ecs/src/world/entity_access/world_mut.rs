@@ -1491,7 +1491,7 @@ impl<'w> EntityWorldMut<'w> {
         relationship_hook_mode: RelationshipHookMode,
     ) -> Result {
         // SAFETY: the caller upholds the preconditions
-        if let Err(error) = unsafe { self.build_required_components(bundle_id, scratch) } {
+        if let Err(error) = unsafe { self.build_required_components(bundle_id, scratch, mode) } {
             // SAFETY: nothing has been moved out of the scratch
             unsafe {
                 self.drop_components(&scratch.explicit_ids, &scratch.explicit_ptrs);
@@ -1556,6 +1556,7 @@ impl<'w> EntityWorldMut<'w> {
         &mut self,
         bundle_id: BundleId,
         scratch: &mut RequiredComponentsScratch,
+        mode: InsertMode,
     ) -> Result {
         'plan: loop {
             let Some(location) = self.location else {
@@ -1620,6 +1621,7 @@ impl<'w> EntityWorldMut<'w> {
                             explicit_ptrs,
                             built_ids,
                             built_ptrs,
+                            keep_existing: mode == InsertMode::Keep,
                         },
                     );
                     constructor.build(&mut context, alloc)
