@@ -1089,7 +1089,7 @@ mod tests {
         let mut e = world.spawn_empty();
 
         // SAFETY: x_id is a valid component id
-        bevy_ptr::OwningPtr::make(X, |ptr| unsafe {
+        OwningPtr::make(X, |ptr| unsafe {
             e.insert_by_id(x_id, ptr);
         });
 
@@ -1948,7 +1948,11 @@ mod tests {
 
         let count = world.component_id::<Count>().unwrap();
         let greeter = world.component_id::<Greeter>().unwrap();
-        let required = world.components().get_info(greeter).unwrap().required_components();
+        let required = world
+            .components()
+            .get_info(greeter)
+            .unwrap()
+            .required_components();
         assert!(!required.all[&count].constructor.is_template());
     }
 
@@ -2141,7 +2145,9 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(world.query::<&Health>().iter(&world).count(), 10);
-        assert!(spawned.iter().all(|&e| world.get::<Health>(e) == Some(&Health(10))));
+        assert!(spawned
+            .iter()
+            .all(|&e| world.get::<Health>(e) == Some(&Health(10))));
         assert_eq!(world.get::<Health>(existing), Some(&Health(2)));
         assert_eq!(world.get::<Health>(if_new), Some(&Health(10)));
         assert_eq!(error.entities, vec![despawned]);

@@ -52,9 +52,6 @@ impl Display for ErrorContext {
                 write!(f, "System `{name}` failed")
             }
             Self::Command { name } => write!(f, "Command `{name}` failed"),
-            Self::RequiredTemplate { name } => {
-                write!(f, "Building required components for `{name}` failed")
-            }
             Self::Observer { name, .. } => {
                 write!(f, "Observer `{name}` failed")
             }
@@ -69,6 +66,9 @@ impl Display for ErrorContext {
                     "Run condition `{name}` failed for{} system `{system}`",
                     if *on_set { " set containing" } else { "" }
                 )
+            }
+            Self::RequiredTemplate { name } => {
+                write!(f, "Building required components for `{name}` failed")
             }
         }
     }

@@ -1276,7 +1276,7 @@ impl<'w> EntityWorldMut<'w> {
         iter_components: I,
         relationship_hook_insert_mode: RelationshipHookMode,
     ) -> &mut Self {
-        // SAFETY: same preconditions
+        // SAFETY: the caller upholds the preconditions of `try_insert_by_ids_internal`
         let result = unsafe {
             self.try_insert_by_ids_internal(
                 component_ids,
@@ -1606,8 +1606,13 @@ impl<'w> EntityWorldMut<'w> {
             } = &mut *scratch;
             // Values need no context, so build them first to make them visible to every template. Then build
             // templates in reverse, so a template can read the component that required it.
-            let values = missing.iter().filter(|constructor| !constructor.is_template());
-            let templates = missing.iter().rev().filter(|constructor| constructor.is_template());
+            let values = missing
+                .iter()
+                .filter(|constructor| !constructor.is_template());
+            let templates = missing
+                .iter()
+                .rev()
+                .filter(|constructor| constructor.is_template());
             for constructor in values.chain(templates) {
                 let component_id = constructor.component_id();
                 if built_ids.contains(&component_id) {
@@ -1629,10 +1634,10 @@ impl<'w> EntityWorldMut<'w> {
                     .into());
                 }
                 let result = {
-                    let mut guard = BuildingGuard::new(self, is_template.then_some(key));
+                    let guard = BuildingGuard::new(self, is_template.then_some(key));
                     let mut entity_references = SceneEntityReferences::default();
                     let mut context = TemplateContext::with_inserting(
-                        &mut guard.entity,
+                        guard.entity,
                         &mut entity_references,
                         InsertingComponents {
                             explicit_ids,
