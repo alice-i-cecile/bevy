@@ -102,6 +102,17 @@ impl RequiredComponentConstructor {
         matches!(self.0, RequiredConstructorKind::Template(_))
     }
 
+    /// Returns an address that identifies this constructor, and is shared by its clones.
+    #[inline]
+    pub(crate) fn address(&self) -> usize {
+        match &self.0 {
+            RequiredConstructorKind::Value(value) => Arc::as_ptr(value).cast::<()>() as usize,
+            RequiredConstructorKind::Template(template) => {
+                Arc::as_ptr(template).cast::<()>() as usize
+            }
+        }
+    }
+
     /// Returns the [`ComponentId`] of the component this constructor creates.
     #[inline]
     pub fn component_id(&self) -> ComponentId {
@@ -283,8 +294,9 @@ impl RequiredComponentsScratch {
 pub(crate) struct RequiredTemplates {
     /// One scratch per nested insert.
     pub(crate) scratch: Vec<RequiredComponentsScratch>,
-    /// The entity and component pairs whose templates are being built, used to detect cycles.
-    pub(crate) building: Vec<(Entity, ComponentId)>,
+    /// The entities and templates (by [`RequiredComponentConstructor::address`]) that are being built,
+    /// used to detect a template that requires itself.
+    pub(crate) building: Vec<(Entity, usize)>,
 }
 
 /// The collection of metadata for components that are required for a given component.
@@ -2146,6 +2158,28 @@ mod tests {
         struct Egg;
 
         World::new().spawn(Chicken);
+    }
+
+    #[test]
+    fn required_templates_same_component_from_different_templates() {
+        #[derive(Component, Debug, PartialEq)]
+        struct Health(u32);
+
+        #[derive(Component)]
+        #[require(~{template(|_: &mut TemplateContext| Ok(Health(1)))})]
+        struct Knight;
+
+        #[derive(Component)]
+        #[require(~{template(|context: &mut TemplateContext| {
+            context.entity.insert(Knight);
+            Ok(Health(2))
+        })})]
+        struct Player;
+
+        let mut world = World::new();
+        let entity = world.spawn(Player).id();
+        assert_eq!(world.get::<Health>(entity), Some(&Health(1)));
+        assert!(world.get::<Knight>(entity).is_some());
     }
 
     #[test]

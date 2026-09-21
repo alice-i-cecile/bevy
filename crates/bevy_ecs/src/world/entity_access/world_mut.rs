@@ -1599,12 +1599,12 @@ impl<'w> EntityWorldMut<'w> {
                 {
                     continue 'plan;
                 }
-                let key = (self.entity, component_id);
+                let key = (self.entity, constructor.address());
                 let is_template = constructor.is_template();
                 if is_template && self.world.required_templates.building.contains(&key) {
                     let name = self.world.components.get_name(component_id).unwrap();
                     return Err(format!(
-                        "Required component {name} on entity {} requires itself while being built",
+                        "The template of required component {name} on entity {} requires itself while being built",
                         self.entity
                     )
                     .into());
@@ -2826,7 +2826,7 @@ struct BuildingGuard<'a, 'w> {
 }
 
 impl<'a, 'w> BuildingGuard<'a, 'w> {
-    fn new(entity: &'a mut EntityWorldMut<'w>, key: Option<(Entity, ComponentId)>) -> Self {
+    fn new(entity: &'a mut EntityWorldMut<'w>, key: Option<(Entity, usize)>) -> Self {
         let building = key.is_some();
         if let Some(key) = key {
             entity.world.required_templates.building.push(key);
