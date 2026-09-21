@@ -1117,6 +1117,12 @@ impl World {
         unsafe { self.spawn_at_with_spawner(entity, bundle_id, bundle, caller) }
     }
 
+    /// Reports an error from building required templates to the world's fallback error handler.
+    #[cold]
+    pub(crate) fn report_required_template_error(&self, error: BevyError, name: DebugName) {
+        (self.fallback_error_handler())(error, ErrorContext::RequiredTemplate { name });
+    }
+
     /// Like [`Self::spawn_at_with_required_templates`], but reports errors to the world's fallback error handler.
     #[cold]
     #[inline(never)]
@@ -1127,12 +1133,7 @@ impl World {
         caller: MaybeLocation,
     ) -> EntityWorldMut<'_> {
         if let Err(error) = self.spawn_at_with_required_templates(entity, bundle, caller) {
-            (self.fallback_error_handler())(
-                error,
-                ErrorContext::RequiredTemplate {
-                    name: DebugName::type_name::<B>(),
-                },
-            );
+            self.report_required_template_error(error, DebugName::type_name::<B>());
         }
         let location = self.entities().get_spawned(entity).ok();
         // SAFETY: `location` is the entity's current location, or `None` if it was despawned

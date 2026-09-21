@@ -9,7 +9,7 @@ use crate::{
         Component, ComponentId, Components, Mutable, RequiredComponentsScratch, StorageType,
     },
     entity::{Entity, EntityCloner, EntityClonerBuilder, EntityLocation, OptIn, OptOut},
-    error::{BevyError, ErrorContext, Result},
+    error::Result,
     event::{EntityComponentsTrigger, EntityEvent},
     lifecycle::{DespawnEvent, DiscardEvent, RemoveEvent, DESPAWN, DISCARD, REMOVE},
     observer::IntoEntityObserver,
@@ -1080,7 +1080,8 @@ impl<'w> EntityWorldMut<'w> {
         if let Err(error) =
             self.try_insert_with_caller(bundle, mode, caller, relationship_hook_mode)
         {
-            self.report_required_template_error(error, DebugName::type_name::<T>());
+            self.world
+                .report_required_template_error(error, DebugName::type_name::<T>());
         }
         self
     }
@@ -1213,7 +1214,8 @@ impl<'w> EntityWorldMut<'w> {
                 )
             };
             if let Err(error) = result {
-                self.report_required_template_error(error, DebugName::borrowed("dynamic bundle"));
+                self.world
+                    .report_required_template_error(error, DebugName::borrowed("dynamic bundle"));
             }
             return self;
         };
@@ -1287,7 +1289,8 @@ impl<'w> EntityWorldMut<'w> {
             )
         };
         if let Err(error) = result {
-            self.report_required_template_error(error, DebugName::borrowed("dynamic bundle"));
+            self.world
+                .report_required_template_error(error, DebugName::borrowed("dynamic bundle"));
         }
         self
     }
@@ -1610,7 +1613,7 @@ impl<'w> EntityWorldMut<'w> {
                     .into());
                 }
                 let result = {
-                    let guard = BuildingGuard::new(self, is_template.then_some(key));
+                    let guard = BuildingGuard::new(self, key);
                     let mut entity_references = SceneEntityReferences::default();
                     let mut context = TemplateContext::with_inserting(
                         guard.entity,
@@ -1651,11 +1654,6 @@ impl<'w> EntityWorldMut<'w> {
                 unsafe { drop(OwningPtr::new(ptr)) };
             }
         }
-    }
-
-    #[cold]
-    fn report_required_template_error(&self, error: BevyError, name: DebugName) {
-        (self.world.fallback_error_handler())(error, ErrorContext::RequiredTemplate { name });
     }
 
     /// Removes all components in the [`Bundle`] from the entity and returns their previous values.
@@ -2818,28 +2816,22 @@ impl<'a> From<&'a mut EntityWorldMut<'_>> for FilteredEntityMut<'a, 'static> {
     }
 }
 
-/// Marks a required template as being built while it is alive, to detect cycles.
-/// Unmarks it when dropped, including when the template panics.
+/// Marks a required component constructor as being built while it is alive, to detect cycles.
+/// Unmarks it when dropped, including when the constructor panics.
 struct BuildingGuard<'a, 'w> {
     entity: &'a mut EntityWorldMut<'w>,
-    building: bool,
 }
 
 impl<'a, 'w> BuildingGuard<'a, 'w> {
-    fn new(entity: &'a mut EntityWorldMut<'w>, key: Option<(Entity, usize)>) -> Self {
-        let building = key.is_some();
-        if let Some(key) = key {
-            entity.world.required_templates.building.push(key);
-        }
-        Self { entity, building }
+    fn new(entity: &'a mut EntityWorldMut<'w>, key: (Entity, usize)) -> Self {
+        entity.world.required_templates.building.push(key);
+        Self { entity }
     }
 }
 
 impl Drop for BuildingGuard<'_, '_> {
     fn drop(&mut self) {
-        if self.building {
-            self.entity.world.required_templates.building.pop();
-        }
+        self.entity.world.required_templates.building.pop();
     }
 }
 
