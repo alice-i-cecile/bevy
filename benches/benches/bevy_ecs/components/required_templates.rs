@@ -113,5 +113,63 @@ pub fn required_template(c: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+    group.bench_function("spawn_batch_template", |b| {
+        b.iter_batched_ref(
+            world,
+            |world| {
+                world.spawn_batch((0..ENTITIES).map(|_| WithTemplate));
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("spawn_batch_hook_workaround", |b| {
+        b.iter_batched_ref(
+            world,
+            |world| {
+                world.spawn_batch((0..ENTITIES).map(|_| WithHook));
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("spawn_batch_explicit", |b| {
+        b.iter_batched_ref(
+            world,
+            |world| {
+                let frame = world.resource::<Frame>().0;
+                world.spawn_batch((0..ENTITIES).map(move |_| (Explicit, StartFrame(frame))));
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("insert_batch_template", |b| {
+        b.iter_batched_ref(
+            || {
+                let mut world = world();
+                let entities = (0..ENTITIES)
+                    .map(|_| world.spawn_empty().id())
+                    .collect::<Vec<_>>();
+                (world, entities)
+            },
+            |(world, entities)| {
+                world.insert_batch(entities.iter().map(|&entity| (entity, WithTemplate)));
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("insert_batch_hook_workaround", |b| {
+        b.iter_batched_ref(
+            || {
+                let mut world = world();
+                let entities = (0..ENTITIES)
+                    .map(|_| world.spawn_empty().id())
+                    .collect::<Vec<_>>();
+                (world, entities)
+            },
+            |(world, entities)| {
+                world.insert_batch(entities.iter().map(|&entity| (entity, WithHook)));
+            },
+            BatchSize::LargeInput,
+        );
+    });
     group.finish();
 }
