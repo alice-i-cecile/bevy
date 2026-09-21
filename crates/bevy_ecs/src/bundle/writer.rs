@@ -1,5 +1,6 @@
 use crate::{
     bundle::InsertMode,
+    change_detection::MaybeLocation,
     component::{Component, ComponentId, Components, ComponentsRegistrator},
     error::Result,
     relationship::RelationshipHookMode,
@@ -204,6 +205,7 @@ impl<'a> BundleWriter<'a> {
                     .drain(..)
                     .map(|ptr| OwningPtr::new(ptr)),
                 mode,
+                MaybeLocation::caller(),
                 relationship_hook_insert_mode,
             )
         };

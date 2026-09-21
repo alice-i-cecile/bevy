@@ -1910,6 +1910,31 @@ mod tests {
     }
 
     #[test]
+    fn required_templates_registered_after_bundle() {
+        #[derive(Component)]
+        struct Health;
+
+        #[derive(Component)]
+        struct Armor;
+
+        #[derive(Component, Default)]
+        #[require(~{template(|_: &mut TemplateContext| Ok(Armor))})]
+        struct Knight;
+
+        #[derive(Component)]
+        #[require(~{template(|_: &mut TemplateContext| Ok(Health))})]
+        struct Player;
+
+        let mut world = World::new();
+        world.register_bundle::<Player>();
+        world.register_required_components::<Player, Knight>();
+        let entity = world.spawn(Player).id();
+        assert!(world.get::<Health>(entity).is_some());
+        assert!(world.get::<Knight>(entity).is_some());
+        assert!(world.get::<Armor>(entity).is_some());
+    }
+
+    #[test]
     fn required_templates_evaluate_arguments_per_insert() {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
 

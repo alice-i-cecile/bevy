@@ -1282,6 +1282,7 @@ impl<'w> EntityWorldMut<'w> {
                 component_ids,
                 iter_components,
                 InsertMode::Replace,
+                MaybeLocation::caller(),
                 relationship_hook_insert_mode,
             )
         };
@@ -1301,6 +1302,7 @@ impl<'w> EntityWorldMut<'w> {
         component_ids: &[ComponentId],
         iter_components: I,
         mode: InsertMode,
+        caller: MaybeLocation,
         relationship_hook_insert_mode: RelationshipHookMode,
     ) -> Result {
         let location = self.location();
@@ -1330,7 +1332,7 @@ impl<'w> EntityWorldMut<'w> {
                     component_ids,
                     iter_components,
                     mode,
-                    MaybeLocation::caller(),
+                    caller,
                     relationship_hook_insert_mode,
                 )
             };
@@ -1348,7 +1350,7 @@ impl<'w> EntityWorldMut<'w> {
                 iter_components,
                 (*storage_types).iter().cloned(),
                 mode,
-                MaybeLocation::caller(),
+                caller,
                 relationship_hook_insert_mode,
             )
         });
@@ -1526,48 +1528,18 @@ impl<'w> EntityWorldMut<'w> {
         // SAFETY: the remaining built components are not written, and nothing else points to them
         unsafe { self.drop_components(built_ids, built_ptrs) };
 
-        let location = self.location();
-        let change_tick = self.world.change_tick();
-        let write_bundle_id = self.world.bundles.init_dynamic_info(
-            &mut self.world.storages,
-            &self.world.components,
-            write_ids,
-        );
-        // SAFETY: init_dynamic_info was called above
-        let storage_types =
-            core::mem::take(unsafe { self.world.bundles.get_storages_unchecked(write_bundle_id) });
-        // SAFETY: `write_bundle_id` was initialized above, and the archetype id is the entity's
-        let Ok(bundle_inserter) = (unsafe {
-            BundleInserter::new_with_id(
-                self.world,
-                location.archetype_id,
-                write_bundle_id,
-                change_tick,
-            )
-        }) else {
-            unreachable!("every required component of the insert was built");
-        };
-        // SAFETY:
-        // - every pointer owns a valid value of the matching component in `write_ids`
-        // - storage types retrieved above for the same bundle
-        // - entity and location belong to self
-        self.location = Some(unsafe {
-            insert_dynamic_bundle(
-                bundle_inserter,
-                self.entity,
-                location,
+        // Every requirement of the write set was built, so this normally takes the fast path. Requirements that were
+        // registered after `bundle_id` was cached are missing from its plan, and get built by the slow path here.
+        // SAFETY: every pointer owns a valid value of the matching component in `write_ids`, from this world
+        unsafe {
+            self.try_insert_by_ids_internal(
+                write_ids,
                 write_ptrs.iter().map(|&ptr| OwningPtr::new(ptr)),
-                storage_types.iter().cloned(),
                 mode,
                 caller,
                 relationship_hook_mode,
             )
-        });
-        // SAFETY: same as above
-        *unsafe { self.world.bundles.get_storages_unchecked(write_bundle_id) } = storage_types;
-        self.world.flush();
-        self.update_location();
-        Ok(())
+        }
     }
 
     /// Builds every required component that inserting `bundle_id` is missing into `scratch`.
