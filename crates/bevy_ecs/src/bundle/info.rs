@@ -13,7 +13,8 @@ use crate::{
     bundle::{Bundle, DynamicBundle},
     change_detection::{MaybeLocation, Tick},
     component::{
-        ComponentId, Components, ComponentsRegistrator, RequiredComponentConstructor, StorageType,
+        ComponentId, Components, ComponentsRegistrator, RequiredComponentConstructor,
+        RequiredStage, StorageType,
     },
     entity::Entity,
     query::DebugCheckedUnwrap as _,
@@ -75,6 +76,9 @@ pub struct BundleInfo {
 
     /// The list of constructors for all required components indirectly contributed by this bundle.
     pub(super) required_component_constructors: Box<[RequiredComponentConstructor]>,
+
+    /// Whether any of the `required_component_constructors` must be built from a template.
+    pub(crate) has_required_templates: bool,
 }
 
 impl BundleInfo {
@@ -152,6 +156,9 @@ impl BundleInfo {
         BundleInfo {
             id,
             contributed_component_ids: component_ids.into(),
+            has_required_templates: required_components
+                .iter()
+                .any(RequiredComponentConstructor::is_template),
             required_component_constructors: required_components,
         }
     }
@@ -250,6 +257,7 @@ impl BundleInfo {
         bundle: MovingPtr<'_, T>,
         insert_mode: InsertMode,
         caller: MaybeLocation,
+        mut stage: Option<&mut RequiredStage>,
     ) {
         // NOTE: get_components calls `write_component` on each component in "bundle order".
         // bundle_info.component_ids are also in "bundle order"
@@ -330,6 +338,7 @@ impl BundleInfo {
                     table_row,
                     entity,
                     caller,
+                    &mut stage,
                 );
             }
         }

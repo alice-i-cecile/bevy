@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use bevy_platform::sync::Arc;
 use bevy_ptr::{ConstNonNull, MovingPtr};
 use core::ptr::NonNull;
 
@@ -9,7 +10,10 @@ use crate::{
     },
     bundle::{ArchetypeMoveType, Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode},
     change_detection::{MaybeLocation, Tick},
-    component::{Components, StorageType},
+    component::{
+        Components, ErasedRequiredTemplate, RequiredComponentConstructor, RequiredStage,
+        StorageType,
+    },
     entity::{Entities, Entity, EntityLocation},
     event::{EntityComponentsTrigger, GlobalTrigger},
     lifecycle::{AddEvent, DiscardEvent, InsertEvent, ADD, DISCARD, INSERT},
@@ -128,6 +132,24 @@ impl<'w> BundleInserter<'w> {
             }
         }
         inserter
+    }
+
+    /// Returns true if this insert has required components that must be built from templates first.
+    #[inline]
+    pub(crate) fn has_required_templates(&self) -> bool {
+        // SAFETY: the edge is valid for the lifetime of the inserter
+        unsafe { self.archetype_after_insert.as_ref() }.has_required_templates
+    }
+
+    /// Returns the templates of the required components this insert would add.
+    pub(crate) fn required_templates(
+        &self,
+    ) -> impl Iterator<Item = &Arc<dyn ErasedRequiredTemplate>> + '_ {
+        // SAFETY: the edge is valid for the lifetime of the inserter
+        unsafe { self.archetype_after_insert.as_ref() }
+            .required_components
+            .iter()
+            .filter_map(RequiredComponentConstructor::template)
     }
 
     // A non-generic prelude to insert used to minimize duplicated monomorphized code.
@@ -371,6 +393,35 @@ impl<'w> BundleInserter<'w> {
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
     ) -> EntityLocation {
+        // SAFETY: same preconditions
+        unsafe {
+            self.insert_with_stage(
+                entity,
+                location,
+                bundle,
+                insert_mode,
+                caller,
+                relationship_hook_mode,
+                None,
+            )
+        }
+    }
+
+    /// Like [`Self::insert`], but takes required component values that were built from templates.
+    ///
+    /// # Safety
+    /// Same as [`Self::insert`]
+    #[inline]
+    pub(crate) unsafe fn insert_with_stage<T: DynamicBundle>(
+        &mut self,
+        entity: Entity,
+        location: EntityLocation,
+        bundle: MovingPtr<'_, T>,
+        insert_mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+        stage: Option<&mut RequiredStage>,
+    ) -> EntityLocation {
         // SAFETY: Points to valid data; the reference doesn't escape this function.
         // This points to data in the world, but
         // - We have exclusive ownership of the world
@@ -412,6 +463,7 @@ impl<'w> BundleInserter<'w> {
                     bundle,
                     insert_mode,
                     caller,
+                    stage,
                 );
             }
 

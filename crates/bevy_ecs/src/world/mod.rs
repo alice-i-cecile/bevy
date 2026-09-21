@@ -111,6 +111,8 @@ pub struct World {
     pub(crate) last_change_tick: Tick,
     pub(crate) last_check_tick: Tick,
     pub(crate) last_trigger_id: u32,
+    /// The (entity, component) pairs whose required component templates are currently being built.
+    pub(crate) building_required_templates: Vec<(Entity, ComponentId)>,
     /// The byte index in [`Self::command_queue`] at which unapplied command start.
     ///
     /// This is nonzero while running commands to allow the same buffer to be shared by nested commands.
@@ -145,6 +147,7 @@ impl Default for World {
             last_change_tick: Tick::new(0),
             last_check_tick: Tick::new(0),
             last_trigger_id: 0,
+            building_required_templates: Vec::new(),
             command_queue_start: 0,
             command_queue: SyncUnsafeCell::new(CommandQueue::silent()),
             component_ids: ComponentIds::default(),
@@ -1107,6 +1110,16 @@ impl World {
     ) -> EntityWorldMut<'_> {
         let change_tick = self.change_tick();
         let mut bundle_spawner = BundleSpawner::new::<B>(self, change_tick);
+        if bundle_spawner.has_required_templates() {
+            let mut entity_mut = self.spawn_empty_at_unchecked(entity, caller);
+            entity_mut.insert_with_caller(
+                bundle,
+                InsertMode::Replace,
+                caller,
+                RelationshipHookMode::Run,
+            );
+            return entity_mut;
+        }
         let (bundle, entity_location) = bundle.partial_move(|bundle| {
             // SAFETY:
             // - `B` matches `bundle_spawner`'s type

@@ -4,8 +4,9 @@ use crate::{
         Bundle, BundleFromComponents, BundleInserter, BundleRemover, DynamicBundle, InsertMode,
     },
     change_detection::{ComponentTicks, MaybeLocation, MutUntyped, Tick},
-    component::{Component, ComponentId, Components, Mutable, StorageType},
+    component::{Component, ComponentId, Components, Mutable, RequiredStage, StorageType},
     entity::{Entity, EntityCloner, EntityClonerBuilder, EntityLocation, OptIn, OptOut},
+    error::{ErrorContext, Result},
     event::{EntityComponentsTrigger, EntityEvent},
     lifecycle::{DespawnEvent, DiscardEvent, RemoveEvent, DESPAWN, DISCARD, REMOVE},
     observer::IntoEntityObserver,
@@ -17,7 +18,7 @@ use crate::{
     resource::{Resource, ResourceEntities},
     storage::{SparseSets, Table},
     system::EntityCommands,
-    template::{SceneEntityReferences, Template, TemplateContext},
+    template::{InsertingComponents, SceneEntityReferences, Template, TemplateContext},
     world::{
         error::EntityComponentError, unsafe_world_cell::UnsafeEntityCell, ComponentEntry,
         DynamicComponentFetch, EntityMut, EntityRef, FilteredEntityMut, FilteredEntityRef, Mut,
@@ -25,9 +26,11 @@ use crate::{
     },
 };
 
-use alloc::vec::Vec;
+use alloc::{format, vec::Vec};
 use bevy_ptr::{move_as_ptr, MovingPtr, OwningPtr};
-use core::{any::TypeId, marker::PhantomData, mem::MaybeUninit};
+use bevy_utils::prelude::DebugName;
+use bumpalo::Bump;
+use core::{any::TypeId, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
 
 /// A mutable reference to a particular [`Entity`], and the entire world.
 ///
@@ -1075,6 +1078,10 @@ impl<'w> EntityWorldMut<'w> {
         // - `location.archetype_id` is part of a valid `EntityLocation`.
         let mut bundle_inserter =
             unsafe { BundleInserter::new::<T>(self.world, location.archetype_id, change_tick) };
+        if bundle_inserter.has_required_templates() {
+            self.insert_with_required_templates(bundle, mode, caller, relationship_hook_mode);
+            return self;
+        }
         // SAFETY:
         // - `location` matches current entity and thus must currently exist in the source
         //   archetype for this inserter and its location within the archetype.
@@ -1163,6 +1170,19 @@ impl<'w> EntityWorldMut<'w> {
         let bundle_inserter = unsafe {
             BundleInserter::new_with_id(self.world, location.archetype_id, bundle_id, change_tick)
         };
+        if bundle_inserter.has_required_templates() {
+            // SAFETY: same preconditions, and `OwningPtr`s are never null
+            unsafe {
+                self.insert_by_ids_with_required_templates_or_report(
+                    &[component_id],
+                    &[NonNull::new_unchecked(component.as_ptr())],
+                    mode,
+                    caller,
+                    relationship_hook_insert_mode,
+                );
+            }
+            return self;
+        }
 
         // SAFETY:
         // - only one component, with its component & storage type retrieved above
@@ -1177,6 +1197,7 @@ impl<'w> EntityWorldMut<'w> {
                 mode,
                 caller,
                 relationship_hook_insert_mode,
+                None,
             )
         });
         self.world.flush();
@@ -1240,6 +1261,25 @@ impl<'w> EntityWorldMut<'w> {
         let bundle_inserter = unsafe {
             BundleInserter::new_with_id(self.world, location.archetype_id, bundle_id, change_tick)
         };
+        if bundle_inserter.has_required_templates() {
+            // SAFETY: restoring the storage types taken above
+            *unsafe { self.world.bundles.get_storages_unchecked(bundle_id) } = storage_types;
+            let ptrs = iter_components
+                // SAFETY: `OwningPtr`s are never null
+                .map(|ptr| unsafe { NonNull::new_unchecked(ptr.as_ptr()) })
+                .collect::<Vec<_>>();
+            // SAFETY: same preconditions
+            unsafe {
+                self.insert_by_ids_with_required_templates_or_report(
+                    component_ids,
+                    &ptrs,
+                    InsertMode::Replace,
+                    MaybeLocation::caller(),
+                    relationship_hook_insert_mode,
+                );
+            }
+            return self;
+        }
 
         // SAFETY:
         // - owning pointers are of the component's types per precondition
@@ -1255,6 +1295,7 @@ impl<'w> EntityWorldMut<'w> {
                 InsertMode::Replace,
                 MaybeLocation::caller(),
                 relationship_hook_insert_mode,
+                None,
             )
         });
         // SAFETY:
@@ -1684,15 +1725,15 @@ impl<'w> EntityWorldMut<'w> {
     /// Creates a new [`TemplateContext`] for this entity and passes it into the given `func`.
     pub fn template_context<T>(
         &mut self,
-        func: impl FnOnce(&mut TemplateContext) -> crate::error::Result<T>,
-    ) -> crate::error::Result<T> {
+        func: impl FnOnce(&mut TemplateContext) -> Result<T>,
+    ) -> Result<T> {
         let mut scene_entities = SceneEntityReferences::default();
         let mut context = TemplateContext::new(self, &mut scene_entities);
         func(&mut context)
     }
 
     /// Builds the given template using a [`TemplateContext`] generated for this entity.
-    pub fn build_template<T: Template>(&mut self, template: &T) -> crate::error::Result<T::Output> {
+    pub fn build_template<T: Template>(&mut self, template: &T) -> Result<T::Output> {
         self.template_context(|context| template.build_template(context))
     }
 
@@ -2426,6 +2467,238 @@ impl<'a> From<&'a mut EntityWorldMut<'_>> for FilteredEntityMut<'a, 'static> {
     }
 }
 
+impl<'w> EntityWorldMut<'w> {
+    /// The slow path of [`Self::insert_with_caller`], used when the bundle adds required components
+    /// that are built from templates.
+    ///
+    /// The bundle's components are moved into scratch storage first, so the templates can read them
+    /// through [`TemplateContext::inserting`]. If a template fails, nothing is inserted and the error
+    /// is passed to the world's fallback error handler.
+    fn insert_with_required_templates<T: Bundle>(
+        &mut self,
+        bundle: MovingPtr<'_, T>,
+        mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) {
+        let bundle_id = self.world.register_bundle_info::<T>();
+        // SAFETY: the bundle was just registered
+        let bundle_info = unsafe { self.world.bundles.get_unchecked(bundle_id) };
+        let component_ids = bundle_info.explicit_components().to_vec();
+        let layouts = component_ids
+            .iter()
+            // SAFETY: bundle component ids are valid
+            .map(|&id| unsafe { self.world.components.get_info_unchecked(id) }.layout())
+            .collect::<Vec<_>>();
+        let scratch = Bump::new();
+        let mut ptrs = Vec::with_capacity(component_ids.len());
+        // SAFETY:
+        // - `get_components` is called exactly once, and `apply_effect` is called at most once afterwards
+        // - components are written in bundle order, which matches `component_ids` and `layouts`
+        let (bundle, ()) = bundle.partial_move(|bundle| unsafe {
+            T::get_components(bundle, &mut |_, component| {
+                let layout = layouts[ptrs.len()];
+                let ptr = scratch.alloc_layout(layout);
+                core::ptr::copy_nonoverlapping(component.as_ptr(), ptr.as_ptr(), layout.size());
+                ptrs.push(ptr);
+            });
+        });
+
+        // SAFETY: `ptrs` point to owned values of the components in `component_ids`
+        let result = unsafe {
+            self.insert_by_ids_with_required_templates(
+                &component_ids,
+                &ptrs,
+                mode,
+                caller,
+                relationship_hook_mode,
+            )
+        };
+        match result {
+            // SAFETY: called exactly once after `get_components`
+            Ok(()) => unsafe { T::apply_effect(bundle, self) },
+            Err(error) => {
+                // SAFETY: the insert failed, so `ptrs` still own their values
+                unsafe { self.drop_component_ptrs(&component_ids, &ptrs) };
+                // The bundle's effect cannot be dropped without being applied, so it is leaked.
+                (self.world.fallback_error_handler())(
+                    error,
+                    ErrorContext::RequiredTemplate {
+                        name: DebugName::type_name::<T>(),
+                    },
+                );
+            }
+        }
+    }
+
+    /// Like [`Self::insert_by_ids_with_required_templates`], but drops the components and reports
+    /// the error to the world's fallback error handler on failure.
+    ///
+    /// # Safety
+    /// Same as [`Self::insert_by_ids_with_required_templates`]
+    unsafe fn insert_by_ids_with_required_templates_or_report(
+        &mut self,
+        component_ids: &[ComponentId],
+        ptrs: &[NonNull<u8>],
+        mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) {
+        // SAFETY: same preconditions
+        let result = unsafe {
+            self.insert_by_ids_with_required_templates(
+                component_ids,
+                ptrs,
+                mode,
+                caller,
+                relationship_hook_mode,
+            )
+        };
+        if let Err(error) = result {
+            // SAFETY: the insert failed, so `ptrs` still own their values
+            unsafe { self.drop_component_ptrs(component_ids, ptrs) };
+            (self.world.fallback_error_handler())(
+                error,
+                ErrorContext::RequiredTemplate {
+                    name: DebugName::borrowed("dynamic bundle"),
+                },
+            );
+        }
+    }
+
+    /// # Safety
+    /// Each pointer in `ptrs` must point to an owned, valid value of the matching component in `component_ids`
+    unsafe fn drop_component_ptrs(&self, component_ids: &[ComponentId], ptrs: &[NonNull<u8>]) {
+        for (&id, &ptr) in component_ids.iter().zip(ptrs) {
+            // SAFETY: component ids are valid per precondition
+            let info = unsafe { self.world.components.get_info_unchecked(id) };
+            if let Some(drop) = info.drop() {
+                // SAFETY: `ptr` owns a valid value of this component per precondition
+                unsafe { drop(OwningPtr::new(ptr)) };
+            }
+        }
+    }
+
+    /// Builds the templated required components for inserting `component_ids`, then inserts everything
+    /// in a single archetype move.
+    ///
+    /// On success, every value in `ptrs` has been moved into the world. On failure, none have.
+    ///
+    /// # Safety
+    /// - Each [`ComponentId`] must be from the same world as this entity
+    /// - Each pointer in `ptrs` must point to an owned, valid value of the matching component
+    pub(crate) unsafe fn insert_by_ids_with_required_templates(
+        &mut self,
+        component_ids: &[ComponentId],
+        ptrs: &[NonNull<u8>],
+        mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) -> Result {
+        let bundle_id = self.world.bundles.init_dynamic_info(
+            &mut self.world.storages,
+            &self.world.components,
+            component_ids,
+        );
+        let mut stage = RequiredStage::default();
+
+        // Templates have full world access and may change this entity, which can change which
+        // required components are missing. Keep building until every missing one is staged.
+        'plan: loop {
+            let Some(location) = self.location else {
+                return Err("Entity was despawned while building its required components".into());
+            };
+            let change_tick = self.world.change_tick();
+            // SAFETY: bundle initialized above, archetype id taken from the entity
+            let bundle_inserter = unsafe {
+                BundleInserter::new_with_id(
+                    self.world,
+                    location.archetype_id,
+                    bundle_id,
+                    change_tick,
+                )
+            };
+            let templates = bundle_inserter
+                .required_templates()
+                .filter(|template| !stage.contains(template.component_id()))
+                .cloned()
+                .collect::<Vec<_>>();
+            if templates.is_empty() {
+                break;
+            }
+
+            for template in templates {
+                if self.location.map(|location| location.archetype_id)
+                    != Some(location.archetype_id)
+                {
+                    continue 'plan;
+                }
+                let key = (self.entity, template.component_id());
+                if self.world.building_required_templates.contains(&key) {
+                    let name = self.world.components.get_name(key.1).unwrap();
+                    return Err(format!(
+                        "Required component {name} on entity {} requires itself while being built",
+                        self.entity
+                    )
+                    .into());
+                }
+                self.world.building_required_templates.push(key);
+                let mut entity_references = SceneEntityReferences::default();
+                let mut context = TemplateContext::with_inserting(
+                    self,
+                    &mut entity_references,
+                    InsertingComponents {
+                        ids: component_ids,
+                        ptrs,
+                    },
+                );
+                let result = template.build(&mut context, &mut stage);
+                self.world.building_required_templates.pop();
+                if let Err(error) = result {
+                    let name = self.world.components.get_name(key.1).unwrap();
+                    return Err(format!(
+                        "Failed to build required component {name} for entity {}: {error}",
+                        self.entity
+                    )
+                    .into());
+                }
+            }
+        }
+
+        let location = self.location();
+        let change_tick = self.world.change_tick();
+        // SAFETY: init_dynamic_info was called above
+        let storage_types =
+            core::mem::take(unsafe { self.world.bundles.get_storages_unchecked(bundle_id) });
+        // SAFETY: bundle initialized above, archetype id taken from the entity
+        let bundle_inserter = unsafe {
+            BundleInserter::new_with_id(self.world, location.archetype_id, bundle_id, change_tick)
+        };
+        // SAFETY:
+        // - pointers match the component ids per precondition
+        // - storage types retrieved above for the same bundle
+        // - entity and location belong to self
+        self.location = Some(unsafe {
+            insert_dynamic_bundle(
+                bundle_inserter,
+                self.entity,
+                location,
+                ptrs.iter().map(|&ptr| OwningPtr::new(ptr)),
+                storage_types.iter().cloned(),
+                mode,
+                caller,
+                relationship_hook_mode,
+                Some(&mut stage),
+            )
+        });
+        // SAFETY: same as above
+        *unsafe { self.world.bundles.get_storages_unchecked(bundle_id) } = storage_types;
+        self.world.flush();
+        self.update_location();
+        Ok(())
+    }
+}
+
 /// Inserts a dynamic [`Bundle`] into the entity.
 ///
 /// # Safety
@@ -2446,6 +2719,7 @@ unsafe fn insert_dynamic_bundle<
     mode: InsertMode,
     caller: MaybeLocation,
     relationship_hook_insert_mode: RelationshipHookMode,
+    stage: Option<&mut RequiredStage>,
 ) -> EntityLocation {
     struct DynamicInsertBundle<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> {
         components: I,
@@ -2482,13 +2756,14 @@ unsafe fn insert_dynamic_bundle<
     // - `DynamicInsertBundle::Effect: NoBundleEffect`
     // - `bundle` is not used or dropped after this point.
     unsafe {
-        bundle_inserter.insert(
+        bundle_inserter.insert_with_stage(
             entity,
             location,
             bundle,
             mode,
             caller,
             relationship_hook_insert_mode,
+            stage,
         )
     }
 }

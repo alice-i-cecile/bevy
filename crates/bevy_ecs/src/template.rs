@@ -1,10 +1,10 @@
 //! Functionality that relates to the [`Template`] trait.
 pub use bevy_ecs_macros::FromTemplate;
 
-use core::{hash::Hash, ops::Deref};
+use core::{any::TypeId, hash::Hash, ops::Deref, ptr::NonNull};
 
 use crate::{
-    component::Mutable,
+    component::{Component, ComponentId, Mutable},
     entity::Entity,
     error::{BevyError, Result},
     resource::Resource,
@@ -47,6 +47,14 @@ pub struct TemplateContext<'a, 'w> {
     pub entity: &'a mut EntityWorldMut<'w>,
     /// A mapping of [`SceneEntityReference`] to [`Entity`] used for resolving `#Name` entity references
     pub entity_references: &'a mut SceneEntityReferences,
+    inserting: InsertingComponents<'a>,
+}
+
+/// The explicit components of a bundle that is currently being inserted, visible to required component templates.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct InsertingComponents<'a> {
+    pub(crate) ids: &'a [ComponentId],
+    pub(crate) ptrs: &'a [NonNull<u8>],
 }
 
 impl<'a, 'w> TemplateContext<'a, 'w> {
@@ -58,7 +66,37 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
         Self {
             entity,
             entity_references,
+            inserting: InsertingComponents::default(),
         }
+    }
+
+    pub(crate) fn with_inserting(
+        entity: &'a mut EntityWorldMut<'w>,
+        entity_references: &'a mut SceneEntityReferences,
+        inserting: InsertingComponents<'a>,
+    ) -> Self {
+        Self {
+            entity,
+            entity_references,
+            inserting,
+        }
+    }
+
+    /// Returns the component `C` if it is part of the bundle currently being inserted into [`Self::entity`].
+    ///
+    /// Required component templates are built before the bundle that requires them is inserted, so the
+    /// bundle's components are not on the entity yet. This makes them readable anyway, which lets a
+    /// required template depend on the values of the component that required it.
+    pub fn inserting<C: Component>(&self) -> Option<&C> {
+        let id = self.entity.world().components().get_id(TypeId::of::<C>())?;
+        let index = self
+            .inserting
+            .ids
+            .iter()
+            .position(|&inserting| inserting == id)?;
+        // SAFETY: `ptrs[index]` points to a valid value of the component with id `ids[index]`, which is `C`,
+        // and stays valid for `'a`
+        Some(unsafe { self.inserting.ptrs[index].cast::<C>().as_ref() })
     }
     /// Get the entity associated with the [`SceneEntityReference`], spawning a new one
     /// if this is the first call with this index.

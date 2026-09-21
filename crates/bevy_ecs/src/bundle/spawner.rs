@@ -25,6 +25,13 @@ pub(crate) struct BundleSpawner<'w> {
 }
 
 impl<'w> BundleSpawner<'w> {
+    /// Returns true if spawning this bundle requires building templated required components first.
+    #[inline]
+    pub(crate) fn has_required_templates(&self) -> bool {
+        // SAFETY: the bundle info is valid for the lifetime of the spawner
+        unsafe { self.bundle_info.as_ref() }.has_required_templates
+    }
+
     #[inline]
     pub fn new<T: Bundle>(world: &'w mut World, change_tick: Tick) -> Self {
         let bundle_id = world.register_bundle_info::<T>();
@@ -144,6 +151,7 @@ impl<'w> BundleSpawner<'w> {
                     bundle,
                     InsertMode::Replace,
                     caller,
+                    None,
                 );
             }
             // SAFETY: Entity was just spawned at this location

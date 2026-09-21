@@ -139,6 +139,8 @@ pub(crate) struct ArchetypeAfterBundleInsert {
     ///
     /// The initial values are determined based on the provided constructor, falling back to the `Default` trait if none is given.
     pub required_components: Box<[RequiredComponentConstructor]>,
+    /// Whether any of the `required_components` must be built from a template before insertion.
+    pub has_required_templates: bool,
     /// The components inserted by this bundle, with added components before existing ones.
     /// Added components includes any Required Components that are inserted when adding this bundle,
     /// but existing components only includes ones explicitly contributed by this bundle.
@@ -251,12 +253,16 @@ impl Edges {
         // Make sure `extend` doesn't over-reserve, since the conversion to `Box<[_]>` would reallocate to shrink.
         added.reserve_exact(existing.len());
         added.extend(existing);
+        let required_components: Box<[RequiredComponentConstructor]> = required_components.into();
         self.insert_bundle.insert(
             bundle_id,
             ArchetypeAfterBundleInsert {
                 archetype_id,
                 bundle_status: bundle_status.into(),
-                required_components: required_components.into(),
+                has_required_templates: required_components
+                    .iter()
+                    .any(RequiredComponentConstructor::is_template),
+                required_components,
                 added_len,
                 inserted: added.into(),
             },

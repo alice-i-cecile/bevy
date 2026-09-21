@@ -9,8 +9,8 @@ use syn::{
     punctuated::Punctuated,
     spanned::Spanned,
     token::{Brace, Comma, Paren},
-    Data, DataStruct, DeriveInput, Expr, ExprCall, ExprPath, Field, Fields, Ident, LitStr, Member,
-    Path, Result, Token, Type, Visibility,
+    Data, DataStruct, DeriveInput, Expr, ExprCall, ExprLit, ExprPath, Field, FieldValue, Fields,
+    Ident, Lit, LitStr, Member, Path, Result, Token, Type, Visibility,
 };
 
 use crate::map_entities::{map_entities, MapEntitiesAttributeKind};
@@ -278,6 +278,13 @@ impl DeriveComponent {
         if let Some(requires) = requires {
             for require in requires {
                 let ident = &require.path;
+                if let Some(template) = &require.template {
+                    let template = template.to_tokens(ident, bevy_ecs);
+                    register_required.push(quote! {
+                        required_components.register_required_template::<#ident>(#template);
+                    });
+                    continue;
+                }
                 let constructor = match &require.func {
                     Some(func) => quote! { || { let x: #ident = (#func)().into(); x } },
                     None => quote! { <#ident as #FQDefault>::default },
@@ -608,6 +615,65 @@ pub enum StorageTy {
 pub struct Require {
     path: Path,
     func: Option<TokenStream>,
+    template: Option<RequireTemplate>,
+}
+
+/// A required component that is built from a `Template`, using `~` syntax.
+enum RequireTemplate {
+    /// `B = ~expr`: `expr` is a `Template<Output = B>`
+    Expr(Expr),
+    /// `~B`: the default `FromTemplate::Template` of `B`
+    Default,
+    /// `~B(a, b)`: the default template of `B`, with tuple fields patched
+    Tuple(Punctuated<Expr, Comma>),
+    /// `~B { a: x }`: the default template of `B`, with named fields patched
+    Named(Punctuated<FieldValue, Comma>),
+}
+
+impl RequireTemplate {
+    fn to_tokens(&self, ident: &Path, bevy_ecs: &Path) -> TokenStream {
+        let default = quote! {
+            <<#ident as #bevy_ecs::template::FromTemplate>::Template as #FQDefault>::default()
+        };
+        let assignments = match self {
+            RequireTemplate::Expr(expr) => return quote! { #expr },
+            RequireTemplate::Default => return default,
+            RequireTemplate::Tuple(values) => values
+                .iter()
+                .enumerate()
+                .map(|(index, value)| {
+                    let member = Member::Unnamed(index.into());
+                    let value = template_field_value(value);
+                    quote! { __template.#member = #value; }
+                })
+                .collect::<Vec<_>>(),
+            RequireTemplate::Named(fields) => fields
+                .iter()
+                .map(|field| {
+                    let member = &field.member;
+                    let value = template_field_value(&field.expr);
+                    quote! { __template.#member = #value; }
+                })
+                .collect::<Vec<_>>(),
+        };
+        quote! {{
+            let mut __template = #default;
+            #(#assignments)*
+            __template
+        }}
+    }
+}
+
+/// Matches the `bsn!` rules for field values: unsuffixed non-string literals are used as-is, everything else is converted with `into`.
+fn template_field_value(value: &Expr) -> TokenStream {
+    match value {
+        Expr::Lit(ExprLit { lit, .. })
+            if !matches!(lit, Lit::Str(_)) && lit.suffix().is_empty() =>
+        {
+            quote! { #lit }
+        }
+        _ => quote! { (#value).into() },
+    }
 }
 
 /// Derived `#[relationship]` attribute information.
@@ -628,7 +694,38 @@ const SPARSE_SET: &str = "SparseSet";
 
 impl Parse for Require {
     fn parse(input: syn::parse::ParseStream) -> Result<Self> {
+        if input.peek(Token![~]) {
+            input.parse::<Token![~]>()?;
+            let path = input.parse::<Path>()?;
+            let template = if input.peek(Brace) {
+                let content;
+                braced!(content in input);
+                RequireTemplate::Named(content.parse_terminated(FieldValue::parse, Token![,])?)
+            } else if input.peek(Paren) {
+                let content;
+                parenthesized!(content in input);
+                RequireTemplate::Tuple(content.parse_terminated(Expr::parse, Token![,])?)
+            } else {
+                RequireTemplate::Default
+            };
+            return Ok(Require {
+                path,
+                func: None,
+                template: Some(template),
+            });
+        }
+
         let mut path = input.parse::<Path>()?;
+        if input.peek(Token![=]) && input.peek2(Token![~]) {
+            input.parse::<Token![=]>()?;
+            input.parse::<Token![~]>()?;
+            let expr = input.parse::<Expr>()?;
+            return Ok(Require {
+                path,
+                func: None,
+                template: Some(RequireTemplate::Expr(expr)),
+            });
+        }
         let mut last_segment_is_lower = false;
         let mut is_constructor_call = false;
 
@@ -686,7 +783,11 @@ impl Parse for Require {
             path.segments.pop();
             path.segments.pop_punct();
         }
-        Ok(Require { path, func })
+        Ok(Require {
+            path,
+            func,
+            template: None,
+        })
     }
 }
 

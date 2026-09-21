@@ -1,17 +1,20 @@
-use alloc::{format, vec::Vec};
+use alloc::{boxed::Box, format, vec::Vec};
 use bevy_platform::{hash::FixedHasher, sync::Arc};
 use bevy_ptr::OwningPtr;
-use core::fmt::Debug;
+use bumpalo::Bump;
+use core::{fmt::Debug, marker::PhantomData, ptr::NonNull};
 use indexmap::{IndexMap, IndexSet};
 use thiserror::Error;
 
 use crate::{
     bundle::BundleInfo,
     change_detection::{MaybeLocation, Tick},
-    component::{Component, ComponentId, Components, ComponentsRegistrator},
+    component::{Component, ComponentId, Components, ComponentsRegistrator, StorageType},
     entity::Entity,
+    error::Result,
     query::DebugCheckedUnwrap as _,
     storage::{SparseSets, Table, TableRow},
+    template::{Template, TemplateContext},
 };
 
 /// Metadata associated with a required component. See [`Component`] for details.
@@ -23,10 +26,14 @@ pub struct RequiredComponent {
 
 /// A Required Component constructor. See [`Component`] for details.
 #[derive(Clone)]
-pub struct RequiredComponentConstructor(
+pub struct RequiredComponentConstructor(RequiredConstructorKind);
+
+#[derive(Clone)]
+enum RequiredConstructorKind {
     // Note: this function makes `unsafe` assumptions, so it cannot be public.
-    Arc<dyn Fn(&mut Table, &mut SparseSets, Tick, TableRow, Entity, MaybeLocation)>,
-);
+    Value(Arc<dyn Fn(&mut Table, &mut SparseSets, Tick, TableRow, Entity, MaybeLocation)>),
+    Template(Arc<dyn ErasedRequiredTemplate>),
+}
 
 impl RequiredComponentConstructor {
     /// Creates a new instance of `RequiredComponentConstructor` for the given type
@@ -38,7 +45,7 @@ impl RequiredComponentConstructor {
         component_id: ComponentId,
         constructor: impl Fn() -> C + 'static,
     ) -> Self {
-        RequiredComponentConstructor({
+        RequiredComponentConstructor(RequiredConstructorKind::Value({
             // `portable-atomic-util` `Arc` is not able to coerce an unsized
             // type like `std::sync::Arc` can. Creating a `Box` first does the
             // coercion.
@@ -88,7 +95,38 @@ impl RequiredComponentConstructor {
             );
 
             Arc::from(boxed)
-        })
+        }))
+    }
+
+    /// Creates a new [`RequiredComponentConstructor`] that builds `C` from a [`Template`] before the entity
+    /// is moved to its new archetype, giving it access to the [`World`](crate::world::World) via [`TemplateContext`].
+    ///
+    /// # Safety
+    ///
+    /// - `component_id` must be a valid component for type `C`.
+    pub unsafe fn new_template<C: Component, T: Template<Output = C> + Send + Sync + 'static>(
+        component_id: ComponentId,
+        template: T,
+    ) -> Self {
+        let boxed: Box<dyn ErasedRequiredTemplate> = Box::new(RequiredTemplate::<C, T> {
+            component_id,
+            template,
+            marker: PhantomData,
+        });
+        RequiredComponentConstructor(RequiredConstructorKind::Template(Arc::from(boxed)))
+    }
+
+    /// Returns true if this constructor is built from a [`Template`] before insertion.
+    #[inline]
+    pub fn is_template(&self) -> bool {
+        matches!(self.0, RequiredConstructorKind::Template(_))
+    }
+
+    pub(crate) fn template(&self) -> Option<&Arc<dyn ErasedRequiredTemplate>> {
+        match &self.0 {
+            RequiredConstructorKind::Template(template) => Some(template),
+            RequiredConstructorKind::Value(_) => None,
+        }
     }
 
     /// # Safety
@@ -108,9 +146,125 @@ impl RequiredComponentConstructor {
         table_row: TableRow,
         entity: Entity,
         caller: MaybeLocation,
+        stage: &mut Option<&mut RequiredStage>,
     ) {
-        (self.0)(table, sparse_sets, change_tick, table_row, entity, caller);
+        match &self.0 {
+            RequiredConstructorKind::Value(constructor) => {
+                (constructor)(table, sparse_sets, change_tick, table_row, entity, caller);
+            }
+            RequiredConstructorKind::Template(template) => {
+                let component_id = template.component_id();
+                let Some(ptr) = stage.as_mut().and_then(|stage| stage.take(component_id)) else {
+                    panic!(
+                        "Required component {component_id:?} is built from a template, but was inserted \
+                        through an API that does not support required templates"
+                    );
+                };
+                // SAFETY:
+                // - the caller ensures we are in `BundleInfo::write_components` for a valid entity and table_row
+                // - `ptr` was staged by `RequiredTemplate::build` for `component_id`, which has this storage type
+                unsafe {
+                    BundleInfo::initialize_required_component(
+                        table,
+                        sparse_sets,
+                        change_tick,
+                        table_row,
+                        entity,
+                        component_id,
+                        template.storage_type(),
+                        ptr,
+                        caller,
+                    );
+                }
+            }
+        }
     }
+}
+
+/// A type-erased [`Template`] used to build a required component before it is inserted.
+pub(crate) trait ErasedRequiredTemplate: Send + Sync + 'static {
+    fn component_id(&self) -> ComponentId;
+    fn storage_type(&self) -> StorageType;
+    fn build(&self, context: &mut TemplateContext, stage: &mut RequiredStage) -> Result;
+}
+
+struct RequiredTemplate<C, T> {
+    component_id: ComponentId,
+    template: T,
+    marker: PhantomData<fn() -> C>,
+}
+
+impl<C: Component, T: Template<Output = C> + Send + Sync + 'static> ErasedRequiredTemplate
+    for RequiredTemplate<C, T>
+{
+    fn component_id(&self) -> ComponentId {
+        self.component_id
+    }
+
+    fn storage_type(&self) -> StorageType {
+        C::STORAGE_TYPE
+    }
+
+    fn build(&self, context: &mut TemplateContext, stage: &mut RequiredStage) -> Result {
+        let value = self.template.build_template(context)?;
+        stage.push(self.component_id, value);
+        Ok(())
+    }
+}
+
+/// Required component values built from templates, waiting to be written during an insert.
+#[derive(Default)]
+pub(crate) struct RequiredStage {
+    entries: Vec<StagedRequired>,
+    alloc: Bump,
+}
+
+struct StagedRequired {
+    component_id: ComponentId,
+    ptr: Option<NonNull<u8>>,
+    drop: Option<unsafe fn(OwningPtr<'_>)>,
+}
+
+impl RequiredStage {
+    fn push<C: Component>(&mut self, component_id: ComponentId, value: C) {
+        let ptr = NonNull::from(self.alloc.alloc(value)).cast::<u8>();
+        self.entries.push(StagedRequired {
+            component_id,
+            ptr: Some(ptr),
+            drop: core::mem::needs_drop::<C>().then_some(drop_as::<C> as unsafe fn(OwningPtr<'_>)),
+        });
+    }
+
+    pub(crate) fn contains(&self, component_id: ComponentId) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| entry.component_id == component_id)
+    }
+
+    fn take(&mut self, component_id: ComponentId) -> Option<OwningPtr<'_>> {
+        let entry = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.component_id == component_id)?;
+        // SAFETY: staged pointers point to valid, owned values that have not been taken yet
+        entry.ptr.take().map(|ptr| unsafe { OwningPtr::new(ptr) })
+    }
+}
+
+impl Drop for RequiredStage {
+    fn drop(&mut self) {
+        for entry in &mut self.entries {
+            if let (Some(ptr), Some(drop)) = (entry.ptr.take(), entry.drop) {
+                // SAFETY: `ptr` points to a valid value of the type `drop` was created for, and was never taken
+                unsafe { drop(OwningPtr::new(ptr)) };
+            }
+        }
+    }
+}
+
+unsafe fn drop_as<C>(ptr: OwningPtr<'_>) {
+    // SAFETY: the caller ensures `ptr` points to a valid `C`
+    unsafe { ptr.drop_as::<C>() };
 }
 
 /// The collection of metadata for components that are required for a given component.
@@ -599,6 +753,30 @@ impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
         unsafe {
             self.required_components
                 .register(self.components, constructor);
+        }
+    }
+
+    /// Registers the [`Component`] `C` as an explicitly required component, built from the given [`Template`].
+    ///
+    /// Unlike [`register_required`](Self::register_required), the template is built with a [`TemplateContext`]
+    /// before the component is inserted, so it can read from and write to the [`World`](crate::world::World).
+    /// Hooks and observers for the inserted components always see the built value.
+    ///
+    /// If the component was not already registered as an explicit required component then it is added
+    /// as one, potentially overriding the constructor of an inherited required component, otherwise panics.
+    pub fn register_required_template<C: Component>(
+        &mut self,
+        template: impl Template<Output = C> + Send + Sync + 'static,
+    ) {
+        let component_id = self.components.register_component::<C>();
+        // SAFETY:
+        // - `component_id` was just registered for `C`
+        // - we internally guarantee all other components in `required_components` are registered in `components`
+        unsafe {
+            self.required_components
+                .register_dynamic_with(component_id, self.components, || {
+                    RequiredComponentConstructor::new_template::<C, _>(component_id, template)
+                });
         }
     }
 
@@ -1602,5 +1780,259 @@ mod tests {
             world.try_register_required_components::<C, A>(),
             Err(RequiredComponentsError::CyclicRequirement(_, _))
         ));
+    }
+}
+
+#[cfg(test)]
+mod template_tests {
+    use alloc::{
+        format,
+        string::{String, ToString},
+        vec,
+        vec::Vec,
+    };
+
+    use crate::{
+        error::{ignore, FallbackErrorHandler},
+        lifecycle::HookContext,
+        prelude::*,
+        template::{template, TemplateContext},
+        world::DeferredWorld,
+    };
+
+    #[derive(Resource)]
+    struct Frame(u32);
+
+    #[derive(Resource, Default)]
+    struct Log(Vec<String>);
+
+    #[derive(Component, Debug, PartialEq)]
+    #[component(on_add = log_on_add)]
+    struct StartFrame(u32);
+
+    fn log_on_add(mut world: DeferredWorld, context: HookContext) {
+        let frame = world.get::<StartFrame>(context.entity).unwrap().0;
+        world
+            .resource_mut::<Log>()
+            .0
+            .push(format!("on_add {frame}"));
+    }
+
+    fn start_frame(context: &mut TemplateContext) -> Result<StartFrame> {
+        context.resource_mut::<Log>().0.push("built".to_string());
+        Ok(StartFrame(context.resource::<Frame>().0))
+    }
+
+    #[derive(Component, Default)]
+    #[require(StartFrame = ~template(start_frame))]
+    struct Rollback;
+
+    fn world() -> World {
+        let mut world = World::new();
+        world.insert_resource(Frame(5));
+        world.init_resource::<Log>();
+        world
+    }
+
+    #[test]
+    fn spawn_builds_template_before_hooks() {
+        let mut world = world();
+        let entity = world.spawn(Rollback).id();
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
+        assert_eq!(world.resource::<Log>().0, vec!["built", "on_add 5"]);
+    }
+
+    #[test]
+    fn insert_builds_template() {
+        let mut world = world();
+        let entity = world.spawn_empty().id();
+        world.resource_mut::<Frame>().0 = 7;
+        world.entity_mut(entity).insert(Rollback);
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(7)));
+    }
+
+    #[test]
+    fn commands_match_world() {
+        let mut world = world();
+        let entity = world.commands().spawn(Rollback).id();
+        world.flush();
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
+        assert_eq!(world.resource::<Log>().0, vec!["built", "on_add 5"]);
+    }
+
+    #[test]
+    fn explicit_component_skips_template() {
+        let mut world = world();
+        let entity = world.spawn((Rollback, StartFrame(1))).id();
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(1)));
+        assert_eq!(world.resource::<Log>().0, vec!["on_add 1"]);
+    }
+
+    #[test]
+    fn existing_component_skips_template() {
+        let mut world = world();
+        let entity = world.spawn(StartFrame(2)).id();
+        world.entity_mut(entity).insert(Rollback);
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(2)));
+        assert_eq!(world.resource::<Log>().0, vec!["on_add 2"]);
+    }
+
+    #[test]
+    fn insert_by_id_builds_template() {
+        let mut world = world();
+        let id = world.register_component::<Rollback>();
+        let mut entity = world.spawn_empty();
+        bevy_ptr::OwningPtr::make(Rollback, |ptr| {
+            // SAFETY: `ptr` is a `Rollback`, which matches `id`
+            unsafe { entity.insert_by_id(id, ptr) };
+        });
+        assert_eq!(entity.get::<StartFrame>(), Some(&StartFrame(5)));
+    }
+
+    #[test]
+    fn insert_if_new_builds_template() {
+        let mut world = world();
+        let entity = world.spawn_empty().id();
+        world.entity_mut(entity).insert_if_new(Rollback);
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
+    }
+
+    #[derive(Component)]
+    #[require(Doubled = ~template(|context: &mut TemplateContext| {
+        Ok(Doubled(context.inserting::<Source>().unwrap().0 * 2))
+    }))]
+    struct Source(u32);
+
+    #[derive(Component, Debug, PartialEq)]
+    struct Doubled(u32);
+
+    #[test]
+    fn template_reads_inserting_components() {
+        let mut world = World::new();
+        let entity = world.spawn(Source(21)).id();
+        assert_eq!(world.get::<Doubled>(entity), Some(&Doubled(42)));
+    }
+
+    #[derive(Component)]
+    #[require(Rollback)]
+    struct Player;
+
+    #[test]
+    fn inherited_template() {
+        let mut world = world();
+        let entity = world.spawn(Player).id();
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
+    }
+
+    #[derive(Component)]
+    #[require(StartFrame = ~template(|_: &mut TemplateContext| -> Result<StartFrame> {
+        Err("no frame".into())
+    }))]
+    struct Broken;
+
+    #[derive(Component)]
+    struct Marker;
+
+    #[test]
+    fn failed_template_inserts_nothing() {
+        let mut world = world();
+        world.insert_resource(FallbackErrorHandler(ignore));
+        let entity = world.spawn(Marker).id();
+        world.entity_mut(entity).insert(Broken);
+        assert!(world.get::<Broken>(entity).is_none());
+        assert!(world.get::<StartFrame>(entity).is_none());
+        assert!(world.get::<Marker>(entity).is_some());
+    }
+
+    #[test]
+    #[should_panic(expected = "no frame")]
+    fn failed_template_panics_by_default() {
+        let mut world = world();
+        world.spawn(Broken);
+    }
+
+    #[derive(Component, Debug, PartialEq)]
+    struct Health(u32);
+
+    #[derive(Component, Debug, PartialEq)]
+    struct Armor(u32);
+
+    #[derive(Component)]
+    #[require(
+        Health = ~template(|context: &mut TemplateContext| {
+            context.entity.insert(Armor(3));
+            Ok(Health(10))
+        }),
+        Armor = ~template(|_: &mut TemplateContext| -> Result<Armor> { panic!("Armor is already present") }),
+    )]
+    struct Knight;
+
+    #[test]
+    fn template_changing_entity_is_replanned() {
+        let mut world = World::new();
+        let entity = world.spawn(Knight).id();
+        assert_eq!(world.get::<Health>(entity), Some(&Health(10)));
+        assert_eq!(world.get::<Armor>(entity), Some(&Armor(3)));
+    }
+
+    #[derive(Component)]
+    #[require(Egg = ~template(|context: &mut TemplateContext| {
+        context.entity.insert(Chicken);
+        Ok(Egg)
+    }))]
+    struct Chicken;
+
+    #[derive(Component)]
+    struct Egg;
+
+    #[test]
+    #[should_panic(expected = "requires itself")]
+    fn cyclic_template_errors() {
+        World::new().spawn(Chicken);
+    }
+
+    #[derive(Resource)]
+    struct Prefix(&'static str);
+
+    #[derive(Default)]
+    struct Prefixed(&'static str);
+
+    impl From<&'static str> for Prefixed {
+        fn from(value: &'static str) -> Self {
+            Prefixed(value)
+        }
+    }
+
+    impl Template for Prefixed {
+        type Output = String;
+
+        fn build_template(&self, context: &mut TemplateContext) -> Result<String> {
+            Ok(format!("{}{}", context.resource::<Prefix>().0, self.0))
+        }
+
+        fn clone_template(&self) -> Self {
+            Prefixed(self.0)
+        }
+    }
+
+    #[derive(Component, FromTemplate)]
+    struct Greeting {
+        #[template(Prefixed)]
+        text: String,
+        count: u32,
+    }
+
+    #[derive(Component)]
+    #[require(~Greeting { text: "world", count: 3 })]
+    struct Greeter;
+
+    #[test]
+    fn template_patch_syntax() {
+        let mut world = World::new();
+        world.insert_resource(Prefix("hello "));
+        let entity = world.spawn(Greeter).id();
+        let greeting = world.get::<Greeting>(entity).unwrap();
+        assert_eq!(greeting.text, "hello world");
+        assert_eq!(greeting.count, 3);
     }
 }

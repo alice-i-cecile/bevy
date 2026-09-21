@@ -38,6 +38,11 @@ pub enum ErrorContext {
         /// The last tick that the observer was run.
         last_run: Tick,
     },
+    /// The error occurred while building a required component from a template.
+    RequiredTemplate {
+        /// The name of the bundle whose required components failed to build.
+        name: DebugName,
+    },
 }
 
 impl Display for ErrorContext {
@@ -47,6 +52,9 @@ impl Display for ErrorContext {
                 write!(f, "System `{name}` failed")
             }
             Self::Command { name } => write!(f, "Command `{name}` failed"),
+            Self::RequiredTemplate { name } => {
+                write!(f, "Building required components for `{name}` failed")
+            }
             Self::Observer { name, .. } => {
                 write!(f, "Observer `{name}` failed")
             }
@@ -73,7 +81,8 @@ impl ErrorContext {
             Self::System { name, .. }
             | Self::Command { name, .. }
             | Self::Observer { name, .. }
-            | Self::RunCondition { name, .. } => name.clone(),
+            | Self::RunCondition { name, .. }
+            | Self::RequiredTemplate { name } => name.clone(),
         }
     }
 
@@ -86,6 +95,7 @@ impl ErrorContext {
             Self::Command { .. } => "command",
             Self::Observer { .. } => "observer",
             Self::RunCondition { .. } => "run condition",
+            Self::RequiredTemplate { .. } => "required component template",
         }
     }
 }
