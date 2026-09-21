@@ -6,9 +6,11 @@ mod add_remove_very_big_table;
 mod archetype_updates;
 mod insert_simple;
 mod insert_simple_unbatched;
+mod required;
 
 use archetype_updates::*;
 use criterion::{criterion_group, Criterion};
+use required::*;
 
 criterion_group!(
     benches,
@@ -18,6 +20,7 @@ criterion_group!(
     insert_simple,
     no_archetypes,
     added_archetypes,
+    required_default,
 );
 
 fn add_remove(c: &mut Criterion) {
