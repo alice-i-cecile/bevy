@@ -1111,7 +1111,8 @@ impl World {
         let bundle_id = self.register_bundle_info::<B>();
         // SAFETY: the bundle was just registered
         if unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
-            return self.spawn_at_with_required_templates_or_report(entity, bundle, caller);
+            return self
+                .spawn_at_with_required_templates_or_report(entity, bundle_id, bundle, caller);
         }
         // SAFETY: the bundle was just registered, and has no required templates
         unsafe { self.spawn_at_with_spawner(entity, bundle_id, bundle, caller) }
@@ -1129,10 +1130,12 @@ impl World {
     fn spawn_at_with_required_templates_or_report<B: Bundle>(
         &mut self,
         entity: Entity,
+        bundle_id: BundleId,
         bundle: MovingPtr<'_, B>,
         caller: MaybeLocation,
     ) -> EntityWorldMut<'_> {
-        if let Err(error) = self.spawn_at_with_required_templates(entity, bundle, caller) {
+        if let Err(error) = self.spawn_at_with_required_templates(entity, bundle_id, bundle, caller)
+        {
             self.report_required_template_error(error, DebugName::type_name::<B>());
         }
         let location = self.entities().get_spawned(entity).ok();
@@ -1159,7 +1162,7 @@ impl World {
             // SAFETY: the bundle was just registered, and has no required templates
             return Ok(unsafe { self.spawn_at_with_spawner(entity, bundle_id, bundle, caller) });
         }
-        self.spawn_at_with_required_templates(entity, bundle, caller)
+        self.spawn_at_with_required_templates(entity, bundle_id, bundle, caller)
     }
 
     /// # Safety
@@ -1211,11 +1214,14 @@ impl World {
     fn spawn_at_with_required_templates<B: Bundle>(
         &mut self,
         entity: Entity,
+        bundle_id: BundleId,
         bundle: MovingPtr<'_, B>,
         caller: MaybeLocation,
     ) -> Result<EntityWorldMut<'_>, BevyError> {
         let mut entity_mut = self.spawn_empty_at_unchecked(entity, caller);
-        if let Err(error) = entity_mut.try_insert_with_caller(
+        // Every required template is missing from an empty entity, so this skips the fast path.
+        if let Err(error) = entity_mut.insert_with_required_templates(
+            bundle_id,
             bundle,
             InsertMode::Replace,
             caller,

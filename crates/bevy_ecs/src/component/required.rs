@@ -282,6 +282,17 @@ pub(crate) struct RequiredTemplates {
     pub(crate) building: Vec<(Entity, usize)>,
 }
 
+impl RequiredTemplates {
+    /// Takes a scratch from the pool, holding the ids of the explicit components of an insert.
+    #[inline(never)]
+    pub(crate) fn take_scratch(&mut self, explicit: &[ComponentId]) -> RequiredComponentsScratch {
+        let mut scratch = self.scratch.pop().unwrap_or_default();
+        scratch.ids.extend_from_slice(explicit);
+        scratch.explicit_len = explicit.len();
+        scratch
+    }
+}
+
 /// The collection of metadata for components that are required for a given component.
 ///
 /// For more information, see the "Required Components" section of [`Component`].

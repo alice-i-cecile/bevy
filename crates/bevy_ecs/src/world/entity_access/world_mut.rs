@@ -1409,7 +1409,7 @@ impl<'w> EntityWorldMut<'w> {
     /// as it cannot be dropped without being applied.
     #[cold]
     #[inline(never)]
-    fn insert_with_required_templates<T: Bundle>(
+    pub(crate) fn insert_with_required_templates<T: Bundle>(
         &mut self,
         bundle_id: BundleId,
         bundle: MovingPtr<'_, T>,
@@ -1417,23 +1417,12 @@ impl<'w> EntityWorldMut<'w> {
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
     ) -> Result {
-        let mut scratch = self
-            .world
-            .required_templates
-            .scratch
-            .pop()
-            .unwrap_or_default();
-        let RequiredComponentsScratch {
-            alloc,
-            ids,
-            ptrs,
-            explicit_len,
-            ..
-        } = &mut scratch;
         // SAFETY: the caller registered `bundle_id` for `T`
-        let bundle_info = unsafe { self.world.bundles.get_unchecked(bundle_id) };
-        ids.extend_from_slice(bundle_info.explicit_components());
-        *explicit_len = ids.len();
+        let explicit = unsafe { self.world.bundles.get_unchecked(bundle_id) }.explicit_components();
+        let mut scratch = self.world.required_templates.take_scratch(explicit);
+        let RequiredComponentsScratch {
+            alloc, ids, ptrs, ..
+        } = &mut scratch;
         let components = &self.world.components;
         // SAFETY:
         // - `get_components` is called exactly once, and `apply_effect` is called at most once afterwards
@@ -1451,14 +1440,12 @@ impl<'w> EntityWorldMut<'w> {
         let result = unsafe {
             self.insert_scratch_with_required_templates(
                 bundle_id,
-                &mut scratch,
+                scratch,
                 mode,
                 caller,
                 relationship_hook_mode,
             )
         };
-        scratch.clear();
-        self.world.required_templates.scratch.push(scratch);
         if result.is_ok() {
             // SAFETY: called exactly once after `get_components`
             unsafe { T::apply_effect(bundle, self) };
@@ -1505,21 +1492,44 @@ impl<'w> EntityWorldMut<'w> {
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
     ) -> Result {
-        let mut scratch = self
-            .world
-            .required_templates
-            .scratch
-            .pop()
-            .unwrap_or_default();
-        scratch.ids.extend_from_slice(component_ids);
-        scratch.explicit_len = component_ids.len();
+        let mut scratch = self.world.required_templates.take_scratch(component_ids);
         scratch
             .ptrs
             // SAFETY: `OwningPtr`s are never null
             .extend(components.map(|ptr| unsafe { NonNull::new_unchecked(ptr.as_ptr()) }));
         // SAFETY: the caller upholds the preconditions
-        let result = unsafe {
+        unsafe {
             self.insert_scratch_with_required_templates(
+                bundle_id,
+                scratch,
+                mode,
+                caller,
+                relationship_hook_mode,
+            )
+        }
+    }
+
+    /// Builds every required component that inserting the explicit components in `scratch` would add,
+    /// then inserts all of them in a single archetype move.
+    ///
+    /// On success, every component in `scratch` has been moved into the world or dropped.
+    /// On failure, they have all been dropped. Either way, `scratch` is returned to the world's pool.
+    ///
+    /// # Safety
+    /// - `bundle_id` must be the bundle of the explicit components in `scratch`, in the same world as this entity
+    /// - each pointer in `scratch` must own a valid value of the matching component
+    #[inline(never)]
+    unsafe fn insert_scratch_with_required_templates(
+        &mut self,
+        bundle_id: BundleId,
+        mut scratch: RequiredComponentsScratch,
+        mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) -> Result {
+        // SAFETY: the caller upholds the preconditions
+        let result = unsafe {
+            self.insert_scratch_with_required_templates_inner(
                 bundle_id,
                 &mut scratch,
                 mode,
@@ -1532,16 +1542,9 @@ impl<'w> EntityWorldMut<'w> {
         result
     }
 
-    /// Builds every required component that inserting the explicit components in `scratch` would add,
-    /// then inserts all of them in a single archetype move.
-    ///
-    /// On success, every component in `scratch` has been moved into the world or dropped.
-    /// On failure, they have all been dropped.
-    ///
     /// # Safety
-    /// - `bundle_id` must be the bundle of the explicit components in `scratch`, in the same world as this entity
-    /// - each pointer in `scratch` must own a valid value of the matching component
-    unsafe fn insert_scratch_with_required_templates(
+    /// Same as [`Self::insert_scratch_with_required_templates`].
+    unsafe fn insert_scratch_with_required_templates_inner(
         &mut self,
         bundle_id: BundleId,
         scratch: &mut RequiredComponentsScratch,
