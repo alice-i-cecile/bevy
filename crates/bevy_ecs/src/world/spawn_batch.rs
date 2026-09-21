@@ -75,33 +75,62 @@ where
     I::Item: Bundle<Effect: NoBundleEffect>,
 {
     fn drop(&mut self) {
-        // Iterate through self in order to spawn remaining bundles.
-        for _ in &mut *self {}
-        if let SpawnBatchMode::Batched { spawner, allocator } = &mut self.mode {
-            // Free all the over allocated entities.
-            for e in allocator.by_ref() {
-                spawner.allocator().free(e);
+        // Spawn the remaining bundles, matching on the mode once rather than once per bundle.
+        match &mut self.mode {
+            SpawnBatchMode::Batched { spawner, allocator } => {
+                for bundle in &mut self.inner {
+                    move_as_ptr!(bundle);
+                    spawn_batched(spawner, allocator, bundle, self.caller);
+                }
+                // Free all the over allocated entities.
+                for e in allocator.by_ref() {
+                    spawner.allocator().free(e);
+                }
+                // Apply any commands from those operations.
+                // SAFETY: `spawner` is not used again, and is dropped with `self`.
+                unsafe { spawner.flush_commands() };
             }
-            // Apply any commands from those operations.
-            // SAFETY: `spawner` is not used again, and is dropped with `self`.
-            unsafe { spawner.flush_commands() };
+            SpawnBatchMode::RequiredTemplates(world) => {
+                for bundle in &mut self.inner {
+                    move_as_ptr!(bundle);
+                    spawn_with_required_templates(world, bundle, self.caller);
+                }
+            }
         }
     }
 }
 
-impl<I> SpawnBatchIter<'_, I>
-where
-    I: Iterator,
-    I::Item: Bundle<Effect: NoBundleEffect>,
-{
-    #[cold]
-    #[inline(never)]
-    fn spawn_with_required_templates(&mut self, bundle: MovingPtr<'_, I::Item>) -> Entity {
-        let SpawnBatchMode::RequiredTemplates(world) = &mut self.mode else {
-            unreachable!();
-        };
-        world.spawn_with_caller(bundle, self.caller).id()
+#[inline(always)]
+fn spawn_batched<B: Bundle<Effect: NoBundleEffect>>(
+    spawner: &mut BundleSpawner,
+    allocator: &mut AllocEntitiesIterator,
+    bundle: MovingPtr<'_, B>,
+    caller: MaybeLocation,
+) -> Entity {
+    if let Some(bulk) = allocator.next() {
+        // SAFETY:
+        // - bundle matches spawner type and we just allocated it
+        // - B::Effect: NoBundleEffect
+        unsafe {
+            spawner.spawn_at(bulk, bundle, caller);
+        }
+        bulk
+    } else {
+        // SAFETY:
+        // - bundle matches spawner type
+        // - B::Effect: NoBundleEffect
+        unsafe { spawner.spawn(bundle, caller) }
     }
+}
+
+#[cold]
+#[inline(never)]
+fn spawn_with_required_templates<B: Bundle>(
+    world: &mut World,
+    bundle: MovingPtr<'_, B>,
+    caller: MaybeLocation,
+) -> Entity {
+    world.spawn_with_caller(bundle, caller).id()
 }
 
 impl<I> Iterator for SpawnBatchIter<'_, I>
@@ -114,22 +143,13 @@ where
     fn next(&mut self) -> Option<Entity> {
         let bundle = self.inner.next()?;
         move_as_ptr!(bundle);
-        let SpawnBatchMode::Batched { spawner, allocator } = &mut self.mode else {
-            return Some(self.spawn_with_required_templates(bundle));
-        };
-        Some(if let Some(bulk) = allocator.next() {
-            // SAFETY:
-            // - bundle matches spawner type and we just allocated it
-            // - I::Item::Effect: NoBundleEffect
-            unsafe {
-                spawner.spawn_at(bulk, bundle, self.caller);
+        Some(match &mut self.mode {
+            SpawnBatchMode::Batched { spawner, allocator } => {
+                spawn_batched(spawner, allocator, bundle, self.caller)
             }
-            bulk
-        } else {
-            // SAFETY:
-            // - bundle matches spawner type
-            // - I::Item::Effect: NoBundleEffect
-            unsafe { spawner.spawn(bundle, self.caller) }
+            SpawnBatchMode::RequiredTemplates(world) => {
+                spawn_with_required_templates(world, bundle, self.caller)
+            }
         })
     }
 
