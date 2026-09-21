@@ -1284,6 +1284,9 @@ impl World {
     /// retrieve its id. In case large batches of entities need to be spawned, consider using
     /// [`World::spawn_batch`] instead.
     ///
+    /// If one of the [required components](crate::component::Component#required-components) built from templates fails to build, the entity is despawned,
+    /// and the error is passed to the world's [`FallbackErrorHandler`].
+    ///
     /// ```
     /// use bevy_ecs::{bundle::Bundle, component::Component, world::World};
     ///
@@ -1396,6 +1399,8 @@ impl World {
     /// This is more efficient than spawning entities and adding components to them individually
     /// using [`World::spawn`], but it is limited to spawning entities with the same [`Bundle`]
     /// type, whereas spawning individually is more flexible.
+    ///
+    /// If the [`Bundle`] has [required components](crate::component::Component#required-components) built from templates, entities are spawned one at a time, like [`World::spawn`].
     ///
     /// ```
     /// use bevy_ecs::{component::Component, entity::Entity, world::World};
@@ -2606,13 +2611,17 @@ impl World {
 
     /// For a given batch of ([`Entity`], [`Bundle`]) pairs,
     /// adds the `Bundle` of components to each `Entity`.
-    /// This is faster than doing equivalent operations one-by-one.
+    /// This is faster than doing equivalent operations one-by-one,
+    /// unless the `Bundle` has [required components](crate::component::Component#required-components) built from templates, in which case entities are inserted one at a time.
     ///
     /// A batch can be any type that implements [`IntoIterator`] containing `(Entity, Bundle)` tuples,
     /// such as a [`Vec<(Entity, Bundle)>`] or an array `[(Entity, Bundle); N]`.
     ///
     /// This will overwrite any previous values of components shared by the `Bundle`.
     /// See [`World::insert_batch_if_new`] to keep the old values instead.
+    ///
+    /// If one of the [required components](crate::component::Component#required-components) built from templates fails to build for an entity,
+    /// nothing is inserted into it, and the error is passed to the world's [`FallbackErrorHandler`].
     ///
     /// # Panics
     ///
@@ -2631,13 +2640,17 @@ impl World {
 
     /// For a given batch of ([`Entity`], [`Bundle`]) pairs,
     /// adds the `Bundle` of components to each `Entity` without overwriting.
-    /// This is faster than doing equivalent operations one-by-one.
+    /// This is faster than doing equivalent operations one-by-one,
+    /// unless the `Bundle` has [required components](crate::component::Component#required-components) built from templates, in which case entities are inserted one at a time.
     ///
     /// A batch can be any type that implements [`IntoIterator`] containing `(Entity, Bundle)` tuples,
     /// such as a [`Vec<(Entity, Bundle)>`] or an array `[(Entity, Bundle); N]`.
     ///
     /// This is the same as [`World::insert_batch`], but in case of duplicate
     /// components it will leave the old values instead of replacing them with new ones.
+    ///
+    /// If one of the [required components](crate::component::Component#required-components) built from templates fails to build for an entity,
+    /// nothing is inserted into it, and the error is passed to the world's [`FallbackErrorHandler`].
     ///
     /// # Panics
     ///
@@ -2759,7 +2772,8 @@ impl World {
 
     /// For a given batch of ([`Entity`], [`Bundle`]) pairs,
     /// adds the `Bundle` of components to each `Entity`.
-    /// This is faster than doing equivalent operations one-by-one.
+    /// This is faster than doing equivalent operations one-by-one,
+    /// unless the `Bundle` has [required components](crate::component::Component#required-components) built from templates, in which case entities are inserted one at a time.
     ///
     /// A batch can be any type that implements [`IntoIterator`] containing `(Entity, Bundle)` tuples,
     /// such as a [`Vec<(Entity, Bundle)>`] or an array `[(Entity, Bundle); N]`.
@@ -2782,7 +2796,8 @@ impl World {
     }
     /// For a given batch of ([`Entity`], [`Bundle`]) pairs,
     /// adds the `Bundle` of components to each `Entity` without overwriting.
-    /// This is faster than doing equivalent operations one-by-one.
+    /// This is faster than doing equivalent operations one-by-one,
+    /// unless the `Bundle` has [required components](crate::component::Component#required-components) built from templates, in which case entities are inserted one at a time.
     ///
     /// A batch can be any type that implements [`IntoIterator`] containing `(Entity, Bundle)` tuples,
     /// such as a [`Vec<(Entity, Bundle)>`] or an array `[(Entity, Bundle); N]`.

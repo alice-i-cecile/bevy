@@ -1003,6 +1003,9 @@ impl<'w> EntityWorldMut<'w> {
     ///
     /// This will overwrite any previous value(s) of the same component type.
     ///
+    /// If one of the [required components](crate::component::Component#required-components) built from templates fails to build, nothing is inserted,
+    /// and the error is passed to the world's [`FallbackErrorHandler`](crate::error::FallbackErrorHandler).
+    ///
     /// # Panics
     ///
     /// If the entity has been despawned while this `EntityWorldMut` is still alive.
@@ -1028,6 +1031,9 @@ impl<'w> EntityWorldMut<'w> {
     /// This can easily break the integrity of relationships. This is intended to be used for cloning and spawning code internals,
     /// not most user-facing scenarios.
     ///
+    /// If one of the [required components](crate::component::Component#required-components) built from templates fails to build, nothing is inserted,
+    /// and the error is passed to the world's [`FallbackErrorHandler`](crate::error::FallbackErrorHandler).
+    ///
     /// # Panics
     ///
     /// If the entity has been despawned while this `EntityWorldMut` is still alive.
@@ -1050,6 +1056,9 @@ impl<'w> EntityWorldMut<'w> {
     ///
     /// This will leave any previous value(s) of the same component type
     /// unchanged.
+    ///
+    /// If one of the [required components](crate::component::Component#required-components) built from templates fails to build, nothing is inserted,
+    /// and the error is passed to the world's [`FallbackErrorHandler`](crate::error::FallbackErrorHandler).
     ///
     /// # Panics
     ///
