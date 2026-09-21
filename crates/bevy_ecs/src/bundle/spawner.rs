@@ -25,17 +25,6 @@ pub(crate) struct BundleSpawner<'w> {
 }
 
 impl<'w> BundleSpawner<'w> {
-    #[inline]
-    pub fn new<T: Bundle>(
-        world: &'w mut World,
-        change_tick: Tick,
-    ) -> Result<Self, NeedsRequiredTemplates> {
-        let bundle_id = world.register_bundle_info::<T>();
-
-        // SAFETY: we initialized this bundle_id in `init_info`
-        unsafe { Self::new_with_id(world, bundle_id, change_tick) }
-    }
-
     /// Creates a new [`BundleSpawner`], unless the bundle needs required templates.
     ///
     /// # Safety

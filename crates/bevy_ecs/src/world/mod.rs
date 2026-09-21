@@ -1108,7 +1108,13 @@ impl World {
         bundle: MovingPtr<'_, B>,
         caller: MaybeLocation,
     ) -> EntityWorldMut<'_> {
-        if let Err(error) = self.try_spawn_at_unchecked(entity, bundle, caller) {
+        let bundle_id = self.register_bundle_info::<B>();
+        // SAFETY: the bundle was just registered
+        if !unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
+            // SAFETY: the bundle was just registered, and has no required templates
+            return unsafe { self.spawn_at_with_spawner(entity, bundle_id, bundle, caller) };
+        }
+        if let Err(error) = self.spawn_at_with_required_templates(entity, bundle, caller) {
             (self.fallback_error_handler())(
                 error,
                 ErrorContext::RequiredTemplate {
@@ -1134,19 +1140,31 @@ impl World {
         bundle: MovingPtr<'_, B>,
         caller: MaybeLocation,
     ) -> Result<EntityWorldMut<'_>, BevyError> {
+        let bundle_id = self.register_bundle_info::<B>();
+        // SAFETY: the bundle was just registered
+        if !unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
+            // SAFETY: the bundle was just registered, and has no required templates
+            return Ok(unsafe { self.spawn_at_with_spawner(entity, bundle_id, bundle, caller) });
+        }
+        self.spawn_at_with_required_templates(entity, bundle, caller)
+    }
+
+    /// # Safety
+    ///
+    /// `bundle_id` must be the registered bundle of `B`, which must not have required templates.
+    unsafe fn spawn_at_with_spawner<B: Bundle>(
+        &mut self,
+        entity: Entity,
+        bundle_id: BundleId,
+        bundle: MovingPtr<'_, B>,
+        caller: MaybeLocation,
+    ) -> EntityWorldMut<'_> {
         let change_tick = self.change_tick();
-        let Ok(mut bundle_spawner) = BundleSpawner::new::<B>(self, change_tick) else {
-            let mut entity_mut = self.spawn_empty_at_unchecked(entity, caller);
-            if let Err(error) = entity_mut.try_insert_with_caller(
-                bundle,
-                InsertMode::Replace,
-                caller,
-                RelationshipHookMode::Run,
-            ) {
-                entity_mut.despawn();
-                return Err(error);
-            }
-            return Ok(entity_mut);
+        // SAFETY: the caller ensures `bundle_id` is registered
+        let Ok(mut bundle_spawner) =
+            (unsafe { BundleSpawner::new_with_id(self, bundle_id, change_tick) })
+        else {
+            unreachable!("the bundle has no required templates");
         };
         let (bundle, entity_location) = bundle.partial_move(|bundle| {
             // SAFETY:
@@ -1173,7 +1191,28 @@ impl World {
         // - This is called exactly once after `get_components` has been called in `spawn_non_existent`.
         // - `bundle` had it's `get_components` function called exactly once inside `spawn_non_existent`.
         unsafe { B::apply_effect(bundle, &mut entity) };
-        Ok(entity)
+        entity
+    }
+
+    /// Spawns an empty entity, then inserts `bundle`, building its required templates first.
+    /// If that fails, the entity is despawned.
+    fn spawn_at_with_required_templates<B: Bundle>(
+        &mut self,
+        entity: Entity,
+        bundle: MovingPtr<'_, B>,
+        caller: MaybeLocation,
+    ) -> Result<EntityWorldMut<'_>, BevyError> {
+        let mut entity_mut = self.spawn_empty_at_unchecked(entity, caller);
+        if let Err(error) = entity_mut.try_insert_with_caller(
+            bundle,
+            InsertMode::Replace,
+            caller,
+            RelationshipHookMode::Run,
+        ) {
+            entity_mut.despawn();
+            return Err(error);
+        }
+        Ok(entity_mut)
     }
 
     /// A faster version of [`spawn_at`](Self::spawn_at) for the empty bundle.
