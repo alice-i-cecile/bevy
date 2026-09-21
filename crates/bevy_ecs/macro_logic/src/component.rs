@@ -281,12 +281,15 @@ impl DeriveComponent {
             hook_register_function_call(bevy_ecs, quote! {on_despawn}, &on_despawn_path);
 
         let required_component_docs = self.requires.as_ref().map(|r| {
-            let paths = r
+            let mut paths = r
                 .iter()
                 .filter_map(Require::path)
                 .map(|path| format!("[`{}`]", path.to_token_stream()))
-                .collect::<Vec<_>>()
-                .join(", ");
+                .collect::<Vec<_>>();
+            if r.iter().any(|r| r.path().is_none()) {
+                paths.push("components built from templates".into());
+            }
+            let paths = paths.join(", ");
             let doc = format!("**Required Components**: {paths}. \n\n A component's Required Components are inserted whenever it is inserted. Note that this will also insert the required components _of_ the required components, recursively, in depth-first order.");
             quote! {
                 #[doc = #doc]
