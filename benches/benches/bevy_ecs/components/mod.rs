@@ -7,10 +7,12 @@ mod archetype_updates;
 mod insert_simple;
 mod insert_simple_unbatched;
 mod required;
+mod required_templates;
 
 use archetype_updates::*;
 use criterion::{criterion_group, Criterion};
 use required::*;
+use required_templates::*;
 
 criterion_group!(
     benches,
@@ -21,6 +23,7 @@ criterion_group!(
     no_archetypes,
     added_archetypes,
     required_default,
+    required_template,
 );
 
 fn add_remove(c: &mut Criterion) {
