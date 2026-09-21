@@ -878,8 +878,10 @@ mod tests {
         bundle::Bundle,
         component::{Component, RequiredComponentsError},
         error::{ignore, BevyError, FallbackErrorHandler, Result},
-        lifecycle::HookContext,
+        lifecycle::{Add, HookContext},
+        observer::On,
         prelude::{FromTemplate, Resource},
+        system::{Query, ResMut},
         template::{template, Template, TemplateContext},
         world::{DeferredWorld, Mut, World},
     };
@@ -1829,9 +1831,15 @@ mod tests {
         #[derive(Resource, Default)]
         struct SeenOnAdd(Option<u32>);
 
+        #[derive(Resource, Default)]
+        struct SeenByObserver(Option<u32>);
+
         #[derive(Component, Debug, PartialEq)]
         #[component(on_add = on_add)]
         struct StartFrame(u32);
+
+        #[derive(Component)]
+        struct Marker;
 
         fn on_add(mut world: DeferredWorld, context: HookContext) {
             let frame = world.get::<StartFrame>(context.entity).unwrap().0;
@@ -1845,9 +1853,18 @@ mod tests {
         let mut world = World::new();
         world.insert_resource(Frame(5));
         world.init_resource::<SeenOnAdd>();
+        world.init_resource::<SeenByObserver>();
+        world.add_observer(
+            |add: On<Add<StartFrame>>,
+             frames: Query<&StartFrame>,
+             mut seen: ResMut<SeenByObserver>| {
+                seen.0 = Some(frames.get(add.entity).unwrap().0);
+            },
+        );
         let entity = world.spawn(Rollback).id();
         assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
         assert_eq!(world.resource::<SeenOnAdd>().0, Some(5));
+        assert_eq!(world.resource::<SeenByObserver>().0, Some(5));
 
         world.resource_mut::<Frame>().0 = 7;
         let entity = world.spawn_empty().insert(Rollback).id();
@@ -1867,6 +1884,17 @@ mod tests {
             unsafe { entity.insert_by_id(id, ptr) };
         });
         assert_eq!(entity.get::<StartFrame>(), Some(&StartFrame(7)));
+
+        let marker_id = world.register_component::<Marker>();
+        let mut entity = world.spawn_empty();
+        OwningPtr::make(Rollback, |rollback| {
+            OwningPtr::make(Marker, |marker| {
+                // SAFETY: the pointers match the order and types of the ids
+                unsafe { entity.insert_by_ids(&[id, marker_id], [rollback, marker].into_iter()) };
+            });
+        });
+        assert_eq!(entity.get::<StartFrame>(), Some(&StartFrame(7)));
+        assert!(entity.contains::<Rollback>() && entity.contains::<Marker>());
     }
 
     #[test]
@@ -2235,6 +2263,45 @@ mod tests {
         world.resource_mut::<ShouldPanic>().0 = false;
         world.entity_mut(entity).insert(Player);
         assert!(world.get::<Health>(entity).is_some());
+    }
+
+    #[test]
+    fn required_templates_nested_inserts() {
+        #[derive(Resource)]
+        struct ShouldPanic(bool);
+
+        #[derive(Component)]
+        struct Inner;
+
+        #[derive(Component)]
+        #[require(~{template(|context: &mut TemplateContext| {
+            assert!(!context.resource::<ShouldPanic>().0);
+            Ok(Inner)
+        })})]
+        struct Nested;
+
+        #[derive(Component, Debug, PartialEq)]
+        struct Outer(bool);
+
+        #[derive(Component)]
+        #[require(~{template(|context: &mut TemplateContext| -> Result<Outer> {
+            let inserted = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                context.entity.insert(Nested);
+            }));
+            Ok(Outer(inserted.is_ok() && context.entity.contains::<Inner>()))
+        })})]
+        struct Root;
+
+        let mut world = World::new();
+        world.insert_resource(ShouldPanic(true));
+        let failed = world.spawn(Root).id();
+        world.resource_mut::<ShouldPanic>().0 = false;
+        let nested = world.spawn(Root).id();
+
+        assert_eq!(world.get::<Outer>(failed), Some(&Outer(false)));
+        assert!(!world.entity(failed).contains::<Nested>());
+        assert_eq!(world.get::<Outer>(nested), Some(&Outer(true)));
+        assert!(world.entity(nested).contains::<Nested>());
     }
 
     #[test]
