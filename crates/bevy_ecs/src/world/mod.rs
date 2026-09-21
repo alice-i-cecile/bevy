@@ -1110,10 +1110,22 @@ impl World {
     ) -> EntityWorldMut<'_> {
         let bundle_id = self.register_bundle_info::<B>();
         // SAFETY: the bundle was just registered
-        if !unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
-            // SAFETY: the bundle was just registered, and has no required templates
-            return unsafe { self.spawn_at_with_spawner(entity, bundle_id, bundle, caller) };
+        if unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
+            return self.spawn_at_with_required_templates_or_report(entity, bundle, caller);
         }
+        // SAFETY: the bundle was just registered, and has no required templates
+        unsafe { self.spawn_at_with_spawner(entity, bundle_id, bundle, caller) }
+    }
+
+    /// Like [`Self::spawn_at_with_required_templates`], but reports errors to the world's fallback error handler.
+    #[cold]
+    #[inline(never)]
+    fn spawn_at_with_required_templates_or_report<B: Bundle>(
+        &mut self,
+        entity: Entity,
+        bundle: MovingPtr<'_, B>,
+        caller: MaybeLocation,
+    ) -> EntityWorldMut<'_> {
         if let Err(error) = self.spawn_at_with_required_templates(entity, bundle, caller) {
             (self.fallback_error_handler())(
                 error,

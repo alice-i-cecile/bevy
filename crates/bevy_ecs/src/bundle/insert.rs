@@ -63,6 +63,30 @@ impl<'w> BundleInserter<'w> {
         bundle_id: BundleId,
         change_tick: Tick,
     ) -> Result<Self, NeedsRequiredTemplates> {
+        // SAFETY: bundle exists per precondition
+        if unsafe { world.bundles.get_unchecked(bundle_id) }.has_required_templates {
+            // SAFETY: the caller upholds the preconditions
+            return unsafe {
+                Self::new_with_id_checked(world, archetype_id, bundle_id, change_tick)
+            };
+        }
+        // No component of the bundle requires a template, so no archetype move can need one.
+        // SAFETY: the caller upholds the preconditions
+        Ok(unsafe { Self::plan(world, archetype_id, bundle_id, change_tick) })
+    }
+
+    /// The part of [`Self::new_with_id`] for bundles that can need required templates, depending on the archetype.
+    ///
+    /// # Safety
+    /// Same as [`Self::new_with_id`].
+    #[cold]
+    #[inline(never)]
+    unsafe fn new_with_id_checked(
+        world: &'w mut World,
+        archetype_id: ArchetypeId,
+        bundle_id: BundleId,
+        change_tick: Tick,
+    ) -> Result<Self, NeedsRequiredTemplates> {
         // SAFETY: the caller upholds the preconditions
         let inserter = unsafe { Self::plan(world, archetype_id, bundle_id, change_tick) };
         // SAFETY: the edge is valid for the lifetime of the inserter
