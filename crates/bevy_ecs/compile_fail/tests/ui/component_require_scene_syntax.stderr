@@ -1,0 +1,22 @@
+error: Names are not supported in `#[require]`
+ --> tests/ui/component_require_scene_syntax.rs:8:12
+  |
+8 | #[require(#Player)]
+  |            ^^^^^^
+
+error: Scenes are not supported in `#[require]`
+  --> tests/ui/component_require_scene_syntax.rs:12:10
+   |
+12 | #[derive(Component)]
+   |          ^^^^^^^^^
+   |
+   = note: this error originates in the derive macro `Component` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Related scene lists are not supported in `#[require]`
+  --> tests/ui/component_require_scene_syntax.rs:18:11
+   |
+18 | #[require(Children [A])]
+   |           ^^^^^^^^
+
+error: aborting due to 3 previous errors
+
