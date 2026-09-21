@@ -2601,6 +2601,17 @@ category = "ECS (Entity Component System)"
 wasm = false
 
 [[example]]
+name = "required_templates"
+path = "examples/ecs/required_templates.rs"
+doc-scrape-examples = true
+
+[package.metadata.example.required_templates]
+name = "Required Templates"
+description = "Builds required components from templates that load assets and read resources"
+category = "ECS (Entity Component System)"
+wasm = false
+
+[[example]]
 name = "iter_combinations"
 path = "examples/ecs/iter_combinations.rs"
 doc-scrape-examples = true
