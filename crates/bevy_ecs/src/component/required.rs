@@ -31,14 +31,10 @@ pub struct RequiredComponent {
 
 /// A Required Component constructor. See [`Component`] for details.
 #[derive(Clone)]
-pub struct RequiredComponentConstructor(RequiredConstructorKind);
-
-#[derive(Clone)]
-enum RequiredConstructorKind {
-    // Note: these make `unsafe` assumptions, so they cannot be public.
-    Value(Arc<dyn ErasedRequiredValue>),
-    Template(Arc<dyn ErasedRequiredTemplate>),
-}
+pub struct RequiredComponentConstructor(
+    // Note: this makes `unsafe` assumptions, so it cannot be public.
+    Arc<dyn ErasedRequired>,
+);
 
 impl RequiredComponentConstructor {
     /// Creates a new instance of `RequiredComponentConstructor` for the given type
@@ -55,11 +51,11 @@ impl RequiredComponentConstructor {
         // coercion.
         //
         // This would be resolved by https://github.com/rust-lang/rust/issues/123430
-        let boxed: Box<dyn ErasedRequiredValue> = Box::new(RequiredValue {
+        let boxed: Box<dyn ErasedRequired> = Box::new(RequiredValue {
             component_id,
             constructor,
         });
-        RequiredComponentConstructor(RequiredConstructorKind::Value(Arc::from(boxed)))
+        RequiredComponentConstructor(Arc::from(boxed))
     }
 
     /// Creates a new [`RequiredComponentConstructor`] that builds `C` from the [`Template`] returned by `template`,
@@ -71,7 +67,7 @@ impl RequiredComponentConstructor {
     /// # Safety
     ///
     /// - `component_id` must be a valid component for type `C`.
-    pub unsafe fn new_template<C: Component, T: Template<Output = C> + 'static>(
+    pub(crate) unsafe fn new_template<C: Component, T: Template<Output = C> + 'static>(
         component_id: ComponentId,
         template: impl Fn() -> T + Send + Sync + 'static,
     ) -> Self {
@@ -87,46 +83,35 @@ impl RequiredComponentConstructor {
                 })
             };
         }
-        let boxed: Box<dyn ErasedRequiredTemplate> = Box::new(RequiredTemplate {
+        let boxed: Box<dyn ErasedRequired> = Box::new(RequiredTemplate {
             component_id,
             template,
             marker: PhantomData::<fn() -> C>,
         });
-        RequiredComponentConstructor(RequiredConstructorKind::Template(Arc::from(boxed)))
+        RequiredComponentConstructor(Arc::from(boxed))
     }
 
     /// Returns `true` if this constructor needs a [`TemplateContext`], and so must be built before insertion.
     #[inline]
-    pub fn is_template(&self) -> bool {
-        matches!(self.0, RequiredConstructorKind::Template(_))
+    pub(crate) fn is_template(&self) -> bool {
+        self.0.is_template()
     }
 
     /// Returns an address that identifies this constructor, and is shared by its clones.
     #[inline]
     pub(crate) fn address(&self) -> usize {
-        match &self.0 {
-            RequiredConstructorKind::Value(value) => Arc::as_ptr(value).cast::<()>() as usize,
-            RequiredConstructorKind::Template(template) => {
-                Arc::as_ptr(template).cast::<()>() as usize
-            }
-        }
+        Arc::as_ptr(&self.0).cast::<()>() as usize
     }
 
     /// Returns the [`ComponentId`] of the component this constructor creates.
     #[inline]
-    pub fn component_id(&self) -> ComponentId {
-        match &self.0 {
-            RequiredConstructorKind::Value(value) => value.component_id(),
-            RequiredConstructorKind::Template(template) => template.component_id(),
-        }
+    pub(crate) fn component_id(&self) -> ComponentId {
+        self.0.component_id()
     }
 
     /// Builds the component into `alloc`, returning a pointer to the new value.
     pub(crate) fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>> {
-        match &self.0 {
-            RequiredConstructorKind::Value(value) => Ok(value.build(alloc)),
-            RequiredConstructorKind::Template(template) => template.build(context, alloc),
-        }
+        self.0.build(context, alloc)
     }
 
     /// # Safety
@@ -147,31 +132,20 @@ impl RequiredComponentConstructor {
         entity: Entity,
         caller: MaybeLocation,
     ) {
-        let value = match &self.0 {
-            RequiredConstructorKind::Value(value) => Some(value),
-            RequiredConstructorKind::Template(_) => None,
-        };
-        // SAFETY:
-        // - `BundleInserter` and `BundleSpawner` cannot be created for inserts that need required
-        //   templates, so `write_components` never reaches one
-        // - the caller upholds the preconditions of `ErasedRequiredValue::initialize`
+        // SAFETY: the caller upholds the preconditions
         unsafe {
-            value.debug_checked_unwrap().initialize(
-                table,
-                sparse_sets,
-                change_tick,
-                table_row,
-                entity,
-                caller,
-            );
+            self.0
+                .initialize(table, sparse_sets, change_tick, table_row, entity, caller);
         }
     }
 }
 
-trait ErasedRequiredValue {
+trait ErasedRequired {
     fn component_id(&self) -> ComponentId;
 
-    fn build(&self, alloc: &Bump) -> NonNull<u8>;
+    fn is_template(&self) -> bool;
+
+    fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>>;
 
     /// # Safety
     ///
@@ -192,13 +166,17 @@ struct RequiredValue<F> {
     constructor: F,
 }
 
-impl<C: Component, F: Fn() -> C> ErasedRequiredValue for RequiredValue<F> {
+impl<C: Component, F: Fn() -> C> ErasedRequired for RequiredValue<F> {
     fn component_id(&self) -> ComponentId {
         self.component_id
     }
 
-    fn build(&self, alloc: &Bump) -> NonNull<u8> {
-        NonNull::from(alloc.alloc((self.constructor)())).cast()
+    fn is_template(&self) -> bool {
+        false
+    }
+
+    fn build(&self, _context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>> {
+        Ok(NonNull::from(alloc.alloc((self.constructor)())).cast())
     }
 
     unsafe fn initialize(
@@ -232,28 +210,40 @@ impl<C: Component, F: Fn() -> C> ErasedRequiredValue for RequiredValue<F> {
     }
 }
 
-trait ErasedRequiredTemplate: Send + Sync + 'static {
-    fn component_id(&self) -> ComponentId;
-
-    fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>>;
-}
-
 struct RequiredTemplate<C, F> {
     component_id: ComponentId,
     template: F,
     marker: PhantomData<fn() -> C>,
 }
 
-impl<C: Component, T: Template<Output = C>, F: Fn() -> T + Send + Sync + 'static>
-    ErasedRequiredTemplate for RequiredTemplate<C, F>
+impl<C: Component, T: Template<Output = C>, F: Fn() -> T> ErasedRequired
+    for RequiredTemplate<C, F>
 {
     fn component_id(&self) -> ComponentId {
         self.component_id
     }
 
+    fn is_template(&self) -> bool {
+        true
+    }
+
     fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>> {
         let value = (self.template)().build_template(context)?;
         Ok(NonNull::from(alloc.alloc(value)).cast())
+    }
+
+    unsafe fn initialize(
+        &self,
+        _table: &mut Table,
+        _sparse_sets: &mut SparseSets,
+        _change_tick: Tick,
+        _table_row: TableRow,
+        _entity: Entity,
+        _caller: MaybeLocation,
+    ) {
+        // `BundleInserter` and `BundleSpawner` cannot be created for inserts that need required
+        // templates, so `write_components` never reaches one.
+        unreachable!()
     }
 }
 
