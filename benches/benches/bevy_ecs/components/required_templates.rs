@@ -17,7 +17,7 @@ fn start_frame(context: &mut TemplateContext) -> Result<StartFrame> {
 }
 
 #[derive(Component)]
-#[require(StartFrame = ~template(start_frame))]
+#[require(~{template(start_frame)})]
 struct WithTemplate;
 
 #[derive(Component)]

@@ -1569,6 +1569,9 @@ impl<'w> EntityWorldMut<'w> {
     /// Templates have full world access and can change this entity, which changes which required
     /// components are missing, so this plans the insert again whenever the entity's archetype changes.
     ///
+    /// Components that are required by another missing component are built after it, so templates
+    /// can read the component that required them through [`TemplateContext::inserting`].
+    ///
     /// # Safety
     /// Same as [`Self::insert_scratch_with_required_templates`].
     unsafe fn build_required_components(
@@ -1599,7 +1602,11 @@ impl<'w> EntityWorldMut<'w> {
                 missing,
                 ..
             } = &mut *scratch;
-            for constructor in missing.iter() {
+            // Values need no context, so build them first to make them visible to every template. Then build
+            // templates in reverse, so a template can read the component that required it.
+            let values = missing.iter().filter(|constructor| !constructor.is_template());
+            let templates = missing.iter().rev().filter(|constructor| constructor.is_template());
+            for constructor in values.chain(templates) {
                 let component_id = constructor.component_id();
                 if built_ids.contains(&component_id) {
                     continue;

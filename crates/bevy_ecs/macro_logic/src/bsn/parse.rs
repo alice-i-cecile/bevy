@@ -101,7 +101,8 @@ impl Parse for Bsn {
 }
 
 impl BsnEntry {
-    fn parse(input: ParseStream) -> Result<Self> {
+    /// Parses a single `bsn!` entry.
+    pub fn parse(input: ParseStream) -> Result<Self> {
         Ok(if input.peek(Token![:]) && !input.peek(Token![::]) {
             let cached = input.parse::<Token![:]>()?;
             let scene = BsnScene::parse(input)?;

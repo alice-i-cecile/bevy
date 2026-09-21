@@ -846,13 +846,25 @@ impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
 
 #[cfg(test)]
 mod tests {
-    use alloc::string::{String, ToString};
+    use alloc::{
+        format,
+        string::{String, ToString},
+        sync::Arc,
+        vec,
+        vec::Vec,
+    };
+    use bevy_ptr::OwningPtr;
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use std::panic::AssertUnwindSafe;
 
     use crate::{
         bundle::Bundle,
         component::{Component, RequiredComponentsError},
-        prelude::Resource,
-        world::World,
+        error::{ignore, FallbackErrorHandler, Result},
+        lifecycle::HookContext,
+        prelude::{FromTemplate, Resource},
+        template::{template, Template, TemplateContext},
+        world::{DeferredWorld, Mut, World},
     };
 
     #[test]
@@ -1500,7 +1512,7 @@ mod tests {
 
     #[test]
     fn required_components_bundle_priority() {
-        #[derive(Component, PartialEq, Eq, Clone, Copy, Debug)]
+        #[derive(Component, PartialEq, Eq, Clone, Copy, Debug, Default)]
         struct MyRequired(bool);
 
         #[derive(Component, Default)]
@@ -1559,7 +1571,7 @@ mod tests {
 
     #[test]
     fn regression_19333() {
-        #[derive(Component)]
+        #[derive(Component, Clone, Default)]
         struct X(usize);
 
         #[derive(Default, Component)]
@@ -1586,7 +1598,7 @@ mod tests {
 
     #[test]
     fn required_components_depth_first_2v1() {
-        #[derive(Component)]
+        #[derive(Component, Clone, Default)]
         struct X(usize);
 
         #[derive(Component)]
@@ -1613,7 +1625,7 @@ mod tests {
 
     #[test]
     fn required_components_depth_first_3v1() {
-        #[derive(Component)]
+        #[derive(Component, Clone, Default)]
         struct X(usize);
 
         #[derive(Component)]
@@ -1791,311 +1803,369 @@ mod tests {
             Err(RequiredComponentsError::CyclicRequirement(_, _))
         ));
     }
-}
 
-#[cfg(test)]
-mod template_tests {
-    use alloc::{
-        format,
-        string::{String, ToString},
-        vec,
-        vec::Vec,
-    };
+    #[test]
+    fn required_templates_build_before_hooks() {
+        #[derive(Resource)]
+        struct Frame(u32);
 
-    use crate::{
-        error::{ignore, FallbackErrorHandler},
-        lifecycle::HookContext,
-        prelude::*,
-        template::{template, TemplateContext},
-        world::DeferredWorld,
-    };
+        #[derive(Resource, Default)]
+        struct SeenOnAdd(Option<u32>);
 
-    #[derive(Resource)]
-    struct Frame(u32);
+        #[derive(Component, Debug, PartialEq)]
+        #[component(on_add = on_add)]
+        struct StartFrame(u32);
 
-    #[derive(Resource, Default)]
-    struct Log(Vec<String>);
+        fn on_add(mut world: DeferredWorld, context: HookContext) {
+            let frame = world.get::<StartFrame>(context.entity).unwrap().0;
+            world.resource_mut::<SeenOnAdd>().0 = Some(frame);
+        }
 
-    #[derive(Component, Debug, PartialEq)]
-    #[component(on_add = log_on_add)]
-    struct StartFrame(u32);
+        #[derive(Component)]
+        #[require(~{template(|context: &mut TemplateContext| Ok(StartFrame(context.resource::<Frame>().0)))})]
+        struct Rollback;
 
-    fn log_on_add(mut world: DeferredWorld, context: HookContext) {
-        let frame = world.get::<StartFrame>(context.entity).unwrap().0;
-        world
-            .resource_mut::<Log>()
-            .0
-            .push(format!("on_add {frame}"));
-    }
-
-    fn start_frame(context: &mut TemplateContext) -> Result<StartFrame> {
-        context.resource_mut::<Log>().0.push("built".to_string());
-        Ok(StartFrame(context.resource::<Frame>().0))
-    }
-
-    #[derive(Component, Default)]
-    #[require(StartFrame = ~template(start_frame))]
-    struct Rollback;
-
-    fn world() -> World {
         let mut world = World::new();
         world.insert_resource(Frame(5));
-        world.init_resource::<Log>();
-        world
-    }
-
-    #[test]
-    fn spawn_builds_template_before_hooks() {
-        let mut world = world();
+        world.init_resource::<SeenOnAdd>();
         let entity = world.spawn(Rollback).id();
         assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
-        assert_eq!(world.resource::<Log>().0, vec!["built", "on_add 5"]);
-    }
+        assert_eq!(world.resource::<SeenOnAdd>().0, Some(5));
 
-    #[test]
-    fn insert_builds_template() {
-        let mut world = world();
-        let entity = world.spawn_empty().id();
         world.resource_mut::<Frame>().0 = 7;
-        world.entity_mut(entity).insert(Rollback);
+        let entity = world.spawn_empty().insert(Rollback).id();
         assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(7)));
-    }
 
-    #[test]
-    fn commands_match_world() {
-        let mut world = world();
+        let entity = world.spawn_empty().insert_if_new(Rollback).id();
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(7)));
+
         let entity = world.commands().spawn(Rollback).id();
         world.flush();
-        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
-        assert_eq!(world.resource::<Log>().0, vec!["built", "on_add 5"]);
-    }
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(7)));
 
-    #[test]
-    fn explicit_component_skips_template() {
-        let mut world = world();
-        let entity = world.spawn((Rollback, StartFrame(1))).id();
-        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(1)));
-        assert_eq!(world.resource::<Log>().0, vec!["on_add 1"]);
-    }
-
-    #[test]
-    fn existing_component_skips_template() {
-        let mut world = world();
-        let entity = world.spawn(StartFrame(2)).id();
-        world.entity_mut(entity).insert(Rollback);
-        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(2)));
-        assert_eq!(world.resource::<Log>().0, vec!["on_add 2"]);
-    }
-
-    #[test]
-    fn insert_by_id_builds_template() {
-        let mut world = world();
         let id = world.register_component::<Rollback>();
         let mut entity = world.spawn_empty();
-        bevy_ptr::OwningPtr::make(Rollback, |ptr| {
+        OwningPtr::make(Rollback, |ptr| {
             // SAFETY: `ptr` is a `Rollback`, which matches `id`
             unsafe { entity.insert_by_id(id, ptr) };
         });
-        assert_eq!(entity.get::<StartFrame>(), Some(&StartFrame(5)));
+        assert_eq!(entity.get::<StartFrame>(), Some(&StartFrame(7)));
     }
 
     #[test]
-    fn insert_if_new_builds_template() {
-        let mut world = world();
-        let entity = world.spawn_empty().id();
-        world.entity_mut(entity).insert_if_new(Rollback);
-        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
-    }
+    fn required_templates_skip_present_components() {
+        #[derive(Resource, Default)]
+        struct Builds(usize);
 
-    #[derive(Component)]
-    #[require(Doubled = ~template(|context: &mut TemplateContext| {
-        Ok(Doubled(context.inserting::<Source>().unwrap().0 * 2))
-    }))]
-    struct Source(u32);
+        #[derive(Component, Debug, PartialEq)]
+        struct Health(u32);
 
-    #[derive(Component, Debug, PartialEq)]
-    struct Doubled(u32);
-
-    #[test]
-    fn template_reads_inserting_components() {
-        let mut world = World::new();
-        let entity = world.spawn(Source(21)).id();
-        assert_eq!(world.get::<Doubled>(entity), Some(&Doubled(42)));
-    }
-
-    #[derive(Component)]
-    #[require(Rollback)]
-    struct Player;
-
-    #[test]
-    fn inherited_template() {
-        let mut world = world();
-        let entity = world.spawn(Player).id();
-        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
-    }
-
-    #[derive(Component)]
-    #[require(StartFrame = ~template(|_: &mut TemplateContext| -> Result<StartFrame> {
-        Err("no frame".into())
-    }))]
-    struct Broken;
-
-    #[derive(Component)]
-    struct Marker;
-
-    #[test]
-    fn failed_template_inserts_nothing() {
-        let mut world = world();
-        world.insert_resource(FallbackErrorHandler(ignore));
-        let entity = world.spawn(Marker).id();
-        world.entity_mut(entity).insert(Broken);
-        assert!(world.get::<Broken>(entity).is_none());
-        assert!(world.get::<StartFrame>(entity).is_none());
-        assert!(world.get::<Marker>(entity).is_some());
-    }
-
-    #[test]
-    #[should_panic(expected = "no frame")]
-    fn failed_template_panics_by_default() {
-        let mut world = world();
-        world.spawn(Broken);
-    }
-
-    #[derive(Component, Debug, PartialEq)]
-    struct Health(u32);
-
-    #[derive(Component, Debug, PartialEq)]
-    struct Armor(u32);
-
-    #[derive(Component)]
-    #[require(
-        Health = ~template(|context: &mut TemplateContext| {
-            context.entity.insert(Armor(3));
+        #[derive(Component)]
+        #[require(~{template(|context: &mut TemplateContext| {
+            context.resource_mut::<Builds>().0 += 1;
             Ok(Health(10))
-        }),
-        Armor = ~template(|_: &mut TemplateContext| -> Result<Armor> { panic!("Armor is already present") }),
-    )]
-    struct Knight;
+        })})]
+        struct Player;
 
-    #[test]
-    fn template_changing_entity_is_replanned() {
         let mut world = World::new();
-        let entity = world.spawn(Knight).id();
-        assert_eq!(world.get::<Health>(entity), Some(&Health(10)));
-        assert_eq!(world.get::<Armor>(entity), Some(&Armor(3)));
-    }
-
-    #[derive(Component)]
-    #[require(Egg = ~template(|context: &mut TemplateContext| {
-        context.entity.insert(Chicken);
-        Ok(Egg)
-    }))]
-    struct Chicken;
-
-    #[derive(Component)]
-    struct Egg;
-
-    #[test]
-    #[should_panic(expected = "requires itself")]
-    fn cyclic_template_errors() {
-        World::new().spawn(Chicken);
+        world.init_resource::<Builds>();
+        let explicit = world.spawn((Player, Health(1))).id();
+        let existing = world.spawn(Health(2)).insert(Player).id();
+        assert_eq!(world.get::<Health>(explicit), Some(&Health(1)));
+        assert_eq!(world.get::<Health>(existing), Some(&Health(2)));
+        assert_eq!(world.resource::<Builds>().0, 0);
     }
 
     #[test]
-    fn spawn_batch_builds_templates() {
-        let mut world = world();
-        let entities = world
-            .spawn_batch((0..3).map(|_| Rollback))
-            .collect::<Vec<_>>();
-        for entity in entities {
-            assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
-        }
-        assert_eq!(world.resource::<Log>().0.len(), 6);
+    fn required_templates_read_inserting_components() {
+        #[derive(Component, Default, Clone)]
+        #[require(Level(3))]
+        struct Enemy;
+
+        #[derive(Component, Default, Clone)]
+        #[require(~{template(|context: &mut TemplateContext| {
+            Ok(Health(context.inserting::<Level>().unwrap().0 * 10))
+        })})]
+        struct Level(u32);
+
+        #[derive(Component, Debug, PartialEq)]
+        struct Health(u32);
+
+        let mut world = World::new();
+        let explicit = world.spawn(Level(2)).id();
+        let inherited = world.spawn(Enemy).id();
+        assert_eq!(world.get::<Health>(explicit), Some(&Health(20)));
+        assert_eq!(world.get::<Health>(inherited), Some(&Health(30)));
     }
 
     #[test]
-    fn commands_spawn_batch_builds_templates() {
-        let mut world = world();
-        world.commands().spawn_batch((0..3).map(|_| Rollback));
-        world.flush();
-        let mut query = world.query::<&StartFrame>();
-        assert_eq!(query.iter(&world).filter(|frame| frame.0 == 5).count(), 3);
-    }
+    fn required_templates_patch_syntax() {
+        #[derive(Resource)]
+        struct Prefix(&'static str);
 
-    #[test]
-    fn insert_batch_builds_templates() {
-        let mut world = world();
-        let fresh = world.spawn_empty().id();
-        let existing = world.spawn(StartFrame(2)).id();
-        world.insert_batch([(fresh, Rollback), (existing, Rollback)]);
-        assert_eq!(world.get::<StartFrame>(fresh), Some(&StartFrame(5)));
-        assert_eq!(world.get::<StartFrame>(existing), Some(&StartFrame(2)));
-        assert!(world.get::<Rollback>(existing).is_some());
-    }
+        #[derive(Default)]
+        struct Prefixed(&'static str);
 
-    #[test]
-    fn insert_batch_if_new_builds_templates() {
-        let mut world = world();
-        let entity = world.spawn_empty().id();
-        world.insert_batch_if_new([(entity, Rollback)]);
-        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
-    }
-
-    #[test]
-    fn try_insert_batch_builds_templates() {
-        let mut world = world();
-        let entity = world.spawn_empty().id();
-        let despawned = world.spawn_empty().id();
-        world.despawn(despawned);
-        let error = world
-            .try_insert_batch([(despawned, Rollback), (entity, Rollback)])
-            .unwrap_err();
-        assert_eq!(error.entities, vec![despawned]);
-        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
-    }
-
-    #[derive(Resource)]
-    struct Prefix(&'static str);
-
-    #[derive(Default)]
-    struct Prefixed(&'static str);
-
-    impl From<&'static str> for Prefixed {
-        fn from(value: &'static str) -> Self {
-            Prefixed(value)
-        }
-    }
-
-    impl Template for Prefixed {
-        type Output = String;
-
-        fn build_template(&self, context: &mut TemplateContext) -> Result<String> {
-            Ok(format!("{}{}", context.resource::<Prefix>().0, self.0))
+        impl From<&'static str> for Prefixed {
+            fn from(value: &'static str) -> Self {
+                Prefixed(value)
+            }
         }
 
-        fn clone_template(&self) -> Self {
-            Prefixed(self.0)
+        impl Template for Prefixed {
+            type Output = String;
+
+            fn build_template(&self, context: &mut TemplateContext) -> Result<String> {
+                Ok(format!("{}{}", context.resource::<Prefix>().0, self.0))
+            }
+
+            fn clone_template(&self) -> Self {
+                Prefixed(self.0)
+            }
         }
-    }
 
-    #[derive(Component, FromTemplate)]
-    struct Greeting {
-        #[template(Prefixed)]
-        text: String,
-        count: u32,
-    }
+        #[derive(Component, FromTemplate)]
+        struct Greeting {
+            #[template(Prefixed)]
+            text: String,
+            count: u32,
+        }
 
-    #[derive(Component)]
-    #[require(~Greeting { text: "world", count: 3 })]
-    struct Greeter;
+        #[derive(Component, Clone, Default)]
+        struct Count(u32);
 
-    #[test]
-    fn template_patch_syntax() {
+        #[derive(Component)]
+        #[require(Greeting { text: "world", count: 3 }, Count(4))]
+        struct Greeter;
+
         let mut world = World::new();
         world.insert_resource(Prefix("hello "));
         let entity = world.spawn(Greeter).id();
         let greeting = world.get::<Greeting>(entity).unwrap();
         assert_eq!(greeting.text, "hello world");
         assert_eq!(greeting.count, 3);
+        assert_eq!(world.get::<Count>(entity).unwrap().0, 4);
+
+        let count = world.component_id::<Count>().unwrap();
+        let greeter = world.component_id::<Greeter>().unwrap();
+        let required = world.components().get_info(greeter).unwrap().required_components();
+        assert!(!required.all[&count].constructor.is_template());
+    }
+
+    #[test]
+    fn required_templates_replan_when_entity_changes() {
+        #[derive(Component, Debug, PartialEq)]
+        struct Armor(u32);
+
+        #[derive(Component)]
+        struct Health;
+
+        fn health(context: &mut TemplateContext) -> Result<Health> {
+            context.entity.insert(Armor(3));
+            Ok(Health)
+        }
+
+        fn armor(_: &mut TemplateContext) -> Result<Armor> {
+            Ok(Armor(99))
+        }
+
+        #[derive(Component)]
+        #[require(~{template(health)}, ~{template(armor)})]
+        struct HealthFirst;
+
+        #[derive(Component)]
+        #[require(~{template(armor)}, ~{template(health)})]
+        struct ArmorFirst;
+
+        let mut world = World::new();
+        let health_first = world.spawn(HealthFirst).id();
+        let armor_first = world.spawn(ArmorFirst).id();
+        assert_eq!(world.get::<Armor>(health_first), Some(&Armor(3)));
+        assert_eq!(world.get::<Armor>(armor_first), Some(&Armor(3)));
+    }
+
+    #[test]
+    fn required_templates_failure_inserts_nothing() {
+        #[derive(Component)]
+        struct Health;
+
+        #[derive(Component)]
+        #[require(~{template(|_: &mut TemplateContext| -> Result<Health> { Err("no health".into()) })})]
+        struct Broken;
+
+        #[derive(Component)]
+        struct Marker;
+
+        let mut world = World::new();
+        world.insert_resource(FallbackErrorHandler(ignore));
+        let inserted = world.spawn(Marker).insert(Broken).id();
+        assert!(world.get::<Broken>(inserted).is_none());
+        assert!(world.get::<Marker>(inserted).is_some());
+
+        let spawned = world.spawn(Broken).id();
+        let commands_spawned = world.commands().spawn(Broken).id();
+        world.flush();
+        assert!(world.get_entity(spawned).is_err());
+        assert!(world.get_entity(commands_spawned).is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "no health")]
+    fn required_templates_failure_panics_by_default() {
+        #[derive(Component)]
+        struct Health;
+
+        #[derive(Component)]
+        #[require(~{template(|_: &mut TemplateContext| -> Result<Health> { Err("no health".into()) })})]
+        struct Broken;
+
+        World::new().spawn(Broken);
+    }
+
+    #[test]
+    fn required_templates_drop_each_value_once() {
+        #[derive(Resource, Clone, Default)]
+        struct Drops(Arc<AtomicUsize>);
+
+        #[derive(Component)]
+        struct Counted(Arc<AtomicUsize>);
+
+        impl Drop for Counted {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+
+        #[derive(Component)]
+        struct Health;
+
+        #[derive(Component)]
+        #[require(~{template(|_: &mut TemplateContext| -> Result<Health> { Err("no health".into()) })})]
+        struct Broken;
+
+        #[derive(Component)]
+        struct Replaced;
+
+        #[derive(Component)]
+        #[require(
+            ~{template(|context: &mut TemplateContext| {
+                let drops = context.resource::<Drops>().0.clone();
+                context.entity.insert(Counted(drops));
+                Ok(Replaced)
+            })},
+            ~{template(|context: &mut TemplateContext| Ok(Counted(context.resource::<Drops>().0.clone())))},
+        )]
+        struct Unused;
+
+        let mut world = World::new();
+        world.insert_resource(FallbackErrorHandler(ignore));
+        let drops = Drops::default();
+        world.insert_resource(drops.clone());
+
+        world.spawn((Broken, Counted(drops.0.clone())));
+        assert_eq!(drops.0.load(Ordering::Relaxed), 1);
+
+        let entity = world.spawn(Unused).id();
+        assert_eq!(drops.0.load(Ordering::Relaxed), 2);
+        world.despawn(entity);
+        assert_eq!(drops.0.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "requires itself")]
+    fn required_templates_cycle_panics() {
+        #[derive(Component)]
+        #[require(~{template(|context: &mut TemplateContext| {
+            context.entity.insert(Chicken);
+            Ok(Egg)
+        })})]
+        struct Chicken;
+
+        #[derive(Component)]
+        struct Egg;
+
+        World::new().spawn(Chicken);
+    }
+
+    #[test]
+    fn required_templates_recover_from_panics() {
+        #[derive(Resource)]
+        struct ShouldPanic(bool);
+
+        #[derive(Component)]
+        struct Health;
+
+        #[derive(Component)]
+        #[require(~{template(|context: &mut TemplateContext| {
+            assert!(!context.resource::<ShouldPanic>().0);
+            Ok(Health)
+        })})]
+        struct Player;
+
+        let mut world = World::new();
+        world.insert_resource(ShouldPanic(true));
+        let entity = world.spawn_empty().id();
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            world.entity_mut(entity).insert(Player);
+        }));
+        assert!(result.is_err());
+
+        world.resource_mut::<ShouldPanic>().0 = false;
+        world.entity_mut(entity).insert(Player);
+        assert!(world.get::<Health>(entity).is_some());
+    }
+
+    #[test]
+    fn required_templates_batches() {
+        #[derive(Component, Debug, PartialEq)]
+        struct Health(u32);
+
+        #[derive(Component, Clone, Copy)]
+        #[require(~{template(|_: &mut TemplateContext| Ok(Health(10)))})]
+        struct Player;
+
+        let mut world = World::new();
+        let spawned = world.spawn_batch([Player; 3]).collect::<Vec<_>>();
+        world.commands().spawn_batch([Player; 3]);
+        world.flush();
+        let fresh = world.spawn_empty().id();
+        let existing = world.spawn(Health(2)).id();
+        world.insert_batch([(fresh, Player), (existing, Player)]);
+        let if_new = world.spawn_empty().id();
+        world.insert_batch_if_new([(if_new, Player)]);
+        let despawned = world.spawn_empty().id();
+        world.despawn(despawned);
+        let tried = world.spawn_empty().id();
+        let error = world
+            .try_insert_batch([(despawned, Player), (tried, Player)])
+            .unwrap_err();
+
+        assert_eq!(world.query::<&Health>().iter(&world).count(), 10);
+        assert!(spawned.iter().all(|&e| world.get::<Health>(e) == Some(&Health(10))));
+        assert_eq!(world.get::<Health>(existing), Some(&Health(2)));
+        assert_eq!(world.get::<Health>(if_new), Some(&Health(10)));
+        assert_eq!(error.entities, vec![despawned]);
+        assert_eq!(world.get::<Health>(tried), Some(&Health(10)));
+    }
+
+    #[test]
+    fn required_templates_resource_scope() {
+        #[derive(Component, Debug, PartialEq)]
+        struct Tracked(String);
+
+        #[derive(Resource)]
+        #[require(~{template(|_: &mut TemplateContext| Ok(Tracked("hello".to_string())))})]
+        struct Tracker;
+
+        let mut world = World::new();
+        world.insert_resource(Tracker);
+        let entity = world.resource_entity::<Tracker>().unwrap();
+        world.resource_scope(|world, _: Mut<Tracker>| {
+            world.entity_mut(entity).remove::<Tracked>();
+        });
+        assert_eq!(
+            world.get::<Tracked>(entity),
+            Some(&Tracked("hello".to_string()))
+        );
     }
 }

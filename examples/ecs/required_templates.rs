@@ -1,12 +1,6 @@
-//! Shows how required components can be built from templates, using data from the [`World`].
-//!
-//! Required components are usually built with [`Default`] or a constructor function, which cannot
-//! access the world. Prefixing a required component with `~` builds it from a [`Template`] instead,
-//! the same way `bsn!` scenes build their components: asset paths are loaded with the [`AssetServer`],
-//! and resources can be read.
-//!
-//! Templates are built before the component that requires them is inserted,
-//! so hooks and observers always see their final values.
+//! Shows how `#[require]` accepts `bsn!` syntax, so required components can be built from templates that
+//! load assets and read from the [`World`]. They are built before the requiring component is inserted, so
+//! hooks and observers always see their final values.
 
 use bevy::{
     ecs::template::{template, TemplateContext},
@@ -25,11 +19,11 @@ fn main() {
 #[derive(Component)]
 #[require(
     // Loads the mesh with the `AssetServer`, just like `Mesh3d("...")` does in `bsn!`.
-    ~Mesh3d("models/torus/torus.gltf#Mesh0/Primitive0"),
+    Mesh3d("models/torus/torus.gltf#Mesh0/Primitive0"),
     // Reuses a material handle stored in a resource.
-    MeshMaterial3d<StandardMaterial> = ~template(ring_material),
+    ~{template(ring_material)},
     // Reads the `Ring` that is being inserted.
-    Name = ~template(ring_name),
+    ~{template(ring_name)},
 )]
 struct Ring {
     points: u32,

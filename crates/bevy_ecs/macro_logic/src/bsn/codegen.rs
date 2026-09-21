@@ -962,6 +962,117 @@ fn deprecation_warning(span: Span, name: &str, message: &str) -> TokenStream {
     )
 }
 
+impl BsnEntry {
+    /// Generates an expression that evaluates to the [`Template`] for this entry, as used by `#[require]`.
+    ///
+    /// This uses the same codegen as `bsn!`, so each entry means the same thing in both. Entries that only
+    /// make sense in a scene, such as names, scene includes and related scene lists, are errors.
+    ///
+    /// [`Template`]: https://docs.rs/bevy/latest/bevy/ecs/template/trait.Template.html
+    pub fn into_required_template(self, ctx: &mut BsnCodegenCtx) -> syn::Result<TokenStream> {
+        let bevy_ecs = ctx.bevy_ecs;
+        let tokens = match self {
+            BsnEntry::FromTemplatePatch(ty) if ty.variant.is_some() => ty.enum_tokens(ctx, true)?,
+            BsnEntry::TemplatePatch(ty) if ty.variant.is_some() => ty.enum_tokens(ctx, false)?,
+            BsnEntry::FromTemplatePatch(ty) => ty.required_patch_tokens(ctx, true)?,
+            BsnEntry::TemplatePatch(ty) => ty.required_patch_tokens(ctx, false)?,
+            BsnEntry::FromTemplateConstructor {
+                constructor:
+                    BsnConstructor {
+                        type_path,
+                        function,
+                        args,
+                    },
+                dot_expression,
+            } => {
+                let args = args.into_tokens(ctx);
+                quote! {
+                    <#type_path as #bevy_ecs::template::FromTemplate>::Template::#function #args #dot_expression
+                }
+            }
+            BsnEntry::TemplateConstructor {
+                constructor:
+                    BsnConstructor {
+                        type_path,
+                        function,
+                        args,
+                    },
+                dot_expression,
+            } => {
+                let args = args.into_tokens(ctx);
+                quote! { #type_path::#function #args #dot_expression }
+            }
+            BsnEntry::TemplateValue(tokens) => tokens,
+            BsnEntry::Function(BsnFnCall { path, args }) => {
+                let args = args.into_tokens(ctx);
+                quote! { #path #args }
+            }
+            BsnEntry::Name(name) => {
+                return Err(syn::Error::new_spanned(
+                    name,
+                    "Names are not supported in `#[require]`",
+                ));
+            }
+            BsnEntry::UncachedScene(_) | BsnEntry::CachedScene(_) => {
+                return Err(syn::Error::new(
+                    Span::call_site(),
+                    "Scenes are not supported in `#[require]`",
+                ));
+            }
+            BsnEntry::RelatedSceneList(list) => {
+                return Err(syn::Error::new_spanned(
+                    list.relationship_path,
+                    "Related scene lists are not supported in `#[require]`",
+                ));
+            }
+        };
+        if !ctx.entity_refs.refs.is_empty() {
+            return Err(syn::Error::new(
+                Span::call_site(),
+                "Entity references are not supported in `#[require]`",
+            ));
+        }
+        if let Some(mut error) = ctx.errors.pop() {
+            for other in ctx.errors.drain(..) {
+                error.combine(other);
+            }
+            return Err(error);
+        }
+        let hoisted = ctx.hoisted_expressions.expressions.drain(..);
+        let deprecations = ctx.deprecations.drain(..);
+        Ok(quote! {{
+            #(#deprecations)*
+            #(#hoisted)*
+            #tokens
+        }})
+    }
+}
+
+impl BsnType {
+    fn required_patch_tokens(
+        &self,
+        ctx: &mut BsnCodegenCtx,
+        is_from_template: bool,
+    ) -> syn::Result<TokenStream> {
+        let (bevy_ecs, path) = (ctx.bevy_ecs, &self.path);
+        let template = if is_from_template {
+            quote! { <#path as #bevy_ecs::template::FromTemplate>::Template }
+        } else {
+            quote! { #path }
+        };
+        let value = &[Member::Named(Ident::new("__value", Span::call_site()))];
+        let assigns = self.patch_tokens(ctx, value, true, false, false)?;
+        Ok(quote! {{
+            let mut __template = <#template as #FQDefault>::default();
+            {
+                let __value = &mut __template;
+                #(#assigns)*
+            }
+            __template
+        }})
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

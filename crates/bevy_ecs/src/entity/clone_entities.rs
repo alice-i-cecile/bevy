@@ -1823,7 +1823,7 @@ mod tests {
         #[require(B { field: 5 })]
         struct A;
 
-        #[derive(Component, Clone, PartialEq, Eq)]
+        #[derive(Component, Clone, PartialEq, Eq, Default)]
         struct B {
             field: usize,
         }
@@ -1907,7 +1907,7 @@ mod tests {
         #[require(B(5))]
         struct A;
 
-        #[derive(Component, Clone, PartialEq, Debug)]
+        #[derive(Component, Clone, PartialEq, Debug, Default)]
         struct B(u8);
 
         let mut world = World::default();
@@ -1940,7 +1940,7 @@ mod tests {
         #[require(B(5))]
         struct A;
 
-        #[derive(Component, Clone, PartialEq, Debug)]
+        #[derive(Component, Clone, PartialEq, Debug, Default)]
         struct B(u8);
 
         let mut world = World::default();
@@ -1992,7 +1992,7 @@ mod tests {
         #[require(C(5))]
         struct B;
 
-        #[derive(Component, Clone, PartialEq, Debug)]
+        #[derive(Component, Clone, PartialEq, Debug, Default)]
         struct C(u32);
 
         let mut world = World::default();
@@ -2019,7 +2019,7 @@ mod tests {
         #[require(C(5))]
         struct B;
 
-        #[derive(Component, Clone, PartialEq, Debug)]
+        #[derive(Component, Clone, PartialEq, Debug, Default)]
         struct C(u32);
 
         let mut world = World::default();
@@ -2048,7 +2048,7 @@ mod tests {
         #[require(C(5))]
         struct B;
 
-        #[derive(Component, Clone, PartialEq, Debug)]
+        #[derive(Component, Clone, PartialEq, Debug, Default)]
         struct C(u32);
 
         let mut world = World::default();
@@ -2071,7 +2071,7 @@ mod tests {
         #[require(B(5))]
         struct A;
 
-        #[derive(Component, Clone, PartialEq, Debug)]
+        #[derive(Component, Clone, PartialEq, Debug, Default)]
         struct B(u32);
 
         #[derive(Component, Clone, PartialEq, Debug, Default)]
@@ -2198,7 +2198,7 @@ mod tests {
         #[require(B(5))]
         struct A;
 
-        #[derive(Component, Clone, PartialEq, Debug)]
+        #[derive(Component, Clone, PartialEq, Debug, Default)]
         struct B(u32);
 
         let mut world = World::default();

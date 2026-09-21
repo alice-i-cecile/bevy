@@ -1,19 +1,23 @@
-use bevy_macro_utils::fq_std::{FQDefault, FQOption, FQSend, FQSync};
+use bevy_macro_utils::{
+    fq_std::{FQDefault, FQOption, FQSend, FQSync},
+    PathType,
+};
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use std::collections::HashSet;
 use syn::{
-    braced, parenthesized,
-    parse::Parse,
-    parse_quote,
-    punctuated::Punctuated,
-    spanned::Spanned,
-    token::{Brace, Comma, Paren},
-    Data, DataStruct, DeriveInput, Expr, ExprCall, ExprLit, ExprPath, Field, FieldValue, Fields,
-    Ident, Lit, LitStr, Member, Path, Result, Token, Type, Visibility,
+    parse::Parse, parse_quote, punctuated::Punctuated, spanned::Spanned, token::Comma, Data,
+    DataStruct, DeriveInput, Expr, ExprCall, ExprPath, Field, Fields, Ident, LitStr, Member, Path,
+    Result, Token, Type, Visibility,
 };
 
-use crate::map_entities::{map_entities, MapEntitiesAttributeKind};
+use crate::{
+    bsn::{
+        codegen::{BsnCodegenCtx, EntityRefs, HoistedExpressions},
+        types::BsnEntry,
+    },
+    map_entities::{map_entities, MapEntitiesAttributeKind},
+};
 
 /// Whether the derive macro may contain a `component(storage = "…")` attribute.
 pub enum StorageAttribute {
@@ -138,9 +142,12 @@ impl DeriveComponent {
                 let punctuated =
                     attr.parse_args_with(Punctuated::<Require, Comma>::parse_terminated)?;
                 for require in punctuated.iter() {
-                    if !require_paths.insert(require.path.to_token_stream().to_string()) {
+                    let Some(path) = &require.path else {
+                        continue;
+                    };
+                    if !require_paths.insert(path.to_token_stream().to_string()) {
                         return Err(syn::Error::new(
-                            require.path.span(),
+                            path.span(),
                             "Duplicate required components are not allowed.",
                         ));
                     }
@@ -273,26 +280,36 @@ impl DeriveComponent {
         let on_despawn =
             hook_register_function_call(bevy_ecs, quote! {on_despawn}, &on_despawn_path);
 
-        let requires = &self.requires;
-        let mut register_required = Vec::with_capacity(self.requires.iter().len());
-        if let Some(requires) = requires {
-            for require in requires {
-                let ident = &require.path;
-                if let Some(template) = &require.template {
-                    let template = template.to_tokens(ident, bevy_ecs);
-                    register_required.push(quote! {
-                        required_components.register_required_template::<#ident>(#template);
-                    });
-                    continue;
-                }
-                let constructor = match &require.func {
-                    Some(func) => quote! { || { let x: #ident = (#func)().into(); x } },
-                    None => quote! { <#ident as #FQDefault>::default },
-                };
-                register_required.push(quote! {
-                    required_components.register_required::<#ident>(#constructor);
-                });
+        let required_component_docs = self.requires.as_ref().map(|r| {
+            let paths = r
+                .iter()
+                .filter_map(|r| r.path.as_ref())
+                .map(|path| format!("[`{}`]", path.to_token_stream()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let doc = format!("**Required Components**: {paths}. \n\n A component's Required Components are inserted whenever it is inserted. Note that this will also insert the required components _of_ the required components, recursively, in depth-first order.");
+            quote! {
+                #[doc = #doc]
             }
+        });
+
+        let mut register_required = Vec::with_capacity(self.requires.iter().len());
+        for require in self.requires.into_iter().flatten() {
+            register_required.push(match (require.kind, require.path) {
+                (RequireKind::Default, Some(path)) => quote! {
+                    required_components.register_required::<#path>(<#path as #FQDefault>::default);
+                },
+                (RequireKind::Value(expr), Some(path)) => quote! {
+                    required_components.register_required::<#path>(|| { let x: #path = (#expr).into(); x });
+                },
+                (RequireKind::Template(entry), _) => {
+                    let template = required_template_tokens(entry, bevy_ecs)?;
+                    quote! {
+                        required_components.register_required_template(#template);
+                    }
+                }
+                (_, None) => unreachable!("default and value requires always have a path"),
+            });
         }
         let additional_requires = &self.additional_requires;
         let struct_name = &ast.ident;
@@ -301,18 +318,6 @@ impl DeriveComponent {
             .predicates
             .push(parse_quote! { Self: #FQSend + #FQSync + 'static });
         let (impl_generics, type_generics, where_clause) = &ast.generics.split_for_impl();
-
-        let required_component_docs = self.requires.map(|r| {
-            let paths = r
-                .iter()
-                .map(|r| format!("[`{}`]", r.path.to_token_stream()))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let doc = format!("**Required Components**: {paths}. \n\n A component's Required Components are inserted whenever it is inserted. Note that this will also insert the required components _of_ the required components, recursively, in depth-first order.");
-            quote! {
-                #[doc = #doc]
-            }
-        });
 
         let mutable_type = (self.immutable || relationship.is_some())
             .then_some(quote! { #bevy_ecs::component::Immutable })
@@ -613,66 +618,56 @@ pub enum StorageTy {
 
 /// Derived required component from the `#[require]` attribute.
 pub struct Require {
-    path: Path,
-    func: Option<TokenStream>,
-    template: Option<RequireTemplate>,
+    /// The required component's type, if the entry names it.
+    path: Option<Path>,
+    kind: RequireKind,
 }
 
-/// A required component that is built from a `Template`, using `~` syntax.
-enum RequireTemplate {
-    /// `B = ~expr`: `expr` is a `Template<Output = B>`
-    Expr(Expr),
-    /// `~B`: the default `FromTemplate::Template` of `B`
+enum RequireKind {
+    /// `B`: built with [`Default`].
     Default,
-    /// `~B(a, b)`: the default template of `B`, with tuple fields patched
-    Tuple(Punctuated<Expr, Comma>),
-    /// `~B { a: x }`: the default template of `B`, with named fields patched
-    Named(Punctuated<FieldValue, Comma>),
+    /// `B = expr`: `expr` is evaluated each time `B` is required, then converted with `Into`.
+    Value(Expr),
+    /// Any other entry, which means the same thing it does in `bsn!`, and is built as a template.
+    Template(BsnEntry),
 }
 
-impl RequireTemplate {
-    fn to_tokens(&self, ident: &Path, bevy_ecs: &Path) -> TokenStream {
-        let default = quote! {
-            <<#ident as #bevy_ecs::template::FromTemplate>::Template as #FQDefault>::default()
-        };
-        let assignments = match self {
-            RequireTemplate::Expr(expr) => return quote! { #expr },
-            RequireTemplate::Default => return default,
-            RequireTemplate::Tuple(values) => values
-                .iter()
-                .enumerate()
-                .map(|(index, value)| {
-                    let member = Member::Unnamed(index.into());
-                    let value = template_field_value(value);
-                    quote! { __template.#member = #value; }
-                })
-                .collect::<Vec<_>>(),
-            RequireTemplate::Named(fields) => fields
-                .iter()
-                .map(|field| {
-                    let member = &field.member;
-                    let value = template_field_value(&field.expr);
-                    quote! { __template.#member = #value; }
-                })
-                .collect::<Vec<_>>(),
-        };
-        quote! {{
-            let mut __template = #default;
-            #(#assignments)*
-            __template
-        }}
-    }
-}
-
-/// Matches the `bsn!` rules for field values: unsuffixed non-string literals are used as-is, everything else is converted with `into`.
-fn template_field_value(value: &Expr) -> TokenStream {
-    match value {
-        Expr::Lit(ExprLit { lit, .. })
-            if !matches!(lit, Lit::Str(_)) && lit.suffix().is_empty() =>
-        {
-            quote! { #lit }
+impl Parse for Require {
+    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
+        let fork = input.fork();
+        if let Ok(path) = fork.parse::<Path>() {
+            if fork.peek(Token![=]) && !fork.peek(Token![==]) {
+                input.parse::<Path>()?;
+                input.parse::<Token![=]>()?;
+                return Ok(Require {
+                    path: Some(path),
+                    kind: RequireKind::Value(input.parse()?),
+                });
+            }
+            if (fork.is_empty() || fork.peek(Token![,]))
+                // Short all-caps names like `X` look like consts, but a lone path here is always a component
+                && matches!(PathType::new(&path), PathType::Type | PathType::Const)
+            {
+                input.parse::<Path>()?;
+                return Ok(Require {
+                    path: Some(path),
+                    kind: RequireKind::Default,
+                });
+            }
         }
-        _ => quote! { (#value).into() },
+
+        let entry = BsnEntry::parse(input)?;
+        let path = match &entry {
+            BsnEntry::FromTemplatePatch(ty) => Some(ty.path.clone()),
+            BsnEntry::FromTemplateConstructor { constructor, .. } => {
+                Some(constructor.type_path.clone())
+            }
+            _ => None,
+        };
+        Ok(Require {
+            path,
+            kind: RequireKind::Template(entry),
+        })
     }
 }
 
@@ -691,105 +686,6 @@ pub struct RelationshipTarget {
 // values for `storage` attribute
 const TABLE: &str = "Table";
 const SPARSE_SET: &str = "SparseSet";
-
-impl Parse for Require {
-    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
-        if input.peek(Token![~]) {
-            input.parse::<Token![~]>()?;
-            let path = input.parse::<Path>()?;
-            let template = if input.peek(Brace) {
-                let content;
-                braced!(content in input);
-                RequireTemplate::Named(content.parse_terminated(FieldValue::parse, Token![,])?)
-            } else if input.peek(Paren) {
-                let content;
-                parenthesized!(content in input);
-                RequireTemplate::Tuple(content.parse_terminated(Expr::parse, Token![,])?)
-            } else {
-                RequireTemplate::Default
-            };
-            return Ok(Require {
-                path,
-                func: None,
-                template: Some(template),
-            });
-        }
-
-        let mut path = input.parse::<Path>()?;
-        if input.peek(Token![=]) && input.peek2(Token![~]) {
-            input.parse::<Token![=]>()?;
-            input.parse::<Token![~]>()?;
-            let expr = input.parse::<Expr>()?;
-            return Ok(Require {
-                path,
-                func: None,
-                template: Some(RequireTemplate::Expr(expr)),
-            });
-        }
-        let mut last_segment_is_lower = false;
-        let mut is_constructor_call = false;
-
-        // Use the case of the type name to check if it's an enum
-        // This doesn't match everything that can be an enum according to the rust spec
-        // but it matches what clippy is OK with
-        let is_enum = {
-            let mut first_chars = path
-                .segments
-                .iter()
-                .rev()
-                .filter_map(|s| s.ident.to_string().chars().next());
-            if let Some(last) = first_chars.next() {
-                if last.is_uppercase() {
-                    if let Some(last) = first_chars.next() {
-                        last.is_uppercase()
-                    } else {
-                        false
-                    }
-                } else {
-                    last_segment_is_lower = true;
-                    false
-                }
-            } else {
-                false
-            }
-        };
-
-        let func = if input.peek(Token![=]) {
-            // If there is an '=', then this is a "function style" require
-            input.parse::<Token![=]>()?;
-            let expr: Expr = input.parse()?;
-            Some(quote!(|| #expr ))
-        } else if input.peek(Brace) {
-            // This is a "value style" named-struct-like require
-            let content;
-            braced!(content in input);
-            let content = content.parse::<TokenStream>()?;
-            Some(quote!(|| #path { #content }))
-        } else if input.peek(Paren) {
-            // This is a "value style" tuple-struct-like require
-            let content;
-            parenthesized!(content in input);
-            let content = content.parse::<TokenStream>()?;
-            is_constructor_call = last_segment_is_lower;
-            Some(quote!(|| #path (#content)))
-        } else if is_enum {
-            // if this is an enum, then it is an inline enum component declaration
-            Some(quote!(|| #path))
-        } else {
-            // if this isn't any of the above, then it is a component ident, which will use Default
-            None
-        };
-        if is_enum || is_constructor_call {
-            path.segments.pop();
-            path.segments.pop_punct();
-        }
-        Ok(Require {
-            path,
-            func,
-            template: None,
-        })
-    }
-}
 
 fn storage_path(bevy_ecs_path: &Path, ty: StorageTy) -> TokenStream {
     let storage_type = match ty {
@@ -924,4 +820,21 @@ pub(crate) fn relationship_field<'a>(
             format!("{derive} derive expected named or unnamed struct, found unit struct."),
         )),
     }
+}
+
+/// Generates the template for a `#[require]` entry, using the same codegen as `bsn!`.
+fn required_template_tokens(entry: BsnEntry, bevy_ecs: &Path) -> Result<TokenStream> {
+    let mut entity_refs = EntityRefs::default();
+    let mut hoisted_expressions = HoistedExpressions::default();
+    let mut ctx = BsnCodegenCtx {
+        // Only used by scene entries, which are rejected in `#[require]`
+        bevy_scene: bevy_ecs,
+        bevy_ecs,
+        invocation_index: parse_quote!(("", 0usize, 0usize)),
+        entity_refs: &mut entity_refs,
+        hoisted_expressions: &mut hoisted_expressions,
+        errors: Vec::new(),
+        deprecations: Vec::new(),
+    };
+    entry.into_required_template(&mut ctx)
 }
