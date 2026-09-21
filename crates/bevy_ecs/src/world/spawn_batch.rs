@@ -18,9 +18,19 @@ where
     I::Item: Bundle<Effect: NoBundleEffect>,
 {
     inner: I,
-    spawner: BundleSpawner<'w>,
-    allocator: AllocEntitiesIterator<'w>,
+    mode: SpawnBatchMode<'w>,
     caller: MaybeLocation,
+}
+
+enum SpawnBatchMode<'w> {
+    /// Every entity is spawned into the same archetype with a single [`BundleSpawner`].
+    Batched {
+        spawner: BundleSpawner<'w>,
+        allocator: AllocEntitiesIterator<'w>,
+    },
+    /// The bundle has required components built from templates, which need world access,
+    /// so each entity is spawned individually.
+    RequiredTemplates(&'w mut World),
 }
 
 impl<'w, I> SpawnBatchIter<'w, I>
@@ -31,6 +41,16 @@ where
     #[inline]
     #[track_caller]
     pub(crate) fn new(world: &'w mut World, iter: I, caller: MaybeLocation) -> Self {
+        let bundle_id = world.register_bundle_info::<I::Item>();
+        // SAFETY: the bundle was just registered
+        if unsafe { world.bundles.get_unchecked(bundle_id) }.has_required_templates {
+            return Self {
+                inner: iter,
+                mode: SpawnBatchMode::RequiredTemplates(world),
+                caller,
+            };
+        }
+
         let change_tick = world.change_tick();
 
         let (lower, upper) = iter.size_hint();
@@ -42,8 +62,7 @@ where
 
         Self {
             inner: iter,
-            allocator,
-            spawner,
+            mode: SpawnBatchMode::Batched { spawner, allocator },
             caller,
         }
     }
@@ -57,13 +76,15 @@ where
     fn drop(&mut self) {
         // Iterate through self in order to spawn remaining bundles.
         for _ in &mut *self {}
-        // Free all the over allocated entities.
-        for e in self.allocator.by_ref() {
-            self.spawner.allocator().free(e);
+        if let SpawnBatchMode::Batched { spawner, allocator } = &mut self.mode {
+            // Free all the over allocated entities.
+            for e in allocator.by_ref() {
+                spawner.allocator().free(e);
+            }
+            // Apply any commands from those operations.
+            // SAFETY: `self.spawner` will be dropped immediately after this call.
+            unsafe { spawner.flush_commands() };
         }
-        // Apply any commands from those operations.
-        // SAFETY: `self.spawner` will be dropped immediately after this call.
-        unsafe { self.spawner.flush_commands() };
     }
 }
 
@@ -77,19 +98,25 @@ where
     fn next(&mut self) -> Option<Entity> {
         let bundle = self.inner.next()?;
         move_as_ptr!(bundle);
-        Some(if let Some(bulk) = self.allocator.next() {
+        let (spawner, allocator) = match &mut self.mode {
+            SpawnBatchMode::Batched { spawner, allocator } => (spawner, allocator),
+            SpawnBatchMode::RequiredTemplates(world) => {
+                return Some(world.spawn_with_caller(bundle, self.caller).id());
+            }
+        };
+        Some(if let Some(bulk) = allocator.next() {
             // SAFETY:
             // - bundle matches spawner type and we just allocated it
             // - I::Item::Effect: NoBundleEffect
             unsafe {
-                self.spawner.spawn_at(bulk, bundle, self.caller);
+                spawner.spawn_at(bulk, bundle, self.caller);
             }
             bulk
         } else {
             // SAFETY:
             // - bundle matches spawner type
             // - I::Item::Effect: NoBundleEffect
-            unsafe { self.spawner.spawn(bundle, self.caller) }
+            unsafe { spawner.spawn(bundle, self.caller) }
         })
     }
 

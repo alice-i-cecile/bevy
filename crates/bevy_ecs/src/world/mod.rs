@@ -2596,6 +2596,23 @@ impl World {
         let change_tick = self.change_tick();
         let bundle_id = self.register_bundle_info::<B>();
 
+        // SAFETY: the bundle was just registered
+        if unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
+            for (entity, bundle) in batch {
+                if let Err(err) = self.entities().get_spawned(entity) {
+                    panic!("error[B0003]: Could not insert a bundle (of type `{}`) for entity {entity} because: {err}. See: https://bevyengine.org/learn/errors/b0003", core::any::type_name::<B>());
+                }
+                move_as_ptr!(bundle);
+                self.entity_mut(entity).insert_with_caller(
+                    bundle,
+                    insert_mode,
+                    caller,
+                    RelationshipHookMode::Run,
+                );
+            }
+            return;
+        }
+
         let mut batch_iter = batch.into_iter();
 
         if let Some((first_entity, first_bundle)) = batch_iter.next() {
@@ -2744,6 +2761,32 @@ impl World {
         let bundle_id = self.register_bundle_info::<B>();
 
         let mut invalid_entities = Vec::<Entity>::new();
+
+        // SAFETY: the bundle was just registered
+        if unsafe { self.bundles.get_unchecked(bundle_id) }.has_required_templates {
+            for (entity, bundle) in batch {
+                let Ok(mut entity_mut) = self.get_entity_mut(entity) else {
+                    invalid_entities.push(entity);
+                    continue;
+                };
+                move_as_ptr!(bundle);
+                entity_mut.insert_with_caller(
+                    bundle,
+                    insert_mode,
+                    caller,
+                    RelationshipHookMode::Run,
+                );
+            }
+            return if invalid_entities.is_empty() {
+                Ok(())
+            } else {
+                Err(TryInsertBatchError {
+                    bundle_type: DebugName::type_name::<B>(),
+                    entities: invalid_entities,
+                })
+            };
+        }
+
         let mut batch_iter = batch.into_iter();
 
         // We need to find the first valid entity so we can initialize the bundle inserter.

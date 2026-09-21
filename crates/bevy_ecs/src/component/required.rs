@@ -2022,6 +2022,59 @@ mod template_tests {
         World::new().spawn(Chicken);
     }
 
+    #[test]
+    fn spawn_batch_builds_templates() {
+        let mut world = world();
+        let entities = world
+            .spawn_batch((0..3).map(|_| Rollback))
+            .collect::<Vec<_>>();
+        for entity in entities {
+            assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
+        }
+        assert_eq!(world.resource::<Log>().0.len(), 6);
+    }
+
+    #[test]
+    fn commands_spawn_batch_builds_templates() {
+        let mut world = world();
+        world.commands().spawn_batch((0..3).map(|_| Rollback));
+        world.flush();
+        let mut query = world.query::<&StartFrame>();
+        assert_eq!(query.iter(&world).filter(|frame| frame.0 == 5).count(), 3);
+    }
+
+    #[test]
+    fn insert_batch_builds_templates() {
+        let mut world = world();
+        let fresh = world.spawn_empty().id();
+        let existing = world.spawn(StartFrame(2)).id();
+        world.insert_batch([(fresh, Rollback), (existing, Rollback)]);
+        assert_eq!(world.get::<StartFrame>(fresh), Some(&StartFrame(5)));
+        assert_eq!(world.get::<StartFrame>(existing), Some(&StartFrame(2)));
+        assert!(world.get::<Rollback>(existing).is_some());
+    }
+
+    #[test]
+    fn insert_batch_if_new_builds_templates() {
+        let mut world = world();
+        let entity = world.spawn_empty().id();
+        world.insert_batch_if_new([(entity, Rollback)]);
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
+    }
+
+    #[test]
+    fn try_insert_batch_builds_templates() {
+        let mut world = world();
+        let entity = world.spawn_empty().id();
+        let despawned = world.spawn_empty().id();
+        world.despawn(despawned);
+        let error = world
+            .try_insert_batch([(despawned, Rollback), (entity, Rollback)])
+            .unwrap_err();
+        assert_eq!(error.entities, vec![despawned]);
+        assert_eq!(world.get::<StartFrame>(entity), Some(&StartFrame(5)));
+    }
+
     #[derive(Resource)]
     struct Prefix(&'static str);
 
