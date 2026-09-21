@@ -959,7 +959,7 @@ pub struct Ready {
 #[cfg(test)]
 mod tests {
     use crate::{self as bevy_scene, Ready, SceneApplied, ScenePlugin};
-    use crate::{prelude::*, ScenePatch};
+    use crate::{prelude::*, ApplySceneError, ScenePatch, SpawnSceneError};
     use alloc::sync::Arc;
     use bevy_app::{App, TaskPoolPlugin};
     use bevy_asset::io::memory::{Dir, MemoryAssetReader};
@@ -970,6 +970,7 @@ mod tests {
     use bevy_ecs::prelude::*;
     use bevy_ecs::relationship::Relationship;
     use bevy_ecs::system::{system_value, SystemHandle};
+    use bevy_ecs::template::{template, TemplateContext};
     use bevy_ecs::world::DeferredWorld;
     use bevy_reflect::TypePath;
     use bevy_scene_macros::SceneComponent;
@@ -3661,5 +3662,48 @@ mod tests {
 
         let both = world.spawn(Base).insert(Derived).id();
         assert!(world.get::<Sword>(both).is_some());
+    }
+
+    #[test]
+    fn scene_with_failing_required_template() {
+        #[derive(Component)]
+        struct Health;
+
+        #[derive(Component, Default, Clone)]
+        #[require(~{template(|_: &mut TemplateContext| -> Result<Health> { Err("no health".into()) })})]
+        struct Player;
+
+        let mut app = test_app();
+        let result = app.world_mut().spawn_scene(bsn! { Player });
+        assert!(matches!(
+            result,
+            Err(SpawnSceneError::ApplySceneError(
+                ApplySceneError::TemplateBuildError(_)
+            ))
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "requires itself")]
+    fn scene_components_in_a_cycle() {
+        #[derive(SceneComponent, Default, Clone)]
+        struct Ping;
+
+        impl Ping {
+            fn scene() -> impl Scene {
+                bsn! { Pong }
+            }
+        }
+
+        #[derive(SceneComponent, Default, Clone)]
+        struct Pong;
+
+        impl Pong {
+            fn scene() -> impl Scene {
+                bsn! { Ping }
+            }
+        }
+
+        test_app().world_mut().spawn(Ping);
     }
 }
