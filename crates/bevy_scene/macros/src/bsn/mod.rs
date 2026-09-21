@@ -1,9 +1,4 @@
-pub mod codegen;
-pub mod parse;
-pub mod types;
-
-use codegen::*;
-use types::*;
+use bevy_ecs_macro_logic::bsn::{codegen::*, types::*};
 
 use bevy_macro_utils::BevyManifest;
 use proc_macro::{Span, TokenStream};

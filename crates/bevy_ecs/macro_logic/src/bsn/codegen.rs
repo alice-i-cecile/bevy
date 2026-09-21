@@ -1,4 +1,4 @@
-use crate::_bsn::types::{
+use crate::bsn::types::{
     Bsn, BsnConstructor, BsnEntry, BsnFields, BsnFnArg, BsnFnArgs, BsnFnCall, BsnListRoot,
     BsnNamedField, BsnRelatedSceneList, BsnRoot, BsnScene, BsnSceneFn, BsnSceneListItem,
     BsnSceneListItems, BsnStructUpdate, BsnType, BsnUnnamedField, BsnValue,
@@ -12,7 +12,7 @@ use syn::{parse::Parse, ExprTuple, Ident, Lit, Member, Path};
 /// Tracks named entity references and assigns them unique, sequential indices
 /// during the code generation process.
 #[derive(Default)]
-pub(crate) struct EntityRefs {
+pub struct EntityRefs {
     refs: HashMap<String, usize>,
     next: usize,
 }
@@ -34,7 +34,7 @@ impl EntityRefs {
 }
 
 #[derive(Default)]
-pub(crate) struct HoistedExpressions {
+pub struct HoistedExpressions {
     expressions: Vec<TokenStream>,
     next: usize,
 }
@@ -56,7 +56,7 @@ impl HoistedExpressions {
 
 /// Context used in the [`Bsn`] code generation pipeline.
 /// Used to accumulate validation errors without short-circuiting.
-pub(crate) struct BsnCodegenCtx<'a> {
+pub struct BsnCodegenCtx<'a> {
     pub bevy_scene: &'a Path,
     pub bevy_ecs: &'a Path,
     pub invocation_index: ExprTuple,
@@ -512,9 +512,9 @@ impl BsnType {
         is_root_template: bool,
     ) -> syn::Result<TokenStream> {
         let variant = self.variant.as_ref().unwrap();
-        let (bevy_scene, bevy_ecs, path) = (ctx.bevy_scene, ctx.bevy_ecs, &self.path);
+        let (bevy_ecs, path) = (ctx.bevy_ecs, &self.path);
         let template_path = if is_root_template {
-            quote! { #bevy_scene::macro_utils::PathResolveHelper::<<#path as #bevy_ecs::template::FromTemplate>::Template> }
+            quote! { #bevy_ecs::template::PathResolveHelper::<<#path as #bevy_ecs::template::FromTemplate>::Template> }
         } else {
             quote! { #path }
         };
@@ -581,8 +581,8 @@ impl BsnType {
     ) -> syn::Result<Vec<TokenStream>> {
         let mut assignments = Vec::new();
         if !is_root {
-            let (path, bevy_scene) = (&self.path, ctx.bevy_scene);
-            assignments.push(quote! {#bevy_scene::macro_utils::touch_type::<#path>();});
+            let (path, bevy_ecs) = (&self.path, ctx.bevy_ecs);
+            assignments.push(quote! {#bevy_ecs::template::touch_type::<#path>();});
         }
         match &self.fields {
             BsnFields::Named {
@@ -658,9 +658,9 @@ impl BsnType {
         ctx: &mut BsnCodegenCtx,
         is_root: bool,
     ) -> syn::Result<TokenStream> {
-        let (bevy_scene, bevy_ecs, path) = (ctx.bevy_scene, ctx.bevy_ecs, &self.path);
+        let (bevy_ecs, path) = (ctx.bevy_ecs, &self.path);
         let template_path = if is_root {
-            quote! { #bevy_scene::macro_utils::PathResolveHelper::<<#path as #bevy_ecs::template::FromTemplate>::Template> }
+            quote! { #bevy_ecs::template::PathResolveHelper::<<#path as #bevy_ecs::template::FromTemplate>::Template> }
         } else {
             quote! { #path }
         };
@@ -965,7 +965,7 @@ fn deprecation_warning(span: Span, name: &str, message: &str) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::_bsn::types::*;
+    use crate::bsn::types::*;
     use syn::parse_quote;
 
     struct TestPaths {

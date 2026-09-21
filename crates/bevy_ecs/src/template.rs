@@ -536,6 +536,16 @@ impl<F: Fn(&mut TemplateContext) -> Result<O> + Clone, O> Template for FnTemplat
     }
 }
 
+/// This is used by `bsn!` and `#[require]` to generate compile-time only references to symbols. Currently this is used
+/// to add IDE support for nested type names, as it allows us to pass the input Ident from the input to the output code.
+#[doc(hidden)]
+pub const fn touch_type<T>() {}
+
+/// This is used by `bsn!` and `#[require]` to work around [this Rust limitation](https://github.com/rust-lang/rust/issues/86935).
+/// A fix is implemented and on track for stabilization. If it is ever implemented, we can remove this.
+#[doc(hidden)]
+pub type PathResolveHelper<T> = T;
+
 /// Returns a "free floating" template for a given `func`. This prevents the need to define a custom type for one-off templates.
 pub fn template<F: Fn(&mut TemplateContext) -> Result<O>, O>(func: F) -> FnTemplate<F, O> {
     FnTemplate(func)
