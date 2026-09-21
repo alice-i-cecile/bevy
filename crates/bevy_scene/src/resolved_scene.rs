@@ -359,6 +359,7 @@ impl ResolvedScene {
             let TemplateContext {
                 entity,
                 entity_references,
+                ..
             } = context;
             entity.world_scope(|world| -> Result<(), ApplySceneError> {
                 for (index, scene) in related_resolved_scenes.scenes.iter().enumerate() {
