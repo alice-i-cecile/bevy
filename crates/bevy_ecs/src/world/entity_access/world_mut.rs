@@ -30,7 +30,7 @@ use crate::{
     },
 };
 
-use alloc::{format, vec::Vec};
+use alloc::{boxed::Box, format, vec::Vec};
 use bevy_ptr::{move_as_ptr, MovingPtr, OwningPtr};
 use bevy_utils::prelude::DebugName;
 use core::{any::TypeId, marker::PhantomData, mem::MaybeUninit, ptr::NonNull};
@@ -1401,7 +1401,7 @@ impl<'w> EntityWorldMut<'w> {
             ptrs,
             explicit_storage_types,
             ..
-        } = &mut scratch;
+        } = &mut *scratch;
         let components = &self.world.components;
         // SAFETY:
         // - `get_components` is called exactly once, and `apply_effect` is called at most once afterwards
@@ -1486,7 +1486,7 @@ impl<'w> EntityWorldMut<'w> {
     unsafe fn insert_scratch_with_required_templates(
         &mut self,
         bundle_id: BundleId,
-        mut scratch: RequiredComponentsScratch,
+        mut scratch: Box<RequiredComponentsScratch>,
         mode: InsertMode,
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
@@ -1628,6 +1628,7 @@ impl<'w> EntityWorldMut<'w> {
                 ids,
                 ptrs,
                 explicit_len,
+                entity_references,
                 ..
             } = &mut *scratch;
             let explicit_len = *explicit_len;
@@ -1662,10 +1663,10 @@ impl<'w> EntityWorldMut<'w> {
                 }
                 let result = {
                     let guard = BuildingGuard::new(self, key);
-                    let mut entity_references = SceneEntityReferences::default();
+                    entity_references.clear();
                     let mut context = TemplateContext::with_inserting(
                         guard.entity,
-                        &mut entity_references,
+                        entity_references,
                         InsertingComponents {
                             ids,
                             ptrs,

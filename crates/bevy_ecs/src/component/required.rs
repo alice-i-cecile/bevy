@@ -19,7 +19,7 @@ use crate::{
     error::Result,
     query::DebugCheckedUnwrap as _,
     storage::{SparseSets, Table, TableRow},
-    template::{Template, TemplateContext},
+    template::{SceneEntityReferences, Template, TemplateContext},
 };
 
 /// Metadata associated with a required component. See [`Component`] for details.
@@ -275,6 +275,8 @@ pub(crate) struct RequiredComponentsScratch {
     pub(crate) explicit_len: usize,
     /// The storage types of the explicit components.
     pub(crate) explicit_storage_types: Vec<StorageType>,
+    /// Resolves entity references for each template, which are not shared between templates.
+    pub(crate) entity_references: SceneEntityReferences,
 }
 
 impl RequiredComponentsScratch {
@@ -284,6 +286,7 @@ impl RequiredComponentsScratch {
         self.ptrs.clear();
         self.explicit_len = 0;
         self.explicit_storage_types.clear();
+        self.entity_references.clear();
         self.alloc.reset();
     }
 }
@@ -292,7 +295,11 @@ impl RequiredComponentsScratch {
 #[derive(Default)]
 pub(crate) struct RequiredTemplates {
     /// One scratch per nested insert.
-    pub(crate) scratch: Vec<RequiredComponentsScratch>,
+    #[expect(
+        clippy::vec_box,
+        reason = "Boxing makes taking a scratch from the pool and returning it cheap"
+    )]
+    pub(crate) scratch: Vec<Box<RequiredComponentsScratch>>,
     /// The entities and templates (by [`RequiredComponentConstructor::address`]) that are being built,
     /// used to detect a template that requires itself.
     pub(crate) building: Vec<(Entity, usize)>,
@@ -301,7 +308,10 @@ pub(crate) struct RequiredTemplates {
 impl RequiredTemplates {
     /// Takes a scratch from the pool, holding the ids of the explicit components of an insert.
     #[inline(never)]
-    pub(crate) fn take_scratch(&mut self, explicit: &[ComponentId]) -> RequiredComponentsScratch {
+    pub(crate) fn take_scratch(
+        &mut self,
+        explicit: &[ComponentId],
+    ) -> Box<RequiredComponentsScratch> {
         let mut scratch = self.scratch.pop().unwrap_or_default();
         scratch.ids.extend_from_slice(explicit);
         scratch.explicit_len = explicit.len();

@@ -166,6 +166,11 @@ impl SceneEntityReferences {
         }
     }
 
+    /// Removes every mapping.
+    pub(crate) fn clear(&mut self) {
+        self.0.clear();
+    }
+
     /// Set the [`Entity`] associated with a [`SceneEntityReference`]
     pub fn set(&mut self, reference: SceneEntityReference, entity: Entity) {
         let inner = reference.0;
