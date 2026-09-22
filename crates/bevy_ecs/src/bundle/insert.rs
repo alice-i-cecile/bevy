@@ -7,7 +7,10 @@ use crate::{
         Archetype, ArchetypeAfterBundleInsert, ArchetypeCreated, ArchetypeId, Archetypes,
         ComponentStatus, ARCHETYPE_CREATED,
     },
-    bundle::{ArchetypeMoveType, Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode},
+    bundle::{
+        ArchetypeMoveType, Bundle, BundleId, BundleInfo, ConstructRequiredComponents,
+        DynamicBundle, InsertMode, PrebuiltRequiredComponents, WriteRequiredComponents,
+    },
     change_detection::{MaybeLocation, Tick},
     component::{Components, RequiredComponentConstructor, StorageType},
     entity::{Entities, Entity, EntityLocation},
@@ -418,6 +421,7 @@ impl<'w> BundleInserter<'w> {
     ///   `bundle` after this function before returning to user-space safe code.
     /// - The value pointed to by `bundle` must not be accessed for anything other than [`apply_effect`]
     ///   or dropped.
+    /// - The insert must not need required templates.
     ///
     /// [`apply_effect`]: crate::bundle::DynamicBundle::apply_effect
     #[inline]
@@ -426,6 +430,64 @@ impl<'w> BundleInserter<'w> {
         entity: Entity,
         location: EntityLocation,
         bundle: MovingPtr<'_, T>,
+        insert_mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) -> EntityLocation {
+        // SAFETY: the caller upholds the preconditions, and constructors build every required component
+        unsafe {
+            self.insert_with_required(
+                entity,
+                location,
+                bundle,
+                ConstructRequiredComponents,
+                insert_mode,
+                caller,
+                relationship_hook_mode,
+            )
+        }
+    }
+
+    /// Like [`Self::insert`], but writes required components that were already built, in the order of
+    /// [`Self::required_components`], instead of constructing them. This works for any insert,
+    /// including ones that need required templates.
+    ///
+    /// # Safety
+    /// Same as [`Self::insert`], except that the insert may need required templates, and each pointer in `required`
+    /// must own a value of the required component at the same index in [`Self::required_components`].
+    pub(crate) unsafe fn insert_prebuilt<T: DynamicBundle>(
+        &mut self,
+        entity: Entity,
+        location: EntityLocation,
+        bundle: MovingPtr<'_, T>,
+        required: &[NonNull<u8>],
+        insert_mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) -> EntityLocation {
+        // SAFETY: the caller upholds the preconditions
+        unsafe {
+            self.insert_with_required(
+                entity,
+                location,
+                bundle,
+                PrebuiltRequiredComponents(required),
+                insert_mode,
+                caller,
+                relationship_hook_mode,
+            )
+        }
+    }
+
+    /// # Safety
+    /// Same as [`Self::insert`], except that `required_values` must write every required component of this insert.
+    #[inline(always)]
+    unsafe fn insert_with_required<T: DynamicBundle>(
+        &mut self,
+        entity: Entity,
+        location: EntityLocation,
+        bundle: MovingPtr<'_, T>,
+        required_values: impl WriteRequiredComponents,
         insert_mode: InsertMode,
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
@@ -464,7 +526,8 @@ impl<'w> BundleInserter<'w> {
                     table,
                     sparse_sets,
                     archetype_after_insert,
-                    archetype_after_insert.required_components.iter(),
+                    &archetype_after_insert.required_components,
+                    required_values,
                     entity,
                     new_location.table_row,
                     self.change_tick,

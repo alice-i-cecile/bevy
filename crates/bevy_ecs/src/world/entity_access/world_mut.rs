@@ -1395,18 +1395,23 @@ impl<'w> EntityWorldMut<'w> {
         let explicit = unsafe { self.world.bundles.get_unchecked(bundle_id) }.explicit_components();
         let mut scratch = self.world.required_templates.take_scratch(explicit);
         let RequiredComponentsScratch {
-            alloc, ids, ptrs, ..
+            alloc,
+            ids,
+            ptrs,
+            explicit_storage_types,
+            ..
         } = &mut scratch;
         let components = &self.world.components;
         // SAFETY:
         // - `get_components` is called exactly once, and `apply_effect` is called at most once afterwards
         // - components are written in bundle order, which matches `ids`, and their ids are valid
         let (bundle, ()) = bundle.partial_move(|bundle| unsafe {
-            T::get_components(bundle, &mut |_, component| {
+            T::get_components(bundle, &mut |storage_type, component| {
                 let layout = components.get_info_unchecked(ids[ptrs.len()]).layout();
                 let ptr = alloc.alloc_layout(layout);
                 core::ptr::copy_nonoverlapping(component.as_ptr(), ptr.as_ptr(), layout.size());
                 ptrs.push(ptr);
+                explicit_storage_types.push(storage_type);
             });
         });
 
@@ -1448,6 +1453,13 @@ impl<'w> EntityWorldMut<'w> {
             .ptrs
             // SAFETY: `OwningPtr`s are never null
             .extend(components.map(|ptr| unsafe { NonNull::new_unchecked(ptr.as_ptr()) }));
+        let infos = &self.world.components;
+        scratch.explicit_storage_types.extend(
+            component_ids
+                .iter()
+                // SAFETY: the caller ensures the ids are valid
+                .map(|&id| unsafe { infos.get_info_unchecked(id) }.storage_type()),
+        );
         // SAFETY: the caller upholds the preconditions
         unsafe {
             self.insert_scratch_with_required_templates(
@@ -1512,44 +1524,62 @@ impl<'w> EntityWorldMut<'w> {
             return Err(error);
         }
 
-        // Drop the built components that are no longer missing (ex: because a template inserted them itself).
         let RequiredComponentsScratch {
             ids,
             ptrs,
             explicit_len,
+            explicit_storage_types,
             missing,
             ..
         } = scratch;
-        let mut written = *explicit_len;
-        for index in *explicit_len..ids.len() {
-            let (id, ptr) = (ids[index], ptrs[index]);
-            if missing
+        let explicit_len = *explicit_len;
+        // Every missing component was built, so put them in the order of `missing`, which the inserter writes them in.
+        for (index, constructor) in (explicit_len..).zip(missing.iter()) {
+            let built = ids[index..]
                 .iter()
-                .any(|constructor| constructor.component_id() == id)
-            {
-                ids[written] = id;
-                ptrs[written] = ptr;
-                written += 1;
-            } else {
-                // SAFETY: `ptr` owns a value of component `id` that is not written
-                unsafe { self.drop_components(&[id], &[ptr]) };
-            }
+                .position(|&id| id == constructor.component_id())
+                .unwrap();
+            ids.swap(index, index + built);
+            ptrs.swap(index, index + built);
         }
-        ids.truncate(written);
-        ptrs.truncate(written);
+        // Drop the built components that are no longer missing (ex: because a template inserted them itself).
+        let written = explicit_len + missing.len();
+        // SAFETY: these own values of the matching components, which are not written
+        unsafe { self.drop_components(&ids[written..], &ptrs[written..]) };
 
-        // Every requirement of the write set was built, so this normally takes the fast path. Requirements that were
-        // registered after `bundle_id` was cached are missing from its plan, and get built by the slow path here.
-        // SAFETY: every pointer owns a valid value of the matching component in `ids`, from this world
-        unsafe {
-            self.try_insert_by_ids_internal(
-                ids,
-                ptrs.iter().map(|&ptr| OwningPtr::new(ptr)),
+        let location = self.location();
+        let change_tick = self.world.change_tick();
+        // SAFETY: the caller ensures `bundle_id` is valid, and the archetype id is the entity's.
+        // The inserter writes the built required components instead of constructing them.
+        let mut inserter = unsafe {
+            BundleInserter::new_unchecked(self.world, location.archetype_id, bundle_id, change_tick)
+        };
+        let explicit = ptrs[..explicit_len].iter().map(|&ptr| {
+            // SAFETY: these own values of the explicit components
+            unsafe { OwningPtr::new(ptr) }
+        });
+        let bundle = DynamicInsertBundle {
+            components: explicit_storage_types.iter().copied().zip(explicit),
+        };
+        move_as_ptr!(bundle);
+        // SAFETY:
+        // - `location` is the entity's location, and `bundle` holds the components of `bundle_id` in bundle order
+        // - `missing` was planned for this archetype, so the built components match the inserter's required components
+        // - `DynamicInsertBundle` has no effect
+        self.location = Some(unsafe {
+            inserter.insert_prebuilt(
+                self.entity,
+                location,
+                bundle,
+                &ptrs[explicit_len..written],
                 mode,
                 caller,
                 relationship_hook_mode,
             )
-        }
+        });
+        self.world.flush();
+        self.update_location();
+        Ok(())
     }
 
     /// Builds every required component that inserting `bundle_id` is missing into `scratch`.
@@ -1593,6 +1623,7 @@ impl<'w> EntityWorldMut<'w> {
                 ptrs,
                 explicit_len,
                 missing,
+                ..
             } = &mut *scratch;
             let explicit_len = *explicit_len;
             // Values need no context, so build them first to make them visible to every template. Then build
@@ -2850,6 +2881,25 @@ impl Drop for BuildingGuard<'_, '_> {
     }
 }
 
+/// A bundle of components passed by pointer, with their storage types.
+struct DynamicInsertBundle<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> {
+    components: I,
+}
+
+impl<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> DynamicBundle
+    for DynamicInsertBundle<'a, I>
+{
+    type Effect = ();
+    unsafe fn get_components(
+        mut ptr: MovingPtr<'_, Self>,
+        func: &mut impl FnMut(StorageType, OwningPtr<'_>),
+    ) {
+        (&mut ptr.components).for_each(|(t, ptr)| func(t, ptr));
+    }
+
+    unsafe fn apply_effect(_ptr: MovingPtr<'_, MaybeUninit<Self>>, _entity: &mut EntityWorldMut) {}
+}
+
 /// Inserts a dynamic [`Bundle`] into the entity.
 ///
 /// # Safety
@@ -2871,28 +2921,6 @@ unsafe fn insert_dynamic_bundle<
     caller: MaybeLocation,
     relationship_hook_insert_mode: RelationshipHookMode,
 ) -> EntityLocation {
-    struct DynamicInsertBundle<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> {
-        components: I,
-    }
-
-    impl<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> DynamicBundle
-        for DynamicInsertBundle<'a, I>
-    {
-        type Effect = ();
-        unsafe fn get_components(
-            mut ptr: MovingPtr<'_, Self>,
-            func: &mut impl FnMut(StorageType, OwningPtr<'_>),
-        ) {
-            (&mut ptr.components).for_each(|(t, ptr)| func(t, ptr));
-        }
-
-        unsafe fn apply_effect(
-            _ptr: MovingPtr<'_, MaybeUninit<Self>>,
-            _entity: &mut EntityWorldMut,
-        ) {
-        }
-    }
-
     let bundle = DynamicInsertBundle {
         components: storage_types.zip(components),
     };

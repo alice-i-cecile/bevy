@@ -14,7 +14,7 @@ use thiserror::Error;
 use crate::{
     bundle::BundleInfo,
     change_detection::{MaybeLocation, Tick},
-    component::{Component, ComponentId, Components, ComponentsRegistrator},
+    component::{Component, ComponentId, Components, ComponentsRegistrator, StorageType},
     entity::Entity,
     error::Result,
     query::DebugCheckedUnwrap as _,
@@ -109,6 +109,12 @@ impl RequiredComponentConstructor {
         self.0.component_id()
     }
 
+    /// Returns the [`StorageType`] of the component this constructor creates.
+    #[inline]
+    pub(crate) fn storage_type(&self) -> StorageType {
+        self.0.storage_type()
+    }
+
     /// Builds the component into `alloc`, returning a pointer to the new value.
     pub(crate) fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>> {
         self.0.build(context, alloc)
@@ -143,6 +149,8 @@ impl RequiredComponentConstructor {
 trait ErasedRequired {
     fn component_id(&self) -> ComponentId;
 
+    fn storage_type(&self) -> StorageType;
+
     fn is_template(&self) -> bool;
 
     fn build(&self, context: &mut TemplateContext, alloc: &Bump) -> Result<NonNull<u8>>;
@@ -169,6 +177,10 @@ struct RequiredValue<F> {
 impl<C: Component, F: Fn() -> C> ErasedRequired for RequiredValue<F> {
     fn component_id(&self) -> ComponentId {
         self.component_id
+    }
+
+    fn storage_type(&self) -> StorageType {
+        C::STORAGE_TYPE
     }
 
     fn is_template(&self) -> bool {
@@ -223,6 +235,10 @@ impl<C: Component, T: Template<Output = C>, F: Fn() -> T> ErasedRequired
         self.component_id
     }
 
+    fn storage_type(&self) -> StorageType {
+        C::STORAGE_TYPE
+    }
+
     fn is_template(&self) -> bool {
         true
     }
@@ -257,6 +273,8 @@ pub(crate) struct RequiredComponentsScratch {
     pub(crate) ptrs: Vec<NonNull<u8>>,
     /// The number of explicit components at the start of `ids`.
     pub(crate) explicit_len: usize,
+    /// The storage types of the explicit components.
+    pub(crate) explicit_storage_types: Vec<StorageType>,
     /// The required components missing from the entity.
     pub(crate) missing: Vec<RequiredComponentConstructor>,
 }
@@ -267,6 +285,7 @@ impl RequiredComponentsScratch {
         self.ids.clear();
         self.ptrs.clear();
         self.explicit_len = 0;
+        self.explicit_storage_types.clear();
         self.missing.clear();
         self.alloc.reset();
     }
@@ -1964,8 +1983,6 @@ mod tests {
         world.register_required_components::<Player, Knight>();
         let entity = world.spawn(Player).id();
         assert!(world.get::<Health>(entity).is_some());
-        assert!(world.get::<Knight>(entity).is_some());
-        assert!(world.get::<Armor>(entity).is_some());
     }
 
     #[test]

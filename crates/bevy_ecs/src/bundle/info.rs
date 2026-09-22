@@ -244,12 +244,13 @@ impl BundleInfo {
     ///
     /// [`apply_effect`]: crate::bundle::DynamicBundle::apply_effect
     #[inline]
-    pub(super) unsafe fn write_components<'a, T: DynamicBundle, S: BundleComponentStatus>(
+    pub(super) unsafe fn write_components<T: DynamicBundle, S: BundleComponentStatus>(
         &self,
         table: &mut Table,
         sparse_sets: &mut SparseSets,
         bundle_component_status: &S,
-        required_components: impl Iterator<Item = &'a RequiredComponentConstructor>,
+        required_components: &[RequiredComponentConstructor],
+        required_values: impl WriteRequiredComponents,
         entity: Entity,
         table_row: TableRow,
         change_tick: Tick,
@@ -326,18 +327,17 @@ impl BundleInfo {
         // - `apply_effect` called if required per precondition
         unsafe { T::get_components(bundle, &mut write_component) };
 
-        for required_component in required_components {
-            // SAFETY: we're in write_components
-            unsafe {
-                required_component.initialize(
-                    table,
-                    sparse_sets,
-                    change_tick,
-                    table_row,
-                    entity,
-                    caller,
-                );
-            }
+        // SAFETY: the caller ensures `required_components` are the missing required components of `entity`
+        unsafe {
+            required_values.write(
+                required_components,
+                table,
+                sparse_sets,
+                change_tick,
+                table_row,
+                entity,
+                caller,
+            );
         }
     }
 
@@ -639,4 +639,89 @@ fn initialize_dynamic_bundle(
     bundle_infos.push(bundle_info);
 
     (id, storage_types)
+}
+
+/// Writes the required components that [`BundleInfo::write_components`] adds after the explicit components.
+pub(crate) trait WriteRequiredComponents {
+    /// # Safety
+    /// `constructors` must be the required components missing from `entity`, and the other arguments must be valid
+    /// as in [`BundleInfo::write_components`].
+    unsafe fn write(
+        self,
+        constructors: &[RequiredComponentConstructor],
+        table: &mut Table,
+        sparse_sets: &mut SparseSets,
+        change_tick: Tick,
+        table_row: TableRow,
+        entity: Entity,
+        caller: MaybeLocation,
+    );
+}
+
+/// Builds each required component with its constructor.
+pub(crate) struct ConstructRequiredComponents;
+
+impl WriteRequiredComponents for ConstructRequiredComponents {
+    #[inline]
+    unsafe fn write(
+        self,
+        constructors: &[RequiredComponentConstructor],
+        table: &mut Table,
+        sparse_sets: &mut SparseSets,
+        change_tick: Tick,
+        table_row: TableRow,
+        entity: Entity,
+        caller: MaybeLocation,
+    ) {
+        for required_component in constructors {
+            // SAFETY: we're in write_components
+            unsafe {
+                required_component.initialize(
+                    table,
+                    sparse_sets,
+                    change_tick,
+                    table_row,
+                    entity,
+                    caller,
+                );
+            }
+        }
+    }
+}
+
+/// Required components that have already been built, such as from templates.
+/// Each pointer owns a value of the component of the constructor at the same index.
+pub(crate) struct PrebuiltRequiredComponents<'a>(pub(crate) &'a [NonNull<u8>]);
+
+impl WriteRequiredComponents for PrebuiltRequiredComponents<'_> {
+    unsafe fn write(
+        self,
+        constructors: &[RequiredComponentConstructor],
+        table: &mut Table,
+        sparse_sets: &mut SparseSets,
+        change_tick: Tick,
+        table_row: TableRow,
+        entity: Entity,
+        caller: MaybeLocation,
+    ) {
+        debug_assert_eq!(constructors.len(), self.0.len());
+        for (constructor, &ptr) in constructors.iter().zip(self.0) {
+            // SAFETY:
+            // - the caller ensures `entity` is missing this component, and that `table_row` and storages are valid
+            // - `ptr` owns a value of the constructor's component, whose storage type matches
+            unsafe {
+                BundleInfo::initialize_required_component(
+                    table,
+                    sparse_sets,
+                    change_tick,
+                    table_row,
+                    entity,
+                    constructor.component_id(),
+                    constructor.storage_type(),
+                    OwningPtr::new(ptr),
+                    caller,
+                );
+            }
+        }
+    }
 }

@@ -4,7 +4,9 @@ use bevy_ptr::{ConstNonNull, MovingPtr};
 
 use crate::{
     archetype::{Archetype, ArchetypeCreated, ArchetypeId, SpawnBundleStatus, ARCHETYPE_CREATED},
-    bundle::{Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode},
+    bundle::{
+        Bundle, BundleId, BundleInfo, ConstructRequiredComponents, DynamicBundle, InsertMode,
+    },
     change_detection::{MaybeLocation, Tick},
     entity::{Entity, EntityAllocator, EntityLocation},
     event::{EntityComponentsTrigger, GlobalTrigger},
@@ -131,7 +133,8 @@ impl<'w> BundleSpawner<'w> {
                     table,
                     sparse_sets,
                     &SpawnBundleStatus,
-                    bundle_info.required_component_constructors.iter(),
+                    &bundle_info.required_component_constructors,
+                    ConstructRequiredComponents,
                     entity,
                     table_row,
                     self.change_tick,
