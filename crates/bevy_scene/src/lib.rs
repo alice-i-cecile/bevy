@@ -2563,10 +2563,7 @@ mod tests {
     impl Template for Fail {
         type Output = Fail;
 
-        fn build_template(
-            &self,
-            _context: &mut bevy_ecs::template::TemplateContext,
-        ) -> Result<Self::Output> {
+        fn build_template(&self, _context: &mut TemplateContext) -> Result<Self::Output> {
             Err(BevyError::error("fail!"))
         }
 
