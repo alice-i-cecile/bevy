@@ -6,7 +6,6 @@ use crate::{
     archetype::{Archetype, ArchetypeCreated, ArchetypeId, SpawnBundleStatus, ARCHETYPE_CREATED},
     bundle::{
         Bundle, BundleId, BundleInfo, ConstructRequiredComponents, DynamicBundle, InsertMode,
-        PrebuiltRequiredComponents, WriteRequiredComponents,
     },
     change_detection::{MaybeLocation, Tick},
     entity::{Entity, EntityAllocator, EntityLocation},
@@ -32,8 +31,7 @@ impl<'w> BundleSpawner<'w> {
     ///
     /// # Safety
     /// Caller must ensure that `bundle_id` exists in `world.bundles`, and that the bundle has no required
-    /// templates, unless it is only used with [`Self::spawn_at_prebuilt`]: required templates must be built with
-    /// world access before spawning, which a [`BundleSpawner`] cannot do.
+    /// templates: those must be built with world access before spawning, which a [`BundleSpawner`] cannot do.
     #[inline]
     pub(crate) unsafe fn new_with_id(
         world: &'w mut World,
@@ -42,6 +40,7 @@ impl<'w> BundleSpawner<'w> {
     ) -> Self {
         // SAFETY: bundle exists per precondition
         let bundle_info = unsafe { world.bundles.get_unchecked(bundle_id) };
+        debug_assert!(!bundle_info.has_required_templates);
         // SAFETY: retrieved from same world in previous line
         let (new_archetype_id, is_new_created) = unsafe {
             bundle_info.insert_bundle_into_archetype(
@@ -108,44 +107,6 @@ impl<'w> BundleSpawner<'w> {
         bundle: MovingPtr<'_, T>,
         caller: MaybeLocation,
     ) -> EntityLocation {
-        // SAFETY: the caller upholds the preconditions, and constructors build every required component
-        unsafe { self.spawn_at_with_required(entity, bundle, ConstructRequiredComponents, caller) }
-    }
-
-    /// Like [`Self::spawn_at`], but writes required components that were already built, in the order of the
-    /// bundle's required components, instead of constructing them. This works for bundles with required templates.
-    ///
-    /// # Safety
-    /// Same as [`Self::spawn_at`], and each pointer in `required` must own a value of the bundle's required component
-    /// at the same index.
-    pub(crate) unsafe fn spawn_at_prebuilt<T: DynamicBundle>(
-        &mut self,
-        entity: Entity,
-        bundle: MovingPtr<'_, T>,
-        required: &[NonNull<u8>],
-        caller: MaybeLocation,
-    ) -> EntityLocation {
-        // SAFETY: the caller upholds the preconditions
-        unsafe {
-            self.spawn_at_with_required(
-                entity,
-                bundle,
-                PrebuiltRequiredComponents(required),
-                caller,
-            )
-        }
-    }
-
-    /// # Safety
-    /// Same as [`Self::spawn_at`], except that `required_values` must write every required component of the bundle.
-    #[inline(always)]
-    unsafe fn spawn_at_with_required<T: DynamicBundle>(
-        &mut self,
-        entity: Entity,
-        bundle: MovingPtr<'_, T>,
-        required_values: impl WriteRequiredComponents,
-        caller: MaybeLocation,
-    ) -> EntityLocation {
         // SAFETY: We do not make any structural changes to the archetype graph through self.world so these pointers always remain valid
         let bundle_info = unsafe { self.bundle_info.as_ref() };
         let location = {
@@ -173,7 +134,7 @@ impl<'w> BundleSpawner<'w> {
                     sparse_sets,
                     &SpawnBundleStatus,
                     &bundle_info.required_component_constructors,
-                    required_values,
+                    ConstructRequiredComponents,
                     entity,
                     table_row,
                     self.change_tick,

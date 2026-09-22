@@ -1,8 +1,8 @@
 use crate::{
-    archetype::{Archetype, ArchetypeId},
+    archetype::Archetype,
     bundle::{
-        Bundle, BundleFromComponents, BundleId, BundleInserter, BundleRemover, BundleSpawner,
-        DynamicBundle, InsertMode,
+        Bundle, BundleFromComponents, BundleId, BundleInserter, BundleRemover, DynamicBundle,
+        InsertMode,
     },
     change_detection::{ComponentTicks, MaybeLocation, MutUntyped, Tick},
     component::{
@@ -1122,7 +1122,6 @@ impl<'w> EntityWorldMut<'w> {
                 mode,
                 caller,
                 relationship_hook_mode,
-                false,
             );
         };
         // SAFETY:
@@ -1392,7 +1391,6 @@ impl<'w> EntityWorldMut<'w> {
         mode: InsertMode,
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
-        spawning: bool,
     ) -> Result {
         // SAFETY: the caller registered `bundle_id` for `T`
         let explicit = unsafe { self.world.bundles.get_unchecked(bundle_id) }.explicit_components();
@@ -1426,7 +1424,6 @@ impl<'w> EntityWorldMut<'w> {
                 mode,
                 caller,
                 relationship_hook_mode,
-                spawning,
             )
         };
         if result.is_ok() {
@@ -1472,7 +1469,6 @@ impl<'w> EntityWorldMut<'w> {
                 mode,
                 caller,
                 relationship_hook_mode,
-                false,
             )
         }
     }
@@ -1494,7 +1490,6 @@ impl<'w> EntityWorldMut<'w> {
         mode: InsertMode,
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
-        spawning: bool,
     ) -> Result {
         // SAFETY: the caller upholds the preconditions
         let result = unsafe {
@@ -1504,7 +1499,6 @@ impl<'w> EntityWorldMut<'w> {
                 mode,
                 caller,
                 relationship_hook_mode,
-                spawning,
             )
         };
         scratch.clear();
@@ -1521,7 +1515,6 @@ impl<'w> EntityWorldMut<'w> {
         mode: InsertMode,
         caller: MaybeLocation,
         relationship_hook_mode: RelationshipHookMode,
-        spawning: bool,
     ) -> Result {
         // SAFETY: the caller upholds the preconditions
         let missing = match unsafe { self.build_required_components(bundle_id, scratch, mode) } {
@@ -1561,6 +1554,11 @@ impl<'w> EntityWorldMut<'w> {
 
         let location = self.location();
         let change_tick = self.world.change_tick();
+        // SAFETY: the caller ensures `bundle_id` is valid, and the archetype id is the entity's.
+        // The inserter writes the built required components instead of constructing them.
+        let mut inserter = unsafe {
+            BundleInserter::new_unchecked(self.world, location.archetype_id, bundle_id, change_tick)
+        };
         let explicit = ptrs[..explicit_len].iter().map(|&ptr| {
             // SAFETY: these own values of the explicit components
             unsafe { OwningPtr::new(ptr) }
@@ -1569,53 +1567,21 @@ impl<'w> EntityWorldMut<'w> {
             components: explicit_storage_types.iter().copied().zip(explicit),
         };
         move_as_ptr!(bundle);
-        let required = &ptrs[explicit_len..written];
-        if spawning && location.archetype_id == ArchetypeId::EMPTY {
-            // Spawning straight into the target archetype is cheaper than moving the entity out of the empty one.
-            // SAFETY: the entity is spawned at `location`, which has no components
-            unsafe {
-                self.world
-                    .entities
-                    .update_existing_location(self.entity.index(), None);
-                self.remove_from_storages(location);
-            }
-            // SAFETY: the caller ensures `bundle_id` is valid.
-            // The spawner writes the built required components instead of constructing them.
-            let mut spawner =
-                unsafe { BundleSpawner::new_with_id(self.world, bundle_id, change_tick) };
-            // SAFETY:
-            // - the entity is allocated, but no longer spawned
-            // - `bundle` holds the components of `bundle_id` in bundle order, and has no effect
-            // - `missing` was planned for the empty archetype, so it holds every required component of the bundle
-            self.location =
-                Some(unsafe { spawner.spawn_at_prebuilt(self.entity, bundle, required, caller) });
-        } else {
-            // SAFETY: the caller ensures `bundle_id` is valid, and the archetype id is the entity's.
-            // The inserter writes the built required components instead of constructing them.
-            let mut inserter = unsafe {
-                BundleInserter::new_unchecked(
-                    self.world,
-                    location.archetype_id,
-                    bundle_id,
-                    change_tick,
-                )
-            };
-            // SAFETY:
-            // - `location` is the entity's location, and `bundle` holds the components of `bundle_id` in bundle order
-            // - `missing` was planned for this archetype, so the built components match the inserter's required components
-            // - `DynamicInsertBundle` has no effect
-            self.location = Some(unsafe {
-                inserter.insert_prebuilt(
-                    self.entity,
-                    location,
-                    bundle,
-                    required,
-                    mode,
-                    caller,
-                    relationship_hook_mode,
-                )
-            });
-        }
+        // SAFETY:
+        // - `location` is the entity's location, and `bundle` holds the components of `bundle_id` in bundle order
+        // - `missing` was planned for this archetype, so the built components match the inserter's required components
+        // - `DynamicInsertBundle` has no effect
+        self.location = Some(unsafe {
+            inserter.insert_prebuilt(
+                self.entity,
+                location,
+                bundle,
+                &ptrs[explicit_len..written],
+                mode,
+                caller,
+                relationship_hook_mode,
+            )
+        });
         self.world.flush();
         self.update_location();
         Ok(())
@@ -2274,22 +2240,6 @@ impl<'w> EntityWorldMut<'w> {
                 .mark_spawned_or_despawned(self.entity.index(), caller, change_tick);
         }
 
-        // SAFETY: the entity was at `location`, which was just cleared
-        unsafe { self.remove_from_storages(location) };
-
-        // finish
-        // SAFETY: We just despawned it.
-        self.entity = unsafe { self.world.entities.mark_free(self.entity.index(), 1) };
-        self.world.flush();
-    }
-
-    /// Removes this entity and its components from `location`, without dropping them or triggering any hooks or observers,
-    /// and fixes the locations of the entities that are moved to fill the gap.
-    ///
-    /// # Safety
-    /// The entity must have been at `location`, and its location in [`Entities`] must already be cleared.
-    /// Its components must be dropped or moved out afterwards, if it has any.
-    unsafe fn remove_from_storages(&mut self, location: EntityLocation) {
         let table_row;
         let moved_entity;
         {
@@ -2348,6 +2298,11 @@ impl<'w> EntityWorldMut<'w> {
             self.world.archetypes[moved_location.archetype_id]
                 .set_entity_table_row(moved_location.archetype_row, table_row);
         }
+
+        // finish
+        // SAFETY: We just despawned it.
+        self.entity = unsafe { self.world.entities.mark_free(self.entity.index(), 1) };
+        self.world.flush();
     }
 
     /// Despawns the current entity.

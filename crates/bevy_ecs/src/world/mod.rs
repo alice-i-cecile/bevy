@@ -1226,7 +1226,6 @@ impl World {
             InsertMode::Replace,
             caller,
             RelationshipHookMode::Run,
-            true,
         ) {
             entity_mut.despawn();
             return Err(error);
