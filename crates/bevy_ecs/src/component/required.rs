@@ -1293,6 +1293,38 @@ mod tests {
     }
 
     #[test]
+    fn runtime_required_components_after_register_bundle() {
+        #[derive(Component)]
+        struct X;
+
+        #[derive(Component, Default)]
+        struct Y;
+
+        let mut world = World::new();
+        world.register_bundle::<X>();
+        world.register_required_components::<X, Y>();
+
+        let id = world.spawn(X).id();
+        assert!(world.entity(id).contains::<Y>());
+    }
+
+    #[test]
+    fn runtime_required_components_after_removing_missing_component() {
+        #[derive(Component)]
+        struct X;
+
+        #[derive(Component, Default)]
+        struct Y;
+
+        let mut world = World::new();
+        world.spawn_empty().remove::<X>();
+        world.register_required_components::<X, Y>();
+
+        let id = world.spawn(X).id();
+        assert!(world.entity(id).contains::<Y>());
+    }
+
+    #[test]
     fn runtime_required_components_fail_with_duplicate() {
         #[derive(Component)]
         #[require(Y)]
