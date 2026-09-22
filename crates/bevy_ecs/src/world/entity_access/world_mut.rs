@@ -6,7 +6,8 @@ use crate::{
     },
     change_detection::{ComponentTicks, MaybeLocation, MutUntyped, Tick},
     component::{
-        Component, ComponentId, Components, Mutable, RequiredComponentsScratch, StorageType,
+        Component, ComponentId, Components, Mutable, RequiredComponentConstructor,
+        RequiredComponentsScratch, StorageType,
     },
     entity::{Entity, EntityCloner, EntityClonerBuilder, EntityLocation, OptIn, OptOut},
     error::{BevyError, Result},
@@ -1516,20 +1517,24 @@ impl<'w> EntityWorldMut<'w> {
         relationship_hook_mode: RelationshipHookMode,
     ) -> Result {
         // SAFETY: the caller upholds the preconditions
-        if let Err(error) = unsafe { self.build_required_components(bundle_id, scratch, mode) } {
-            // SAFETY: nothing has been moved out of the scratch
-            unsafe { self.drop_components(&scratch.ids, &scratch.ptrs) };
-            self.world.flush();
-            self.update_location();
-            return Err(error);
-        }
+        let missing = match unsafe { self.build_required_components(bundle_id, scratch, mode) } {
+            Ok(missing) => missing,
+            Err(error) => {
+                // SAFETY: nothing has been moved out of the scratch
+                unsafe { self.drop_components(&scratch.ids, &scratch.ptrs) };
+                self.world.flush();
+                self.update_location();
+                return Err(error);
+            }
+        };
+        // SAFETY: see `build_required_components`
+        let missing = unsafe { missing.as_ref() };
 
         let RequiredComponentsScratch {
             ids,
             ptrs,
             explicit_len,
             explicit_storage_types,
-            missing,
             ..
         } = scratch;
         let explicit_len = *explicit_len;
@@ -1583,6 +1588,7 @@ impl<'w> EntityWorldMut<'w> {
     }
 
     /// Builds every required component that inserting `bundle_id` is missing into `scratch`.
+    /// Returns the required components that were built, as planned for the entity's current archetype.
     ///
     /// Templates have full world access and can change this entity, which changes which required
     /// components are missing, so this plans the insert again whenever the entity's archetype changes.
@@ -1597,7 +1603,7 @@ impl<'w> EntityWorldMut<'w> {
         bundle_id: BundleId,
         scratch: &mut RequiredComponentsScratch,
         mode: InsertMode,
-    ) -> Result {
+    ) -> Result<NonNull<[RequiredComponentConstructor]>> {
         'plan: loop {
             let Some(location) = self.location else {
                 return Err("Entity was despawned while building its required components".into());
@@ -1612,17 +1618,16 @@ impl<'w> EntityWorldMut<'w> {
                     change_tick,
                 )
             };
-            scratch.missing.clear();
-            scratch
-                .missing
-                .extend_from_slice(plan.required_components());
+            let missing = NonNull::from(plan.required_components());
+            // SAFETY: archetype edges are cached once and never removed, and their required components are boxed,
+            // so this stays valid while templates change the world. It is only ever read.
+            let missing: &[RequiredComponentConstructor] = unsafe { missing.as_ref() };
 
             let RequiredComponentsScratch {
                 alloc,
                 ids,
                 ptrs,
                 explicit_len,
-                missing,
                 ..
             } = &mut *scratch;
             let explicit_len = *explicit_len;
@@ -1684,7 +1689,7 @@ impl<'w> EntityWorldMut<'w> {
                 ptrs.push(ptr);
             }
             if self.location.map(|location| location.archetype_id) == Some(location.archetype_id) {
-                return Ok(());
+                return Ok(NonNull::from(missing));
             }
         }
     }

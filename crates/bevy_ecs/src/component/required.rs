@@ -275,8 +275,6 @@ pub(crate) struct RequiredComponentsScratch {
     pub(crate) explicit_len: usize,
     /// The storage types of the explicit components.
     pub(crate) explicit_storage_types: Vec<StorageType>,
-    /// The required components missing from the entity.
-    pub(crate) missing: Vec<RequiredComponentConstructor>,
 }
 
 impl RequiredComponentsScratch {
@@ -286,7 +284,6 @@ impl RequiredComponentsScratch {
         self.ptrs.clear();
         self.explicit_len = 0;
         self.explicit_storage_types.clear();
-        self.missing.clear();
         self.alloc.reset();
     }
 }
