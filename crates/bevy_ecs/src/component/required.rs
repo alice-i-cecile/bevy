@@ -893,6 +893,7 @@ mod tests {
     use crate::{
         bundle::Bundle,
         component::{Component, RequiredComponentsError},
+        entity::Entity,
         error::{ignore, BevyError, FallbackErrorHandler, Result},
         lifecycle::{Add, HookContext},
         observer::On,
@@ -2318,6 +2319,32 @@ mod tests {
         assert!(world.entity(nested).contains::<Nested>());
     }
 
+    #[test]
+    fn required_templates_spawn_entities_while_building() {
+        #[derive(Component)]
+        struct Spawned(Entity);
+
+        #[derive(Component)]
+        struct Marker;
+
+        #[derive(Component)]
+        #[require(~{template(|context: &mut TemplateContext| {
+            Ok(Spawned(context.entity.world_scope(|world| world.spawn_empty().id())))
+        })})]
+        struct Spawner;
+
+        let mut world = World::new();
+        let before = world.spawn_empty().id();
+        let spawner = world.spawn(Spawner).id();
+        let spawned = world.get::<Spawned>(spawner).unwrap().0;
+        world.entity_mut(spawned).insert(Marker);
+        world.entity_mut(before).insert(Marker);
+
+        assert!(world.entity(spawned).contains::<Marker>());
+        assert!(world.entity(before).contains::<Marker>());
+        assert!(world.entity(spawner).contains::<Spawner>());
+        assert_eq!(world.query::<&Marker>().iter(&world).count(), 2);
+    }
     #[test]
     fn required_templates_batches() {
         #[derive(Component, Debug, PartialEq)]
