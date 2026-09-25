@@ -1,17 +1,17 @@
 use crate::_bsn::types::{
-    Bsn, BsnConstructor, BsnEntry, BsnFields, BsnFnArg, BsnFnArgs, BsnFnCall, BsnListRoot,
-    BsnNamedField, BsnNamedFieldOrStructUpdate, BsnRelatedSceneList, BsnRoot, BsnScene, BsnSceneFn,
-    BsnSceneList, BsnSceneListItem, BsnSceneListItems, BsnStructUpdate, BsnTuple, BsnType,
-    BsnUnnamedField, BsnValue,
+    Bsn, BsnConstructor, BsnEntry, BsnFields, BsnFnArgs, BsnFnCall, BsnListRoot, BsnNamedField,
+    BsnNamedFieldOrStructUpdate, BsnRelatedSceneList, BsnRoot, BsnScene, BsnSceneFn, BsnSceneList,
+    BsnSceneListItem, BsnSceneListItems, BsnStructUpdate, BsnTuple, BsnType, BsnUnnamedField,
+    BsnValue,
 };
 use bevy_macro_utils::{path_to_string, PathType};
-use proc_macro2::{Delimiter, TokenStream, TokenTree};
+use proc_macro2::{TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{
     braced, bracketed,
     buffer::Cursor,
     custom_punctuation, parenthesized,
-    parse::{discouraged::Speculative, Parse, ParseBuffer, ParseStream},
+    parse::{Parse, ParseBuffer, ParseStream},
     spanned::Spanned,
     token::{At, Brace, Bracket, Colon, Comma, Dot, Paren, Tilde},
     Ident, Lit, LitStr, Member, Path, Result, Token,
@@ -192,12 +192,10 @@ impl BsnEntry {
                 }
                 PathType::Function => {
                     if input.peek(Paren) {
-                        let forked = input.fork();
                         let args = input.parse::<BsnFnArgs>()?;
                         if input.peek(Dot) {
-                            let contents = group_tokens(&forked, Delimiter::Parenthesis)?;
-                            let dot_expr = parse_extended_dot_expression(input)?;
-                            BsnEntry::TemplateValue(quote! {#path #contents #dot_expr})
+                            parse_extended_dot_expression(input)?;
+                            BsnEntry::TemplateValue(tokens_between(start_type, input.cursor()))
                         } else {
                             BsnEntry::Function(BsnFnCall { path, args })
                         }
@@ -474,49 +472,6 @@ impl Parse for BsnNamedField {
     }
 }
 
-/// Parses tuple arguments into a list of [`TokenStream`]s. This avoids
-/// fully parsing Rust expressions, which makes this less strict and cheaper to parse.
-/// This also allows autocomplete to work, even if the tokens aren't a valid rust expression.
-///
-/// This will accept anything "tuple-like" in the form (X1, ..., XY), where XY is a `TokenStream`.
-fn parse_tuple_loose(input: &ParseBuffer) -> Result<Vec<TokenStream>> {
-    let content;
-    parenthesized!(content in input);
-    let mut args = Vec::new();
-    let mut current_tokens = Vec::new();
-    let mut in_closure_args = false;
-    let mut generic_scope = 0;
-    while !content.is_empty() {
-        let tt = content.parse::<TokenTree>()?;
-        match &tt {
-            TokenTree::Punct(punct) => match punct.as_char() {
-                ',' if !in_closure_args && generic_scope == 0 => {
-                    args.push(TokenStream::from_iter(current_tokens.drain(..)));
-                }
-                '|' => {
-                    in_closure_args = !in_closure_args;
-                    current_tokens.push(tt);
-                }
-                '<' => {
-                    generic_scope += 1;
-                    current_tokens.push(tt);
-                }
-                '>' => {
-                    generic_scope -= 1;
-                    current_tokens.push(tt);
-                }
-                _ => current_tokens.push(tt),
-            },
-            _ => current_tokens.push(tt),
-        }
-    }
-
-    if !current_tokens.is_empty() {
-        args.push(TokenStream::from_iter(current_tokens));
-    }
-    Ok(args)
-}
-
 /// Parse a closure "loosely" without caring about the tokens between `|...|` and `{...}`. This ensures autocomplete works.
 fn parse_closure_loose(input: &ParseBuffer) -> Result<TokenStream> {
     let start = input.cursor();
@@ -551,7 +506,7 @@ fn parse_extended_dot_expression(input: &ParseBuffer) -> Result<TokenStream> {
         let _ = input.parse::<Dot>()?;
         let _ = input.parse::<Member>()?;
         if input.peek(Paren) {
-            let _ = parse_tuple_loose(input)?;
+            let _ = parenthesized_tokens(input)?;
         }
     }
 
@@ -572,17 +527,6 @@ fn parenthesized_tokens(input: &ParseBuffer) -> Result<TokenStream> {
     let content;
     parenthesized!(content in input);
     content.parse::<TokenStream>()
-}
-
-fn group_tokens(input: &ParseBuffer, delimiter: Delimiter) -> Result<TokenStream> {
-    let tree = input.parse::<TokenTree>()?;
-    if let TokenTree::Group(group) = &tree
-        && group.delimiter() == delimiter
-    {
-        Ok(tree.into_token_stream())
-    } else {
-        Err(input.error(format!("Expected {:?}", delimiter)))
-    }
 }
 
 // Used to parse bracketed tokens "loosely" without caring about the content in `[...]`. This ensures autocomplete works.
@@ -685,36 +629,7 @@ impl Parse for BsnValue {
 
 impl Parse for BsnFnArgs {
     fn parse(input: ParseStream) -> Result<Self> {
-        let mut fn_args = Vec::new();
-        for tokens in parse_tuple_loose(input)? {
-            fn_args.push(syn::parse2::<BsnFnArg>(tokens)?);
-        }
-        Ok(BsnFnArgs(fn_args))
-    }
-}
-
-impl Parse for BsnFnArg {
-    fn parse(input: ParseStream) -> Result<Self> {
-        Ok(if input.peek(Token![#]) {
-            let forked = input.fork();
-            if let Ok(ident) = forked.parse::<EntityNameIdent>() {
-                input.advance_to(&forked);
-                BsnFnArg::EntityName(ident.0)
-            } else {
-                BsnFnArg::Tokens(input.parse::<TokenStream>()?)
-            }
-        } else {
-            BsnFnArg::Tokens(input.parse::<TokenStream>()?)
-        })
-    }
-}
-
-struct EntityNameIdent(Ident);
-
-impl Parse for EntityNameIdent {
-    fn parse(input: ParseStream) -> Result<Self> {
-        input.parse::<Token![#]>()?;
-        Ok(EntityNameIdent(input.parse::<Ident>()?))
+        Ok(BsnFnArgs(parenthesized_tokens(input)?))
     }
 }
 

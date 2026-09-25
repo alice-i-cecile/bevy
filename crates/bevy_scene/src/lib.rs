@@ -183,6 +183,9 @@
 //! Using `#Name` as a value in [`bsn!`] will result in an [`EntityTemplate`], which is a [`Template`] that resolves to an [`Entity`]
 //! [`Component`]s with [`Entity`] fields should generally derive [`FromTemplate`], because [`Entity`] uses [`FromTemplate`] to map to [`EntityTemplate`].
 //!
+//! Named entity references can also be nested inside function arguments or as part of method chains.
+//! References inside macro invocations, such as `vec![#A]`, do not compile.
+//!
 //! ### Scope rules
 //!
 //! Each [`bsn!`] invocation creates its own name scope. A name is visible to the root
@@ -1662,6 +1665,95 @@ mod tests {
             },
             world.entity(entities[1]).get::<Target>().unwrap()
         );
+    }
+
+    #[test]
+    fn entity_references_in_nested_arguments() {
+        use bevy_ecs::template::{EntityTemplate, VecTemplate};
+
+        #[derive(Component, FromTemplate)]
+        struct Chord {
+            #[template(built_in)]
+            actions: Vec<Entity>,
+        }
+
+        impl ChordTemplate {
+            fn new(actions: impl IntoIterator<Item = EntityTemplate>) -> Self {
+                Self {
+                    actions: VecTemplate(actions.into_iter().collect()),
+                }
+            }
+
+            fn with(mut self, action: EntityTemplate) -> Self {
+                self.actions.0.push(action);
+                self
+            }
+        }
+
+        fn chord(actions: impl IntoIterator<Item = EntityTemplate>) -> ChordTemplate {
+            ChordTemplate::new(actions)
+        }
+
+        fn chord_scene(actions: [EntityTemplate; 2]) -> impl Scene {
+            bsn! { Chord::new(actions) }
+        }
+
+        let mut app = test_app();
+        let world = app.world_mut();
+        let entities = world
+            .spawn_scene_list(bsn_list! {
+                #A
+                --
+                #B
+                --
+                Chord::new([#A, #B])
+                --
+                Chord::default().with(#A).with(#B)
+                --
+                chord([#A]).with(#B)
+                --
+                @chord_scene([#A, #B])
+            })
+            .unwrap();
+
+        for &entity in &entities[2..] {
+            assert_eq!(
+                world.entity(entity).get::<Chord>().unwrap().actions,
+                [entities[0], entities[1]]
+            );
+        }
+    }
+
+    #[test]
+    fn entity_references_work_in_macro_rules() {
+        use bevy_ecs::template::EntityTemplate;
+        #[derive(Component, Clone, FromTemplate, PartialEq, Debug)]
+        struct Target {
+            entity: Entity,
+        }
+
+        fn target(entity: EntityTemplate) -> TargetTemplate {
+            TargetTemplate { entity }
+        }
+
+        macro_rules! targets_root {
+            ($name:tt) => {
+                bsn! {
+                    #$name
+                    target(#$name)
+                    Children [ Target { entity: #$name } ]
+                }
+            };
+        }
+
+        let mut app = test_app();
+        let world = app.world_mut();
+        let root = world.spawn_scene(targets_root!(Root)).unwrap().id();
+        let child = world.entity(root).get::<Children>().unwrap()[0];
+
+        for entity in [root, child] {
+            assert_eq!(world.entity(entity).get::<Target>().unwrap().entity, root);
+        }
     }
 
     #[test]

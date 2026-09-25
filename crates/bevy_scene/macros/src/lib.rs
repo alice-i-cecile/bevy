@@ -55,6 +55,7 @@ use syn::{parse_macro_input, DeriveInput};
 /// | **Named entity references**                |                                                                                                                |
 /// | `#MyName`                                  | Becomes `Name("MyName")` when used as a `part` of a scene                                                      |
 /// | `CompA(#MyName)`<br>`@scene(#MyName)`      | Referring to the entity which was named `MyName` in this scope, results in an [`EntityTemplate`] being passed  |
+/// | `f([#A, #B])`                              | Named entity reference in function or method arguments                                                         |
 /// | `Name("Foo")`                              | Manually sets the Name component, can be put after a `#MyName` to use a custom name while allowing references  |
 /// | **Observers**                              |                                                                                                                |
 /// | `on(\|ev: On<Ev>\| { … })`                 | Attaches an entity [`observer`] for the [`EntityEvent`] `Ev` to this entity. In this example, using a closure  |

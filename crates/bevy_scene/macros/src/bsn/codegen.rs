@@ -1,7 +1,7 @@
 use crate::_bsn::types::{
-    Bsn, BsnConstructor, BsnEntry, BsnFields, BsnFnArg, BsnFnArgs, BsnFnCall, BsnListRoot,
-    BsnNamedField, BsnRelatedSceneList, BsnRoot, BsnScene, BsnSceneFn, BsnSceneListItem,
-    BsnSceneListItems, BsnStructUpdate, BsnType, BsnUnnamedField, BsnValue,
+    Bsn, BsnConstructor, BsnEntry, BsnFields, BsnFnArgs, BsnFnCall, BsnListRoot, BsnNamedField,
+    BsnRelatedSceneList, BsnRoot, BsnScene, BsnSceneFn, BsnSceneListItem, BsnSceneListItems,
+    BsnStructUpdate, BsnType, BsnUnnamedField, BsnValue,
 };
 use bevy_macro_utils::{fq_std::FQDefault, path_to_string};
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
@@ -70,6 +70,73 @@ impl<'a> BsnCodegenCtx<'a> {
     fn fixed_entity_ref(&mut self, ident: &Ident) -> (String, usize) {
         let string = ident.to_string();
         (ident.to_string(), self.entity_refs.get(string))
+    }
+
+    fn entity_reference(&mut self, ident: &Ident) -> TokenStream {
+        let index = self.entity_refs.get(ident.to_string());
+        let bevy_ecs = self.bevy_ecs;
+        let invocation = &self.invocation_index;
+        let span = Span::call_site().located_at(ident.span());
+        quote_spanned! {span=>
+            #bevy_ecs::template::EntityTemplate::from_reference(#invocation, #index, _call_id)
+        }
+    }
+
+    /// Replaces each `#name` in `tokens` with an entity reference. References inside macro
+    /// invocations other than `bsn!` and `bsn_list!` are reported as errors.
+    fn resolve_entity_refs(&mut self, tokens: TokenStream) -> TokenStream {
+        self.resolve_entity_refs_in(tokens, None)
+    }
+
+    fn resolve_entity_refs_in(
+        &mut self,
+        tokens: TokenStream,
+        enclosing_macro: Option<&Ident>,
+    ) -> TokenStream {
+        let tokens = tokens.into_iter().collect::<Vec<_>>();
+        let mut resolved = TokenStream::new();
+        let mut rest = tokens.as_slice();
+        loop {
+            rest = match rest {
+                [] => break,
+                [TokenTree::Punct(hash), TokenTree::Ident(ident), rest @ ..]
+                    if hash.as_char() == '#' =>
+                {
+                    if let Some(macro_name) = enclosing_macro {
+                        self.errors.push(syn::Error::new(
+                            ident.span(),
+                            format!(
+                                "Named entity references are not supported inside macro invocations: `#{ident}` is inside `{macro_name}!`"
+                            ),
+                        ));
+                    }
+                    resolved.extend(self.entity_reference(ident));
+                    rest
+                }
+                [TokenTree::Ident(name), TokenTree::Punct(bang), TokenTree::Group(body), rest @ ..]
+                    if bang.as_char() == '!' && !is_keyword(name) =>
+                {
+                    resolved.extend(quote! { #name #bang });
+                    if name == "bsn" || name == "bsn_list" {
+                        body.to_tokens(&mut resolved);
+                    } else {
+                        let stream = self.resolve_entity_refs_in(body.stream(), Some(name));
+                        resolved.extend([with_stream(body, stream)]);
+                    }
+                    rest
+                }
+                [TokenTree::Group(group), rest @ ..] => {
+                    let stream = self.resolve_entity_refs_in(group.stream(), enclosing_macro);
+                    resolved.extend([with_stream(group, stream)]);
+                    rest
+                }
+                [token, rest @ ..] => {
+                    token.to_tokens(&mut resolved);
+                    rest
+                }
+            };
+        }
+        resolved
     }
 
     fn validate_macro_uses_braces(&mut self) {
@@ -340,6 +407,7 @@ impl BsnEntry {
             } => EntryResult::CombinedSceneFunction({
                 let args = args.into_tokens(ctx);
                 if let Some(dot_expr) = dot_expression {
+                    let dot_expr = ctx.resolve_entity_refs(dot_expr);
                     quote! {
                         _scene.insert_template::<#type_path>(#type_path::#function #args #dot_expr);
                     }
@@ -360,6 +428,7 @@ impl BsnEntry {
             } => EntryResult::CombinedSceneFunction({
                 let args = args.into_tokens(ctx);
                 if let Some(dot_expr) = dot_expression {
+                    let dot_expr = ctx.resolve_entity_refs(dot_expr);
                     quote! {
                         _scene.insert_template(<#type_path as #bevy_ecs::template::FromTemplate>::Template::#function #args #dot_expr);
                     }
@@ -388,9 +457,12 @@ impl BsnEntry {
                     #bevy_scene::NameEntityReference { name: #bevy_ecs::name::Name(#name.into()), reference: #bevy_ecs::template::SceneEntityReference::new(#invocation, #index, _call_id,) }.resolve_inline(_context, _scene);
                 })
             }
-            BsnEntry::TemplateValue(token_stream) => EntryResult::CombinedSceneFunction(quote! {
-                _scene.insert_template(#token_stream);
-            }),
+            BsnEntry::TemplateValue(token_stream) => {
+                let token_stream = ctx.resolve_entity_refs(token_stream);
+                EntryResult::CombinedSceneFunction(quote! {
+                    _scene.insert_template(#token_stream);
+                })
+            }
             BsnEntry::Function(BsnFnCall { args, path }) => {
                 let args = args.into_tokens(ctx);
                 EntryResult::CombinedSceneFunction(quote! {
@@ -813,14 +885,7 @@ impl BsnValue {
                 ident.to_token_stream()
             }
             BsnValue::Type(ty) => ty.init_tokens(ctx, false)?,
-            BsnValue::Name(ident) => {
-                let index = ctx.entity_refs.get(ident.to_string());
-                let bevy_ecs = ctx.bevy_ecs;
-                let invocation = ctx.invocation_index.clone();
-                quote! {
-                    #bevy_ecs::template::EntityTemplate::from_reference(#invocation, #index,  _call_id)
-                }
-            }
+            BsnValue::Name(ident) => ctx.entity_reference(ident),
             BsnValue::Range {
                 start,
                 end,
@@ -884,28 +949,11 @@ impl BsnSceneFn {
 
 impl BsnTokenStream for BsnFnArgs {
     fn into_tokens(self, ctx: &mut BsnCodegenCtx) -> TokenStream {
-        let args = self.0.into_iter().map(|a| a.into_tokens(ctx));
-        quote! { (#(#args),*) }
+        let args = ctx.resolve_entity_refs(self.0);
+        quote! { (#args) }
     }
 }
 
-impl BsnTokenStream for BsnFnArg {
-    fn into_tokens(self, ctx: &mut BsnCodegenCtx) -> TokenStream {
-        let bevy_ecs = ctx.bevy_ecs;
-        match self {
-            BsnFnArg::EntityName(ident) => {
-                let index = ctx.entity_refs.get(ident.to_string());
-                let invocation = ctx.invocation_index.clone();
-                quote! {
-                    #bevy_ecs::template::EntityTemplate::SceneEntityReference(
-                        #bevy_ecs::template::SceneEntityReference::new(#invocation, #index, _call_id)
-                    )
-                }
-            }
-            BsnFnArg::Tokens(token_stream) => token_stream.clone(),
-        }
-    }
-}
 impl ToTokens for BsnValue {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
@@ -943,6 +991,16 @@ impl ToTokens for BsnValue {
             }
         }
     }
+}
+
+fn is_keyword(ident: &Ident) -> bool {
+    syn::parse2::<Ident>(ident.to_token_stream()).is_err()
+}
+
+fn with_stream(group: &Group, stream: TokenStream) -> TokenTree {
+    let mut new_group = Group::new(group.delimiter(), stream);
+    new_group.set_span(group.span());
+    TokenTree::Group(new_group)
 }
 
 fn deprecation_warning(span: Span, name: &str, message: &str) -> TokenStream {
@@ -1012,6 +1070,39 @@ mod tests {
                 deprecations: Vec::new(),
             }
         }
+    }
+
+    #[test]
+    fn entity_refs_resolve_in_nested_groups() {
+        let mut refs = EntityRefs::default();
+        let paths = TestPaths::new();
+        let mut exprs = HoistedExpressions::default();
+        let mut ctx = paths.ctx(&mut refs, &mut exprs);
+        let tokens = "foo([#a, if !(#b) {}]).with(#a)".parse().unwrap();
+
+        let resolved = ctx.resolve_entity_refs(tokens);
+
+        let reference = |index: usize| quote!(bevy_ecs::template::EntityTemplate::from_reference(("", 0, 0), #index, _call_id));
+        let (a, b) = (reference(0), reference(1));
+        assert_eq!(
+            resolved.to_string(),
+            quote!(foo([#a, if !(#b) {}]).with(#a)).to_string()
+        );
+        assert!(ctx.errors.is_empty());
+    }
+
+    #[test]
+    fn entity_refs_skip_attributes_and_nested_bsn() {
+        let mut refs = EntityRefs::default();
+        let paths = TestPaths::new();
+        let mut exprs = HoistedExpressions::default();
+        let mut ctx = paths.ctx(&mut refs, &mut exprs);
+        let tokens: TokenStream = "#[attr] x != !y, id!(bsn! { #a })".parse().unwrap();
+
+        let resolved = ctx.resolve_entity_refs(tokens.clone());
+
+        assert_eq!(resolved.to_string(), tokens.to_string());
+        assert!(ctx.errors.is_empty());
     }
 
     #[test]

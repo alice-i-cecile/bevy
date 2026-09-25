@@ -142,10 +142,4 @@ pub enum BsnValue {
 }
 
 #[derive(Debug)]
-pub enum BsnFnArg {
-    EntityName(Ident),
-    Tokens(TokenStream),
-}
-
-#[derive(Debug)]
-pub struct BsnFnArgs(pub Vec<BsnFnArg>);
+pub struct BsnFnArgs(pub TokenStream);
