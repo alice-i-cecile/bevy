@@ -1092,6 +1092,50 @@ mod tests {
     }
 
     #[test]
+    fn entity_refs_resolve_in_expression_shapes() {
+        let mut refs = EntityRefs::default();
+        let paths = TestPaths::new();
+        let mut exprs = HoistedExpressions::default();
+        let mut ctx = paths.ctx(&mut refs, &mut exprs);
+        let tokens = "(
+            &#a, &mut #b, &raw const #a, &raw mut #b, *#a, -#b, !#a,
+            #a + #b == #a, #a = #b, #a <<= #b,
+            #a as Entity, [#a, #b][0], xs[#a], (#a, #b).0,
+            #a..#b, #a..=#b, ..#a, #a?,
+            #a.method::<Vec<u8>>(#b), f::<Vec<u8>>(#a),
+            |x: u8| #a, move || #b, async move |x, y| { #a },
+            { let x = #a; x }, unsafe { #b }, loop { break #a }, async { #b }, const { #a }, try { #b },
+            for x in [#a, #b] { g(x) }, while #a { #b }, if #a { #b } else { #a },
+            match #a { x if x == #b => #a, _ => #b },
+            S { field: #a, ..#b }, [#a; 2],
+            #[allow(unused)] #a, { #![allow(unused)] #b },
+        )"
+        .parse()
+        .unwrap();
+
+        let resolved = ctx.resolve_entity_refs(tokens);
+
+        let reference = |index: usize| quote!(bevy_ecs::template::EntityTemplate::from_reference(("", 0, 0), #index, _call_id));
+        let (a, b) = (reference(0), reference(1));
+        let expected = quote!((
+            &#a, &mut #b, &raw const #a, &raw mut #b, *#a, -#b, !#a,
+            #a + #b == #a, #a = #b, #a <<= #b,
+            #a as Entity, [#a, #b][0], xs[#a], (#a, #b).0,
+            #a..#b, #a..=#b, ..#a, #a?,
+            #a.method::<Vec<u8>>(#b), f::<Vec<u8>>(#a),
+            |x: u8| #a, move || #b, async move |x, y| { #a },
+            { let x = #a; x }, unsafe { #b }, loop { break #a }, async { #b }, const { #a }, try { #b },
+            for x in [#a, #b] { g(x) }, while #a { #b }, if #a { #b } else { #a },
+            match #a { x if x == #b => #a, _ => #b },
+            S { field: #a, ..#b }, [#a; 2],
+            #[allow(unused)] #a, { #![allow(unused)] #b },
+        ));
+        let strip = |tokens: TokenStream| tokens.to_string().replace(' ', "");
+        assert_eq!(strip(resolved), strip(expected));
+        assert!(ctx.errors.is_empty());
+    }
+
+    #[test]
     fn entity_refs_skip_attributes_and_nested_bsn() {
         let mut refs = EntityRefs::default();
         let paths = TestPaths::new();

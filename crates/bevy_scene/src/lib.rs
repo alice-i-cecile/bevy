@@ -1713,6 +1713,24 @@ mod tests {
                 chord([#A]).with(#B)
                 --
                 @chord_scene([#A, #B])
+                --
+                Chord::new({ let first = #A; [first, #B] })
+                --
+                Chord::new(if true { [#A, #B] } else { [#B, #A] })
+                --
+                Chord::new([#B, #A].into_iter().rev())
+                --
+                Chord::new([[#A, #B]][0])
+                --
+                Chord::new([0, 1].map(|i| [#A, #B][i]))
+                --
+                Chord::new({
+                    let mut actions = Vec::new();
+                    for action in [#A, #B] {
+                        actions.push(action);
+                    }
+                    actions
+                })
             })
             .unwrap();
 
