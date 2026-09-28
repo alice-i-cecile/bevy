@@ -36,7 +36,7 @@ pub fn fuzzy_match_component_name(
     fuzzy_name: &str,
     threshold: f64,
 ) -> Vec<(f64, ComponentId)> {
-    let candidates = world.components().iter_registered().map(|info| info.id());
+    let candidates = world.components().iter_registered().map(|(id, _)| id);
     fuzzy_name_to_id(world, fuzzy_name, candidates, threshold)
 }
 
