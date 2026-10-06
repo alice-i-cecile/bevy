@@ -3587,4 +3587,154 @@ mod tests {
         let foo = world.entity(entities[0]).get::<Foo>().unwrap();
         assert_eq!(foo.0, entities[1..]);
     }
+
+    #[test]
+    fn array_argument_allows_trailing_tokens() {
+        #[derive(Component, Default, Clone)]
+        struct Marker(usize);
+
+        fn count_scene(len: usize) -> impl Scene {
+            bsn! { Marker({ len }) }
+        }
+
+        let mut app = test_app();
+        let world = app.world_mut();
+        let entity = world
+            .spawn_scene(bsn! { @count_scene([1, 2, 3].len()) })
+            .unwrap()
+            .id();
+        assert_eq!(world.entity(entity).get::<Marker>().unwrap().0, 3);
+    }
+
+    #[test]
+    fn array_argument_preserves_plain_rust_struct_literal() {
+        #[derive(Component, Default, Clone)]
+        struct Marker(u32);
+
+        #[derive(Clone, Copy)]
+        struct Pair {
+            a: u32,
+            b: u32,
+        }
+
+        fn pair_scene(pairs: [Pair; 1]) -> impl Scene {
+            bsn! { Marker({ pairs[0].a + pairs[0].b }) }
+        }
+
+        let mut app = test_app();
+        let world = app.world_mut();
+        let entity = world
+            .spawn_scene(bsn! { @pair_scene([Pair { a: 7, b: 8 }]) })
+            .unwrap()
+            .id();
+        assert_eq!(world.entity(entity).get::<Marker>().unwrap().0, 15);
+    }
+
+    #[test]
+    fn direct_array_field_in_named_struct() {
+        #[derive(Component, Default, Clone, PartialEq, Debug)]
+        struct Holder {
+            values: [u32; 3],
+        }
+
+        let mut app = test_app();
+        let world = app.world_mut();
+        let entity = world
+            .spawn_scene(bsn! { Holder { values: [1, 2, 3] } })
+            .unwrap()
+            .id();
+        assert_eq!(
+            world.entity(entity).get::<Holder>().unwrap().values,
+            [1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn direct_array_field_in_tuple_struct() {
+        #[derive(Component, Default, Clone, PartialEq, Debug)]
+        struct Holder([u32; 3]);
+
+        let mut app = test_app();
+        let world = app.world_mut();
+        let entity = world.spawn_scene(bsn! { Holder([4, 5, 6]) }).unwrap().id();
+        assert_eq!(world.entity(entity).get::<Holder>().unwrap().0, [4, 5, 6]);
+    }
+
+    #[test]
+    fn direct_array_field_in_enum() {
+        #[derive(Component, Default, Clone, PartialEq, Debug)]
+        enum Holder {
+            #[default]
+            Empty,
+            Values {
+                array: [u32; 3],
+            },
+        }
+
+        let mut app = test_app();
+        let world = app.world_mut();
+        let entity = world
+            .spawn_scene(bsn! { Holder::Values { array: [7, 8, 9] } })
+            .unwrap()
+            .id();
+        assert_eq!(
+            *world.entity(entity).get::<Holder>().unwrap(),
+            Holder::Values { array: [7, 8, 9] }
+        );
+    }
+
+    #[test]
+    fn direct_array_field_with_entity_references() {
+        use bevy_ecs::template::EntityTemplate;
+
+        #[derive(Component)]
+        struct Refs {
+            entities: [Entity; 2],
+        }
+
+        impl FromTemplate for Refs {
+            type Template = RefsTemplate;
+        }
+
+        #[derive(Default)]
+        struct RefsTemplate {
+            entities: [EntityTemplate; 2],
+        }
+
+        impl Template for RefsTemplate {
+            type Output = Refs;
+
+            fn build_template(
+                &self,
+                context: &mut bevy_ecs::template::TemplateContext,
+            ) -> Result<Self::Output> {
+                Ok(Refs {
+                    entities: [
+                        self.entities[0].build_template(context)?,
+                        self.entities[1].build_template(context)?,
+                    ],
+                })
+            }
+
+            fn clone_template(&self) -> Self {
+                RefsTemplate {
+                    entities: self.entities.clone(),
+                }
+            }
+        }
+
+        let mut app = test_app();
+        let world = app.world_mut();
+        let entities = world
+            .spawn_scene_list(bsn_list! {
+                Refs { entities: [#A, #B] }
+                --
+                #A
+                --
+                #B
+            })
+            .unwrap();
+        let refs = world.entity(entities[0]).get::<Refs>().unwrap();
+        assert_eq!(refs.entities, [entities[1], entities[2]]);
+    }
 }
